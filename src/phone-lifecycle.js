@@ -465,7 +465,10 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-story-oracle-page" data-phone-page="story-oracle" hidden></section>
 </div>
 </div>
-<div class="pm-phone-resize-handle" role="separator" aria-label="调整手机窗口大小" aria-orientation="horizontal" title="拖动调整手机大小"></div>`;
+<div class="pm-phone-resize-handle" data-resize-corner="nw" role="separator" aria-label="从左上角调整手机窗口大小" title="拖动调整手机大小"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="ne" role="separator" aria-label="从右上角调整手机窗口大小" title="拖动调整手机大小"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="sw" role="separator" aria-label="从左下角调整手机窗口大小" title="拖动调整手机大小"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="se" role="separator" aria-label="从右下角调整手机窗口大小" title="拖动调整手机大小"></div>`;
         document.body.appendChild(state.phoneWindow);
         applyPhoneScale(state.phoneWindow);
         window.__pmShowPhonePage = pageController.show;
@@ -502,7 +505,7 @@ export function installPhoneLifecycle(state, deps) {
             },
         });
         unbindIsland = bindIsland(state.phoneWindow, state.phoneWindow.querySelector('.pm-island'));
-        unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector('.pm-phone-resize-handle'));
+        unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelectorAll('.pm-phone-resize-handle'));
         applyTheme(); applyBackground(); state.isGroupChat = false; state.groupMembers = []; state.groupExtras = []; state.groupColorMap = {};
         state.groupDisplayName = ''; state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = ''; state.currentGroupKey = '';
 

@@ -3568,8 +3568,8 @@ for (const expected of [
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
-  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
-  '.pm-global-setting{border:1px solid var(--pm-color-border-default);border-radius:14px;background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-primary)',
+  '.pm-global-setting{border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-primary)',
   '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:0}',
@@ -3685,7 +3685,7 @@ for (const expected of [
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
   '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
-  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:1px solid var(--pm-color-border-subtle);border-radius:14px',
+  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-none);background:transparent',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0)}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
@@ -4165,21 +4165,54 @@ requireCssDeclarations(cssRules, '.pm-phone-screen', {
   overflow: 'hidden', 'border-radius': 'var(--pm-phone-inner-radius)',
 });
 requireCssDeclarations(cssRules, '.pm-phone-resize-handle', {
-  position: 'absolute', right: 'calc(-4px - var(--pm-phone-border-width))',
-  bottom: 'calc(-4px - var(--pm-phone-border-width))', width: '40px', height: '40px', cursor: 'nwse-resize', 'touch-action': 'none', background: 'transparent',
+  position: 'absolute', width: '40px', height: '40px', 'touch-action': 'none', background: 'transparent',
 });
-requireCssDeclarations(cssRules, '.pm-phone-resize-handle::after', {
-  content: '""', right: '2px', bottom: '2px', width: '8px', height: '8px',
-  'border-right': '1.5px solid color-mix(in srgb,var(--pm-border) 34%,transparent)',
-  'border-bottom': '1.5px solid color-mix(in srgb,var(--pm-border) 34%,transparent)',
-  'pointer-events': 'none',
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner^="n"]', {
+  top: 'calc(-1 * (var(--pm-space-1) + var(--pm-phone-border-width)))',
 });
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner^="s"]', {
+  bottom: 'calc(-1 * (var(--pm-space-1) + var(--pm-phone-border-width)))',
+});
+for (const selector of ['.pm-phone-resize-handle[data-resize-corner$="w"]', '.pm-phone-resize-handle[data-resize-corner$="e"]']) {
+  requireCssDeclarations(cssRules, selector, { [selector.endsWith('w"]') ? 'left' : 'right']: 'calc(-1 * (var(--pm-space-1) + var(--pm-phone-border-width)))' });
+}
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner="nw"]', { cursor: 'nwse-resize' });
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner="se"]', { cursor: 'nwse-resize' });
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner="ne"]', { cursor: 'nesw-resize' });
+requireCssDeclarations(cssRules, '.pm-phone-resize-handle[data-resize-corner="sw"]', { cursor: 'nesw-resize' });
+if (css.includes('.pm-phone-resize-handle::after')) {
+  failures.push('style.css: phone resize handles must not retain a visible bottom-right drag glyph');
+}
+requireCssDeclarations(cssRules, '.pm-control-menu', { background: 'var(--pm-color-surface-page)' });
+requireCssDeclarations(cssRules, '.pm-control-menu.pm-scene-menu', { background: 'var(--pm-color-surface-page)' });
+for (const selector of ['.pm-story-oracle-menu', '.pm-story-oracle-mode-menu']) {
+  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-surface-page)', 'box-shadow': 'var(--pm-shadow-floating)' });
+}
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { padding: 'var(--pm-space-1) var(--pm-space-0) var(--pm-space-1) var(--pm-space-1)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle>b', { 'font-size': 'var(--pm-font-size-compact)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status svg', { width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status.is-active', { background: 'transparent', color: 'var(--pm-color-accent) !important' });
+if (css.includes('.pm-story-oracle-plan-status svg{width:var(--pm-size-icon-sm)')) {
+  failures.push('style.css: Story Oracle route status icon must not remain at the small icon size');
+}
+if (css.includes('.pm-story-oracle-plan-status.is-active{background:var(--pm-color-accent)')) {
+  failures.push('style.css: Story Oracle route status must not retain an oversized filled circle');
+}
 const resizeHandleRule = cssRules.find(rule => rule.selectors.includes('.pm-phone-resize-handle'));
 if (resizeHandleRule?.declarations.get('background')?.includes('linear-gradient')) {
   failures.push('style.css: phone resize handle must not draw diagonal lines inside the phone frame');
 }
 if (css.includes('pm-scene-tabs')) failures.push('style.css: obsolete wide community tab capsule styles remain');
 const lifecycleCode = sourceModuleByName.get('phone-lifecycle.js')?.code || '';
+if (!/data-resize-corner="nw"[\s\S]*data-resize-corner="ne"[\s\S]*data-resize-corner="sw"[\s\S]*data-resize-corner="se"/.test(lifecycleCode)) {
+  failures.push('phone-lifecycle.js: phone window must expose one resize hit target at each corner');
+}
+if (!lifecycleCode.includes("querySelectorAll('.pm-phone-resize-handle')")) {
+  failures.push('phone-lifecycle.js: resize binding must collect every corner handle');
+}
+if (!foundationCode.includes('const resizeHandles = Array.from(handles || []).filter(Boolean);') || !foundationCode.includes('resizeCorner = activeHandle?.dataset?.resizeCorner || \'se\';')) {
+  failures.push('phone-foundation.js: resize binding must derive proportional scale direction from the active corner');
+}
 for (const expected of [
   'bindPressGesture(sendButton', 'delay: 550', 'getPendingMessages(runtime',
   'state.isGenerating', 'window.__pmSubmitPending()', 'unbindSendGesture?.()', 'unbindPhoneResize?.()',
@@ -4188,7 +4221,7 @@ for (const expected of [
   'placeholder="长按提交全部消息"',
   '${SIGNAL_ICON_SVG}</span><span>本地</span>',
   '<div class="pm-phone-screen">',
-  '</div>\n<div class="pm-phone-resize-handle" role="separator"',
+  'data-resize-corner="se" role="separator"',
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
 if (lifecycleCode.includes('WIFI_ICON_SVG')) failures.push('phone-lifecycle.js: removed WiFi status icon remains');
 
@@ -4401,6 +4434,19 @@ if (!/pm-story-oracle-plan-more[\s\S]*MORE_ICON_SVG/.test(storyOracleCode)) fail
 if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: route and history clear actions must remain distinct');
 }
+for (const expected of [
+  'data-story-oracle-action="edit-plan-injection"', 'showStoryOraclePlanInjectionEditor',
+  'data-story-oracle-plan-intensity', 'storyOraclePlanIntensityLine(selectedIntensity)',
+  'setStoryOraclePlanIntensity', 'setStoryOraclePlanCustomInjection', 'resetStoryOraclePlanInjection',
+  'storyOraclePlanIntensityControllable', '实际写入主聊天的引导文本',
+]) requireText('story-oracle.js route intensity contract', storyOracleCode, expected);
+for (const forbidden of ['settings.pace', 'name="pace"']) {
+  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: route intensity must not restore obsolete global settings (${forbidden})`);
+}
+const storyOracleModelCode = sourceModuleByName.get('story-oracle-model.js')?.code || '';
+for (const expected of ['STORY_ORACLE_INTENSITIES', 'storyOraclePlanIntensityLine', 'buildStoryOraclePlanDefaultInjection', 'customInjectionText', 'setStoryOraclePlanIntensity', 'resetStoryOraclePlanInjection']) {
+  requireText('story-oracle-model.js route intensity contract', storyOracleModelCode, expected);
+}
 for (const expected of ['剧情助手可阅读的范围', 'name="systemPrompt"', 'DEFAULT_STORY_ORACLE_SYSTEM_PROMPT', 'ADVISOR_OUTPUT_CONTRACT']) {
   requireText('story-oracle.js settings contract', storyOracleCode, expected);
 }
@@ -4432,12 +4478,31 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { color: 'var(-
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status', { display: 'grid', width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-circle)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-head', { position: 'relative' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', top: 'calc(100% + var(--pm-space-1))', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls', { display: 'grid', 'grid-template-columns': 'repeat(3,minmax(0,1fr))', gap: 'var(--pm-space-2)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls button', { width: '100%', 'min-height': 'var(--pm-size-control-compact)' });
 for (const selector of ['.pm-story-oracle-world-book-modal .pm-modal-scroll', '.pm-story-oracle-settings-modal .pm-modal-scroll']) {
   requireCssDeclarations(cssRules, selector, { gap: 'var(--pm-space-3)', padding: 'var(--pm-space-4)' });
 }
 requireCssDeclarations(cssRules, '.pm-story-oracle-world-book-modal .pm-cfg-tip', { 'margin-bottom': 'var(--pm-space-1)', 'text-align': 'left' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-settings-field', { gap: 'var(--pm-space-2)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
+for (const selector of [
+  '.pm-global-setting',
+  '.pm-settings-home button',
+  '.pm-session-behavior-section',
+  '.pm-member-behavior-list button',
+  '.pm-conversation-injection-group',
+  '.pm-calendar-data-tools',
+  '.pm-calendar-editor',
+  '.pm-calendar-month-panel',
+  '.pm-quick-reply-settings section',
+  '.pm-worldbook-column',
+]) {
+  requireCssDeclarations(cssRules, selector, { border: '0', 'border-radius': 'var(--pm-radius-none)', background: 'transparent' });
+}
+requireCssDeclarations(cssRules, '.pm-calendar-management-content', { display: 'flex', 'flex-direction': 'column', gap: 'var(--pm-space-2)' });
+requireCssDeclarations(cssRules, '.pm-settings-home button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
+requireCssDeclarations(cssRules, '.pm-member-behavior-list button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
   `export const MOON_ICON_SVG = icon('<path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2z"/>');`,

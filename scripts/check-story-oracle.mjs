@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendStoryOracleTurn, buildStoryOraclePlanInjection, clearStoryOraclePlans, clearStoryOracleScope, createEmptyStoryOracleStore, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, parseStoryPlans, setStoryOraclePlanEnabled, setStoryOracleSettings, setStoryOracleWorldBookSelection, storyOracleMessages, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection } from '../src/story-oracle-model.js';
+import { appendStoryOracleTurn, buildStoryOraclePlanInjection, clearStoryOraclePlans, clearStoryOracleScope, createEmptyStoryOracleStore, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, parseStoryPlans, resetStoryOraclePlanInjection, setStoryOraclePlanCustomInjection, setStoryOraclePlanEnabled, setStoryOraclePlanIntensity, setStoryOracleSettings, setStoryOracleWorldBookSelection, storyOracleMessages, storyOraclePlanInjectionText, storyOraclePlanIntensityControllable, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection } from '../src/story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore, STORY_ORACLE_FALLBACK_KEY } from '../src/story-oracle-storage.js';
 
 let store = createEmptyStoryOracleStore();
@@ -29,6 +29,24 @@ planStore = setStoryOraclePlanEnabled(planStore, 'route-chat', firstPlan.id, tru
 assert.equal(storyOraclePlans(planStore, 'route-chat').filter(plan => plan.enabled).length, 1);
 assert.match(buildStoryOraclePlanInjection(storyOraclePlans(planStore, 'route-chat')).content, /查清失踪船队/);
 assert.match(buildStoryOraclePlanInjection(storyOraclePlans(planStore, 'route-chat'), { maxChars: 1 }).rejected, /预算/);
+let injectedPlan = storyOraclePlans(planStore, 'route-chat')[0];
+assert.equal(injectedPlan.intensity, 'natural', '历史路线缺少强度字段时必须回落自然推进');
+assert.match(storyOraclePlanInjectionText(injectedPlan), /节奏：自然推进：让剧情沿当前矛盾产生明确进展，但保留后续选择与余地。/);
+planStore = setStoryOraclePlanIntensity(planStore, 'route-chat', injectedPlan.id, 'fast');
+injectedPlan = storyOraclePlans(planStore, 'route-chat')[0];
+assert.equal(injectedPlan.intensity, 'fast');
+assert.match(storyOraclePlanInjectionText(injectedPlan), /节奏：尽快引爆：推动关键冲突进入不可逆的直接对峙、揭示或选择。/);
+const manualInjection = storyOraclePlanInjectionText(injectedPlan).replace(/节奏：.+/, '节奏：按玩家自行确定的节奏推进。');
+planStore = setStoryOraclePlanCustomInjection(planStore, 'route-chat', injectedPlan.id, manualInjection);
+injectedPlan = storyOraclePlans(planStore, 'route-chat')[0];
+assert.equal(storyOraclePlanIntensityControllable(injectedPlan), false, '手动改写节奏行后必须锁定强度档');
+assert.throws(() => setStoryOraclePlanIntensity(planStore, 'route-chat', injectedPlan.id, 'slow'), /恢复默认/);
+assert.match(buildStoryOraclePlanInjection([injectedPlan]).content, /按玩家自行确定的节奏推进/);
+planStore = resetStoryOraclePlanInjection(planStore, 'route-chat', injectedPlan.id);
+injectedPlan = storyOraclePlans(planStore, 'route-chat')[0];
+assert.equal(storyOraclePlanIntensityControllable(injectedPlan), true, '恢复默认后必须重新接管强度档');
+planStore = setStoryOraclePlanIntensity(planStore, 'route-chat', injectedPlan.id, 'slow');
+assert.match(storyOraclePlanInjectionText(storyOraclePlans(planStore, 'route-chat')[0]), /节奏：只铺垫：呈现征兆、信息和关系张力，不让核心冲突在本轮定局。/);
 assert.throws(() => setStoryOraclePlanEnabled(planStore, 'route-chat', 'missing-plan', true), /不存在/);
 planStore = clearStoryOraclePlans(planStore, 'route-chat');
 assert.deepEqual(storyOraclePlans(planStore, 'route-chat'), []);

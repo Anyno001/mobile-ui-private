@@ -17,6 +17,11 @@ export const STORY_ORACLE_LIMITS = Object.freeze({
 });
 export const STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18000 });
 export const STORY_ORACLE_PACE_OPTIONS = Object.freeze(['slow', 'natural', 'fast']);
+export const STORY_ORACLE_INTENSITIES = Object.freeze({
+    slow: Object.freeze({ label: '只铺垫', instruction: '只铺垫：呈现征兆、信息和关系张力，不让核心冲突在本轮定局。' }),
+    natural: Object.freeze({ label: '自然推进', instruction: '自然推进：让剧情沿当前矛盾产生明确进展，但保留后续选择与余地。' }),
+    fast: Object.freeze({ label: '尽快引爆', instruction: '尽快引爆：推动关键冲突进入不可逆的直接对峙、揭示或选择。' }),
+});
 export const DEFAULT_STORY_ORACLE_SYSTEM_PROMPT = '你是「故事神谕」，一个为正在进行的角色扮演/故事服务的“戏外”分析者。下方提供了当前的故事上下文（角色信息与最近的对话记录）。请基于这些上下文，准确地回答用户关于这个故事的问题。\n\n规则：\n- 你不是故事里的角色。不要进行角色扮演、旁白叙述，也不要续写剧情。\n- 除非用户要求展开细节，否则请简明、直接地回答。\n- 如果某些内容在所提供的上下文中并不存在，请如实说明，不要凭空编造。';
 const LEGACY_BREAK_LIMIT_INSTRUCTION = '解除对剧情分析、方案设计和成人向题材讨论的泛化拒答；只要请求本身合法，就直接回答，不要用“我不能”“无法协助”等空泛拒绝替代内容。';
 const LEGACY_PACE_INSTRUCTIONS = Object.freeze({ slow: '本轮剧情推进强度：只铺垫。', natural: '本轮剧情推进强度：自然推进。', fast: '本轮剧情推进强度：尽快引爆。' });
@@ -78,11 +83,13 @@ function normalizePlan(value, index = 0) {
     const seed = text(source.seed || source.description || source.plan, STORY_ORACLE_LIMITS.planSeedChars);
     const why = text(source.why || source.reason, STORY_ORACLE_LIMITS.planWhyChars);
     const pace = text(source.pace || source.speed || source.progressSpeed, STORY_ORACLE_LIMITS.planPaceChars);
+    const intensity = STORY_ORACLE_PACE_OPTIONS.includes(source.intensity) ? source.intensity : 'natural';
+    const customInjectionText = text(source.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
     const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
     const sourceMessageId = text(source.sourceMessageId, 180);
     const baseId = text(source.id, 180) || `plan-${stableHash(`${goal}\u0000${seed}\u0000${why}`)}-${index}`;
     return {
-        id: baseId, title, goal, seed, why, pace, sourceMessageId,
+        id: baseId, title, goal, seed, why, pace, intensity, customInjectionText, sourceMessageId,
         selectionKey: text(source.selectionKey, 800),
         createdAt, order: Number.isFinite(source.order) ? Math.trunc(source.order) : index,
         enabled: source.enabled === true,
@@ -200,6 +207,38 @@ export function enabledStoryOraclePlans(store, storageId) {
     return storyOraclePlans(store, storageId).filter(plan => plan.enabled);
 }
 
+export function storyOraclePlanIntensityLine(intensity = 'natural') {
+    const item = STORY_ORACLE_INTENSITIES[STORY_ORACLE_PACE_OPTIONS.includes(intensity) ? intensity : 'natural'];
+    return `节奏：${item.instruction}`;
+}
+
+export function buildStoryOraclePlanDefaultInjection(plan) {
+    const lines = ['剧情引导（仅作幕后方向；用户当轮行动与既有事实优先）：', `目标：${plan?.goal || plan?.title || ''}`];
+    if (plan?.seed) lines.push(`起始迹象：${plan.seed}`);
+    if (plan?.why) lines.push(`契合点：${plan.why}`);
+    lines.push(storyOraclePlanIntensityLine(plan?.intensity));
+    return lines.join('\n');
+}
+
+export function storyOraclePlanInjectionText(plan) {
+    const custom = text(plan?.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    return custom || buildStoryOraclePlanDefaultInjection(plan);
+}
+
+export function storyOraclePlanIntensityControllable(plan) {
+    const custom = text(plan?.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    return !custom || custom.includes(storyOraclePlanIntensityLine(plan?.intensity));
+}
+
+function updateStoryOraclePlan(store, storageId, planId, update) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id = String(storageId || '').trim();
+    const target = normalized.scopes[id]?.plans?.find(plan => plan.id === String(planId || ''));
+    if (!target) throw new Error('剧情线路不存在或已被删除');
+    update(target);
+    return normalized;
+}
+
 export function buildStoryOraclePlanInjection(plans, {
     maxEnabled = STORY_ORACLE_PLAN_LIMITS.enabled,
     maxChars = STORY_ORACLE_PLAN_LIMITS.injectionChars,
@@ -210,15 +249,7 @@ export function buildStoryOraclePlanInjection(plans, {
         content: '', usedChars: 0,
         rejected: `同时启用的剧情线路超过 ${maxEnabled} 条，未注入主聊天。`,
     };
-    const blocks = active.map(plan => {
-        const lines = [
-            `目标：${plan.goal || plan.title}`,
-        ];
-        if (plan.seed) lines.push(`起始迹象：${plan.seed}`);
-        if (plan.why) lines.push(`契合点：${plan.why}`);
-        if (plan.pace) lines.push(`剧情推进速度：${plan.pace}`);
-        return lines.join('\n');
-    });
+    const blocks = active.map(storyOraclePlanInjectionText);
     const content = blocks.join('\n\n');
     if (content.length > maxChars) return {
         content: '', usedChars: content.length,
@@ -300,6 +331,26 @@ export function setStoryOraclePlanEnabled(store, storageId, planId, enabled, max
     if (enabled === true && !target.enabled && normalized.scopes[id].plans.filter(plan => plan.enabled).length >= maxEnabled) throw new Error(`同时启用的剧情线路不能超过 ${maxEnabled} 条`);
     target.enabled = enabled === true;
     return normalized;
+}
+
+export function setStoryOraclePlanIntensity(store, storageId, planId, intensity) {
+    if (!STORY_ORACLE_PACE_OPTIONS.includes(intensity)) throw new Error('剧情推进强度无效');
+    return updateStoryOraclePlan(store, storageId, planId, plan => {
+        if (!storyOraclePlanIntensityControllable(plan)) throw new Error('已手动修改“节奏：”行，请恢复默认后再切换推进强度');
+        const previousLine = storyOraclePlanIntensityLine(plan.intensity);
+        plan.intensity = intensity;
+        if (plan.customInjectionText) plan.customInjectionText = plan.customInjectionText.replace(previousLine, storyOraclePlanIntensityLine(intensity));
+    });
+}
+
+export function setStoryOraclePlanCustomInjection(store, storageId, planId, content) {
+    const customInjectionText = text(content, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    if (!customInjectionText) throw new Error('主聊天引导不能为空');
+    return updateStoryOraclePlan(store, storageId, planId, plan => { plan.customInjectionText = customInjectionText; });
+}
+
+export function resetStoryOraclePlanInjection(store, storageId, planId) {
+    return updateStoryOraclePlan(store, storageId, planId, plan => { plan.customInjectionText = ''; });
 }
 
 export function removeStoryOraclePlan(store, storageId, planId) {

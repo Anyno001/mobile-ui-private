@@ -3,8 +3,10 @@ import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG,
 import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
-    parseStoryPlans, removeStoryOraclePlan, setStoryOraclePlanEnabled, setStoryOracleSettings, setStoryOracleWorldBookSelection,
-    storyOracleMessages, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection, stripStoryPlanMarkup, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, STORY_ORACLE_MODES,
+    buildStoryOraclePlanDefaultInjection, parseStoryPlans, removeStoryOraclePlan, resetStoryOraclePlanInjection,
+    setStoryOraclePlanCustomInjection, setStoryOraclePlanEnabled, setStoryOraclePlanIntensity, setStoryOracleSettings, setStoryOracleWorldBookSelection,
+    storyOracleMessages, storyOraclePlanInjectionText, storyOraclePlanIntensityControllable, storyOraclePlanIntensityLine, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection,
+    STORY_ORACLE_INTENSITIES, stripStoryPlanMarkup, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, STORY_ORACLE_MODES,
 } from './story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore } from './story-oracle-storage.js';
 import { getReadableWorldBookNames } from './worldbook-config.js';
@@ -45,6 +47,7 @@ function renderStoryOraclePlan(plan, writable = true, expanded = false, focused 
     return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="剧情线路：${escapeAttr(plan.title || plan.goal || '未命名线路')}">
       <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-status ${plan.enabled ? 'is-active' : ''}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? 'true' : 'false'}" aria-label="${plan.enabled ? '停止引导' : '开始引导'}" title="${plan.enabled ? '停止引导' : '开始引导'}" ${writable ? '' : 'disabled'}>${plan.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? 'true' : 'false'}"><b>${escapeHtml(plan.title || plan.goal || '未命名线路')}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="线路操作" title="线路操作">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? '' : 'hidden'}>
         <button type="button" role="menuitem" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
+        <button type="button" role="menuitem" data-story-oracle-action="edit-plan-injection" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>编辑主聊天引导</button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
       </div></div>
       <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
@@ -228,7 +231,7 @@ export function installStoryOracle(_state, deps = {}) {
         if (cancel) { cancel.hidden = !busy; cancel.disabled = !busy; }
         page.querySelector('[data-story-oracle-action="toggle-mode"]')?.toggleAttribute('disabled', busy);
         page.querySelectorAll('[data-story-oracle-action="mode"]').forEach(button => { button.disabled = busy; });
-        page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="settings"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach(button => {
+        page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="settings"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="edit-plan-injection"], [data-story-oracle-action="delete-plan"]').forEach(button => {
             button.disabled = busy || !writable || button.dataset.storyOracleAvailable === 'false';
         });
     };
@@ -282,6 +285,70 @@ export function installStoryOracle(_state, deps = {}) {
                 render('剧情助手设置已保存。');
             } catch (error) {
                 render(`剧情助手设置保存失败：${generationErrorMessage(error)}`);
+            }
+        });
+        return true;
+    };
+    const showStoryOraclePlanInjectionEditor = planId => {
+        if (!isUsableStorageId(activeStorageId) || !writable || typeof deps.makeOverlay !== 'function') return false;
+        const plan = storyOraclePlans(store, activeStorageId).find(item => item.id === planId);
+        if (!plan) return false;
+        const opener = page?.querySelector(`[data-story-oracle-plan-id="${CSS.escape(planId)}"] [data-story-oracle-action="edit-plan-injection"]`);
+        let selectedIntensity = plan.intensity;
+        let intensityControllable = storyOraclePlanIntensityControllable(plan);
+        const syncIntensityControls = () => overlay.querySelectorAll('[data-story-oracle-plan-intensity]').forEach(button => {
+            const selected = button.dataset.storyOraclePlanIntensity === selectedIntensity;
+            button.disabled = !intensityControllable;
+            button.classList.toggle('is-accent', selected);
+            button.classList.toggle('is-secondary', !selected);
+            button.setAttribute('aria-pressed', String(selected));
+        });
+        const intensityButtons = Object.entries(STORY_ORACLE_INTENSITIES).map(([key, item]) => `<button type="button" class="pm-action-button ${plan.intensity === key ? 'is-accent' : 'is-secondary'}" data-story-oracle-plan-intensity="${key}" aria-pressed="${plan.intensity === key}" ${intensityControllable ? '' : 'disabled'}>${item.label}</button>`).join('');
+        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-plan-injection-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-plan-injection-title">编辑主聊天引导</b><button type="button" class="pm-modal-close" data-story-oracle-plan-editor-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><div class="pm-settings-field"><span class="pm-cfg-label">推进强度</span><div class="pm-story-oracle-intensity-controls">${intensityButtons}</div></div><label class="pm-settings-field" for="pm-story-oracle-plan-injection"><span class="pm-cfg-label">实际写入主聊天的引导文本</span><textarea id="pm-story-oracle-plan-injection" class="pm-cfg-input" name="planInjection" rows="12" maxlength="${18000}">${escapeHtml(storyOraclePlanInjectionText(plan))}</textarea></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-plan-editor-action="reset">恢复默认</button><button type="button" class="pm-action-button is-accent" data-story-oracle-plan-editor-action="save">保存</button></div></div>`, { opener });
+        overlay?.querySelector('[data-story-oracle-plan-editor-action="close"]')?.focus({ preventScroll: true });
+        overlay?.querySelector('[data-story-oracle-plan-editor-action="close"]')?.addEventListener('click', () => deps.closeOverlay?.('close'));
+        overlay?.querySelectorAll('[data-story-oracle-plan-intensity]').forEach(button => button.addEventListener('click', () => {
+            const nextIntensity = button.dataset.storyOraclePlanIntensity;
+            if (!STORY_ORACLE_INTENSITIES[nextIntensity] || !intensityControllable) return;
+            const textarea = overlay.querySelector('[name="planInjection"]');
+            if (textarea) textarea.value = textarea.value.replace(storyOraclePlanIntensityLine(selectedIntensity), storyOraclePlanIntensityLine(nextIntensity));
+            selectedIntensity = nextIntensity;
+            syncIntensityControls();
+        }));
+        overlay?.querySelector('[name="planInjection"]')?.addEventListener('input', event => {
+            const currentLine = storyOraclePlanIntensityLine(selectedIntensity);
+            intensityControllable = String(event.currentTarget?.value || '').includes(currentLine);
+            syncIntensityControls();
+        });
+        overlay?.querySelector('[data-story-oracle-plan-editor-action="reset"]')?.addEventListener('click', () => {
+            const current = storyOraclePlans(store, activeStorageId).find(item => item.id === planId);
+            const textarea = overlay.querySelector('[name="planInjection"]');
+            if (current && textarea) {
+                selectedIntensity = current.intensity;
+                intensityControllable = true;
+                textarea.value = buildStoryOraclePlanDefaultInjection(current);
+                syncIntensityControls();
+            }
+        });
+        overlay?.querySelector('[data-story-oracle-plan-editor-action="save"]')?.addEventListener('click', async () => {
+            const request = mutationRequest();
+            try {
+                const currentPlan = storyOraclePlans(store, request.storageId).find(item => item.id === planId);
+                let nextStore = storyOraclePlanIntensityControllable(currentPlan)
+                    ? setStoryOraclePlanIntensity(store, request.storageId, planId, selectedIntensity)
+                    : store;
+                const savedPlan = storyOraclePlans(nextStore, request.storageId).find(item => item.id === planId);
+                const content = overlay.querySelector('[name="planInjection"]')?.value;
+                nextStore = content === buildStoryOraclePlanDefaultInjection(savedPlan) ? resetStoryOraclePlanInjection(nextStore, request.storageId, planId)
+                    : setStoryOraclePlanCustomInjection(nextStore, request.storageId, planId, content);
+                if (!await persistIfCurrent(nextStore, request)) return;
+                store = nextStore;
+                const injectionResult = typeof deps.applyBidirectionalInjection === 'function' ? await deps.applyBidirectionalInjection() : null;
+                const injectionIssue = storyOracleInjectionIssue(injectionResult);
+                deps.closeOverlay?.('close');
+                render(injectionIssue ? `主聊天引导已保存，但注入未完全生效：${injectionIssue}` : '主聊天引导已保存。');
+            } catch (error) {
+                if (requestIsCurrent(request)) render(`主聊天引导保存失败：${generationErrorMessage(error)}`);
             }
         });
         return true;
@@ -400,6 +467,11 @@ export function installStoryOracle(_state, deps = {}) {
         }
         if (button.dataset.storyOracleAction === 'settings') {
             showStoryOracleSettings();
+            return;
+        }
+        if (button.dataset.storyOracleAction === 'edit-plan-injection') {
+            openPlanMenuId = '';
+            showStoryOraclePlanInjectionEditor(button.dataset.storyOraclePlanId);
             return;
         }
         if (['continue-plan', 'toggle-plan', 'delete-plan', 'clear-plans'].includes(button.dataset.storyOracleAction)) {

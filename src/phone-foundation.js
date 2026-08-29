@@ -161,9 +161,13 @@ export function installPhoneFoundation(state, deps) {
     };
 
 
-    function bindPhoneResize(el, handle) {
+    function bindPhoneResize(el, handles) {
+        const resizeHandles = Array.from(handles || []).filter(Boolean);
+        if (!resizeHandles.length) return () => {};
         let resizing = false;
         let pointerId = null;
+        let activeHandle = null;
+        let resizeCorner = 'se';
         let startX = 0;
         let startY = 0;
         let startScale = 1;
@@ -176,7 +180,9 @@ export function installPhoneFoundation(state, deps) {
             if (!resizing || event.pointerId !== pointerId) return;
             const dx = event.clientX - startX;
             const dy = event.clientY - startY;
-            const projected = (dx * PHONE_BASE_WIDTH + dy * PHONE_BASE_HEIGHT)
+            const horizontalDelta = resizeCorner.includes('e') ? dx : -dx;
+            const verticalDelta = resizeCorner.includes('s') ? dy : -dy;
+            const projected = (horizontalDelta * PHONE_BASE_WIDTH + verticalDelta * PHONE_BASE_HEIGHT)
                 / (PHONE_BASE_WIDTH ** 2 + PHONE_BASE_HEIGHT ** 2);
             const nextScale = normalizePhoneScale(startScale + projected);
             window.__pmTheme.phoneScale = nextScale;
@@ -187,7 +193,8 @@ export function installPhoneFoundation(state, deps) {
             if (!resizing || (event?.pointerId !== undefined && event.pointerId !== pointerId)) return;
             resizing = false;
             el.classList.remove('is-resizing');
-            try { handle.releasePointerCapture?.(pointerId); } catch (error) {}
+            try { activeHandle?.releasePointerCapture?.(pointerId); } catch (error) {}
+            activeHandle = null;
             pointerId = null;
             const nextScale = normalizePhoneScale(window.__pmTheme.phoneScale);
             window.__pmTheme.phoneScale = nextScale;
@@ -198,20 +205,24 @@ export function installPhoneFoundation(state, deps) {
             }
         };
         const onPointerDown = event => {
-            if (state.isMinimized || event.button !== 0) return;
+            if (state.isMinimized || event.button !== 0 || resizing) return;
             resizing = true;
             pointerId = event.pointerId;
+            activeHandle = event.currentTarget;
+            resizeCorner = activeHandle?.dataset?.resizeCorner || 'se';
             startX = event.clientX;
             startY = event.clientY;
             previousScale = Number(window.__pmTheme.phoneScale) || 1;
             startScale = normalizePhoneScale(previousScale);
             window.__pmTheme.phoneScale = startScale;
             el.classList.add('is-resizing');
-            handle.setPointerCapture?.(pointerId);
+            activeHandle?.setPointerCapture?.(pointerId);
             if (event.cancelable) event.preventDefault();
         };
-        handle.addEventListener('pointerdown', onPointerDown);
-        handle.addEventListener('lostpointercapture', finish);
+        for (const handle of resizeHandles) {
+            handle.addEventListener('pointerdown', onPointerDown);
+            handle.addEventListener('lostpointercapture', finish);
+        }
         window.addEventListener('pointermove', onPointerMove, { passive: false });
         window.addEventListener('pointerup', finish);
         window.addEventListener('pointercancel', finish);
@@ -221,8 +232,10 @@ export function installPhoneFoundation(state, deps) {
         applyPhoneScale(el);
         return () => {
             finish();
-            handle.removeEventListener('pointerdown', onPointerDown);
-            handle.removeEventListener('lostpointercapture', finish);
+            for (const handle of resizeHandles) {
+                handle.removeEventListener('pointerdown', onPointerDown);
+                handle.removeEventListener('lostpointercapture', finish);
+            }
             window.removeEventListener('pointermove', onPointerMove);
             window.removeEventListener('pointerup', finish);
             window.removeEventListener('pointercancel', finish);

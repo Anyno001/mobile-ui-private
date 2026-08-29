@@ -1829,6 +1829,8 @@ assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES'))[0].apiUrl, 'http
 const makeClassList = initial => {
     const values = new Set(initial);
     return {
+        add: value => values.add(value),
+        remove: value => values.delete(value),
         contains: value => values.has(value),
         toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
     };
@@ -3418,20 +3420,45 @@ window.visualViewport = {
     },
 };
 window.__pmTheme.phoneScale = 1;
-const resizeHandleListeners = new Map();
-const resizeHandle = {
-    addEventListener(type, listener) { resizeHandleListeners.set(type, listener); },
-    removeEventListener(type, listener) {
-        if (resizeHandleListeners.get(type) === listener) resizeHandleListeners.delete(type);
-    },
-};
-const unbindPhoneResizeFixture = foundationDeps.bindPhoneResize(foundationPhone, resizeHandle);
+function createResizeHandle(corner) {
+    const listeners = new Map();
+    return {
+        dataset: { resizeCorner: corner },
+        listeners,
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        removeEventListener(type, listener) {
+            if (listeners.get(type) === listener) listeners.delete(type);
+        },
+        setPointerCapture(pointerId) { this.capturedPointerId = pointerId; },
+        releasePointerCapture(pointerId) { this.releasedPointerId = pointerId; },
+    };
+}
+const resizeHandles = ['nw', 'ne', 'sw', 'se'].map(createResizeHandle);
+const unbindPhoneResizeFixture = foundationDeps.bindPhoneResize(foundationPhone, resizeHandles);
+const seResizeHandle = resizeHandles.find(handle => handle.dataset.resizeCorner === 'se');
+seResizeHandle.listeners.get('pointerdown')({ button: 0, pointerId: 7, clientX: 100, clientY: 100, currentTarget: seResizeHandle, cancelable: true, preventDefault() {} });
+resizeWindowListeners.get('pointermove')({ pointerId: 7, clientX: 130, clientY: 130, cancelable: true, preventDefault() {} });
+assert.ok(window.__pmTheme.phoneScale > 1, '右下角向外拖动必须放大手机比例');
+resizeWindowListeners.get('pointerup')({ pointerId: 7 });
+assert.equal(seResizeHandle.releasedPointerId, 7, '结束缩放必须释放活动角的指针捕获');
+window.__pmTheme.phoneScale = 1;
+const nwResizeHandle = resizeHandles.find(handle => handle.dataset.resizeCorner === 'nw');
+nwResizeHandle.listeners.get('pointerdown')({ button: 0, pointerId: 8, clientX: 100, clientY: 100, currentTarget: nwResizeHandle, cancelable: true, preventDefault() {} });
+resizeWindowListeners.get('pointermove')({ pointerId: 8, clientX: 70, clientY: 70, cancelable: true, preventDefault() {} });
+assert.ok(window.__pmTheme.phoneScale > 1, '左上角向外拖动必须与右下角保持同向放大');
+resizeWindowListeners.get('pointerup')({ pointerId: 8 });
+for (const handle of resizeHandles) {
+    assert.equal(handle.listeners.has('pointerdown'), true, `${handle.dataset.resizeCorner} 角必须注册缩放事件`);
+}
 const widthBeforeKeyboard = foundationPhoneStyleValues.get('--pm-phone-width');
 window.visualViewport.height = 400;
 visualViewportListeners.get('resize')();
 assert.equal(foundationPhoneStyleValues.get('--pm-phone-width'), widthBeforeKeyboard, 'VisualViewport 键盘 resize 不得改变手机宽度');
 assert.equal(foundationPhoneStyleValues.get('--pm-phone-height'), '328px', 'VisualViewport 键盘 resize 必须只压缩手机高度');
 unbindPhoneResizeFixture();
+for (const handle of resizeHandles) {
+    assert.equal(handle.listeners.has('pointerdown'), false, `${handle.dataset.resizeCorner} 角解绑必须移除缩放事件`);
+}
 assert.equal(resizeWindowListeners.has('resize'), false, '解绑必须移除 window resize 监听器');
 assert.equal(visualViewportListeners.has('resize'), false, '解绑必须移除 VisualViewport resize 监听器');
 delete window.visualViewport;
@@ -3672,6 +3699,10 @@ const lifecyclePhone = {
         if (selector === '.pm-status-bar') return lifecycleStatusBar;
         const control = { disabled: false, addEventListener(type, listener) { lifecyclePhoneListeners.set(`${selector}:${type}`, listener); }, removeEventListener() {}, setPointerCapture() {} };
         return control;
+    },
+    querySelectorAll(selector) {
+        assert.equal(selector, '.pm-phone-resize-handle', '生命周期必须查询四角缩放 handle');
+        return [];
     },
 };
 const lifecycleFixtureState = {

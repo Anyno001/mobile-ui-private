@@ -381,8 +381,10 @@
       "path": "style.css",
       "selector": ".pm-phone-resize-handle",
       "properties": [
+        "top",
         "right",
         "bottom",
+        "left",
         "width",
         "height"
       ],
@@ -508,24 +510,6 @@
         "value": "auto 40px 40px auto !important",
         "owner": "foundation",
         "reason": "宿主断点锚定几何",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/core.css",
-        "selector": ".pm-phone-resize-handle::after",
-        "property": "right",
-        "value": "2px",
-        "owner": "foundation",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/core.css",
-        "selector": ".pm-phone-resize-handle::after",
-        "property": "bottom",
-        "value": "2px",
-        "owner": "foundation",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
         "removeWhen": "相关组件布局重构"
       },
       {
@@ -1538,7 +1522,7 @@
     "styles/core.css::root::.pm-story-oracle-plan-status::border::0 !important",
     "styles/core.css::root::.pm-story-oracle-plan-status::box-shadow::none !important",
     "styles/core.css::root::.pm-story-oracle-plan-status::color::var(--pm-color-text-secondary) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status.is-active::color::var(--pm-color-on-accent) !important"
+    "styles/core.css::root::.pm-story-oracle-plan-status.is-active::color::var(--pm-color-accent) !important"
 
   ],
   "incrementalHardcodeBaseline": [
@@ -1759,8 +1743,6 @@
     "styles/core.css::root::.pm-pending-list::max-height::320px",
     "styles/core.css::root::.pm-pending-manager-actions button::font-weight::600",
     "styles/core.css::root::.pm-pending-manager::min-height::180px",
-    "styles/core.css::root::.pm-phone-resize-handle::after::height::8px",
-    "styles/core.css::root::.pm-phone-resize-handle::after::width::8px",
     "styles/core.css::root::.pm-phone-resize-handle::height::40px",
     "styles/core.css::root::.pm-phone-resize-handle::width::40px",
     "styles/core.css::root::.pm-quote-preview-cancel::line-height::1",

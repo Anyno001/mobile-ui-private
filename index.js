@@ -7056,6 +7056,11 @@ ${lines.join("\n")}
   });
   var STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18e3 });
   var STORY_ORACLE_PACE_OPTIONS = Object.freeze(["slow", "natural", "fast"]);
+  var STORY_ORACLE_INTENSITIES = Object.freeze({
+    slow: Object.freeze({ label: "\u53EA\u94FA\u57AB", instruction: "\u53EA\u94FA\u57AB\uFF1A\u5448\u73B0\u5F81\u5146\u3001\u4FE1\u606F\u548C\u5173\u7CFB\u5F20\u529B\uFF0C\u4E0D\u8BA9\u6838\u5FC3\u51B2\u7A81\u5728\u672C\u8F6E\u5B9A\u5C40\u3002" }),
+    natural: Object.freeze({ label: "\u81EA\u7136\u63A8\u8FDB", instruction: "\u81EA\u7136\u63A8\u8FDB\uFF1A\u8BA9\u5267\u60C5\u6CBF\u5F53\u524D\u77DB\u76FE\u4EA7\u751F\u660E\u786E\u8FDB\u5C55\uFF0C\u4F46\u4FDD\u7559\u540E\u7EED\u9009\u62E9\u4E0E\u4F59\u5730\u3002" }),
+    fast: Object.freeze({ label: "\u5C3D\u5FEB\u5F15\u7206", instruction: "\u5C3D\u5FEB\u5F15\u7206\uFF1A\u63A8\u52A8\u5173\u952E\u51B2\u7A81\u8FDB\u5165\u4E0D\u53EF\u9006\u7684\u76F4\u63A5\u5BF9\u5CD9\u3001\u63ED\u793A\u6216\u9009\u62E9\u3002" })
+  });
   var DEFAULT_STORY_ORACLE_SYSTEM_PROMPT = "\u4F60\u662F\u300C\u6545\u4E8B\u795E\u8C15\u300D\uFF0C\u4E00\u4E2A\u4E3A\u6B63\u5728\u8FDB\u884C\u7684\u89D2\u8272\u626E\u6F14/\u6545\u4E8B\u670D\u52A1\u7684\u201C\u620F\u5916\u201D\u5206\u6790\u8005\u3002\u4E0B\u65B9\u63D0\u4F9B\u4E86\u5F53\u524D\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\uFF08\u89D2\u8272\u4FE1\u606F\u4E0E\u6700\u8FD1\u7684\u5BF9\u8BDD\u8BB0\u5F55\uFF09\u3002\u8BF7\u57FA\u4E8E\u8FD9\u4E9B\u4E0A\u4E0B\u6587\uFF0C\u51C6\u786E\u5730\u56DE\u7B54\u7528\u6237\u5173\u4E8E\u8FD9\u4E2A\u6545\u4E8B\u7684\u95EE\u9898\u3002\n\n\u89C4\u5219\uFF1A\n- \u4F60\u4E0D\u662F\u6545\u4E8B\u91CC\u7684\u89D2\u8272\u3002\u4E0D\u8981\u8FDB\u884C\u89D2\u8272\u626E\u6F14\u3001\u65C1\u767D\u53D9\u8FF0\uFF0C\u4E5F\u4E0D\u8981\u7EED\u5199\u5267\u60C5\u3002\n- \u9664\u975E\u7528\u6237\u8981\u6C42\u5C55\u5F00\u7EC6\u8282\uFF0C\u5426\u5219\u8BF7\u7B80\u660E\u3001\u76F4\u63A5\u5730\u56DE\u7B54\u3002\n- \u5982\u679C\u67D0\u4E9B\u5185\u5BB9\u5728\u6240\u63D0\u4F9B\u7684\u4E0A\u4E0B\u6587\u4E2D\u5E76\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5982\u5B9E\u8BF4\u660E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u7F16\u9020\u3002";
   var LEGACY_BREAK_LIMIT_INSTRUCTION = "\u89E3\u9664\u5BF9\u5267\u60C5\u5206\u6790\u3001\u65B9\u6848\u8BBE\u8BA1\u548C\u6210\u4EBA\u5411\u9898\u6750\u8BA8\u8BBA\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u53EA\u8981\u8BF7\u6C42\u672C\u8EAB\u5408\u6CD5\uFF0C\u5C31\u76F4\u63A5\u56DE\u7B54\uFF0C\u4E0D\u8981\u7528\u201C\u6211\u4E0D\u80FD\u201D\u201C\u65E0\u6CD5\u534F\u52A9\u201D\u7B49\u7A7A\u6CDB\u62D2\u7EDD\u66FF\u4EE3\u5185\u5BB9\u3002";
   var LEGACY_PACE_INSTRUCTIONS = Object.freeze({ slow: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u53EA\u94FA\u57AB\u3002", natural: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u81EA\u7136\u63A8\u8FDB\u3002", fast: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u5C3D\u5FEB\u5F15\u7206\u3002" });
@@ -7110,6 +7115,8 @@ ${lines.join("\n")}
     const seed = text4(source.seed || source.description || source.plan, STORY_ORACLE_LIMITS.planSeedChars);
     const why = text4(source.why || source.reason, STORY_ORACLE_LIMITS.planWhyChars);
     const pace = text4(source.pace || source.speed || source.progressSpeed, STORY_ORACLE_LIMITS.planPaceChars);
+    const intensity = STORY_ORACLE_PACE_OPTIONS.includes(source.intensity) ? source.intensity : "natural";
+    const customInjectionText = text4(source.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
     const createdAt = Number.isFinite(source.createdAt) ? Math.max(0, Math.trunc(source.createdAt)) : 0;
     const sourceMessageId = text4(source.sourceMessageId, 180);
     const baseId = text4(source.id, 180) || `plan-${stableHash4(`${goal}\0${seed}\0${why}`)}-${index}`;
@@ -7120,6 +7127,8 @@ ${lines.join("\n")}
       seed,
       why,
       pace,
+      intensity,
+      customInjectionText,
       sourceMessageId,
       selectionKey: text4(source.selectionKey, 800),
       createdAt,
@@ -7228,6 +7237,33 @@ ${customPrompt}` : ""
   function enabledStoryOraclePlans(store, storageId) {
     return storyOraclePlans(store, storageId).filter((plan) => plan.enabled);
   }
+  function storyOraclePlanIntensityLine(intensity = "natural") {
+    const item = STORY_ORACLE_INTENSITIES[STORY_ORACLE_PACE_OPTIONS.includes(intensity) ? intensity : "natural"];
+    return `\u8282\u594F\uFF1A${item.instruction}`;
+  }
+  function buildStoryOraclePlanDefaultInjection(plan) {
+    const lines = ["\u5267\u60C5\u5F15\u5BFC\uFF08\u4EC5\u4F5C\u5E55\u540E\u65B9\u5411\uFF1B\u7528\u6237\u5F53\u8F6E\u884C\u52A8\u4E0E\u65E2\u6709\u4E8B\u5B9E\u4F18\u5148\uFF09\uFF1A", `\u76EE\u6807\uFF1A${plan?.goal || plan?.title || ""}`];
+    if (plan?.seed) lines.push(`\u8D77\u59CB\u8FF9\u8C61\uFF1A${plan.seed}`);
+    if (plan?.why) lines.push(`\u5951\u5408\u70B9\uFF1A${plan.why}`);
+    lines.push(storyOraclePlanIntensityLine(plan?.intensity));
+    return lines.join("\n");
+  }
+  function storyOraclePlanInjectionText(plan) {
+    const custom = text4(plan?.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    return custom || buildStoryOraclePlanDefaultInjection(plan);
+  }
+  function storyOraclePlanIntensityControllable(plan) {
+    const custom = text4(plan?.customInjectionText, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    return !custom || custom.includes(storyOraclePlanIntensityLine(plan?.intensity));
+  }
+  function updateStoryOraclePlan(store, storageId, planId, update) {
+    const normalized = normalizeStoryOracleStore(store);
+    const id2 = String(storageId || "").trim();
+    const target = normalized.scopes[id2]?.plans?.find((plan) => plan.id === String(planId || ""));
+    if (!target) throw new Error("\u5267\u60C5\u7EBF\u8DEF\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u5220\u9664");
+    update(target);
+    return normalized;
+  }
   function buildStoryOraclePlanInjection(plans, {
     maxEnabled = STORY_ORACLE_PLAN_LIMITS.enabled,
     maxChars = STORY_ORACLE_PLAN_LIMITS.injectionChars
@@ -7239,15 +7275,7 @@ ${customPrompt}` : ""
       usedChars: 0,
       rejected: `\u540C\u65F6\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u8D85\u8FC7 ${maxEnabled} \u6761\uFF0C\u672A\u6CE8\u5165\u4E3B\u804A\u5929\u3002`
     };
-    const blocks = active.map((plan) => {
-      const lines = [
-        `\u76EE\u6807\uFF1A${plan.goal || plan.title}`
-      ];
-      if (plan.seed) lines.push(`\u8D77\u59CB\u8FF9\u8C61\uFF1A${plan.seed}`);
-      if (plan.why) lines.push(`\u5951\u5408\u70B9\uFF1A${plan.why}`);
-      if (plan.pace) lines.push(`\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6\uFF1A${plan.pace}`);
-      return lines.join("\n");
-    });
+    const blocks = active.map(storyOraclePlanInjectionText);
     const content = blocks.join("\n\n");
     if (content.length > maxChars) return {
       content: "",
@@ -7327,6 +7355,27 @@ ${customPrompt}` : ""
     if (enabled === true && !target.enabled && normalized.scopes[id2].plans.filter((plan) => plan.enabled).length >= maxEnabled) throw new Error(`\u540C\u65F6\u542F\u7528\u7684\u5267\u60C5\u7EBF\u8DEF\u4E0D\u80FD\u8D85\u8FC7 ${maxEnabled} \u6761`);
     target.enabled = enabled === true;
     return normalized;
+  }
+  function setStoryOraclePlanIntensity(store, storageId, planId, intensity) {
+    if (!STORY_ORACLE_PACE_OPTIONS.includes(intensity)) throw new Error("\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\u65E0\u6548");
+    return updateStoryOraclePlan(store, storageId, planId, (plan) => {
+      if (!storyOraclePlanIntensityControllable(plan)) throw new Error("\u5DF2\u624B\u52A8\u4FEE\u6539\u201C\u8282\u594F\uFF1A\u201D\u884C\uFF0C\u8BF7\u6062\u590D\u9ED8\u8BA4\u540E\u518D\u5207\u6362\u63A8\u8FDB\u5F3A\u5EA6");
+      const previousLine = storyOraclePlanIntensityLine(plan.intensity);
+      plan.intensity = intensity;
+      if (plan.customInjectionText) plan.customInjectionText = plan.customInjectionText.replace(previousLine, storyOraclePlanIntensityLine(intensity));
+    });
+  }
+  function setStoryOraclePlanCustomInjection(store, storageId, planId, content) {
+    const customInjectionText = text4(content, STORY_ORACLE_PLAN_LIMITS.injectionChars);
+    if (!customInjectionText) throw new Error("\u4E3B\u804A\u5929\u5F15\u5BFC\u4E0D\u80FD\u4E3A\u7A7A");
+    return updateStoryOraclePlan(store, storageId, planId, (plan) => {
+      plan.customInjectionText = customInjectionText;
+    });
+  }
+  function resetStoryOraclePlanInjection(store, storageId, planId) {
+    return updateStoryOraclePlan(store, storageId, planId, (plan) => {
+      plan.customInjectionText = "";
+    });
   }
   function removeStoryOraclePlan(store, storageId, planId) {
     const normalized = normalizeStoryOracleStore(store);
@@ -19018,9 +19067,14 @@ ${lines}`;
       const isGroup = Object.hasOwn(window.__pmGroupMeta?.[id2] || {}, targetKey);
       return window.__pmToggleConversationInjection?.(id2, targetKey, isGroup) || Promise.resolve(false);
     };
-    function bindPhoneResize(el, handle) {
+    function bindPhoneResize(el, handles) {
+      const resizeHandles = Array.from(handles || []).filter(Boolean);
+      if (!resizeHandles.length) return () => {
+      };
       let resizing = false;
       let pointerId = null;
+      let activeHandle = null;
+      let resizeCorner = "se";
       let startX = 0;
       let startY = 0;
       let startScale = 1;
@@ -19031,7 +19085,9 @@ ${lines}`;
         if (!resizing || event.pointerId !== pointerId) return;
         const dx = event.clientX - startX;
         const dy = event.clientY - startY;
-        const projected = (dx * PHONE_BASE_WIDTH + dy * PHONE_BASE_HEIGHT) / (PHONE_BASE_WIDTH ** 2 + PHONE_BASE_HEIGHT ** 2);
+        const horizontalDelta = resizeCorner.includes("e") ? dx : -dx;
+        const verticalDelta = resizeCorner.includes("s") ? dy : -dy;
+        const projected = (horizontalDelta * PHONE_BASE_WIDTH + verticalDelta * PHONE_BASE_HEIGHT) / (PHONE_BASE_WIDTH ** 2 + PHONE_BASE_HEIGHT ** 2);
         const nextScale = normalizePhoneScale(startScale + projected);
         window.__pmTheme.phoneScale = nextScale;
         applyPhoneScale(el, nextScale);
@@ -19042,9 +19098,10 @@ ${lines}`;
         resizing = false;
         el.classList.remove("is-resizing");
         try {
-          handle.releasePointerCapture?.(pointerId);
+          activeHandle?.releasePointerCapture?.(pointerId);
         } catch (error) {
         }
+        activeHandle = null;
         pointerId = null;
         const nextScale = normalizePhoneScale(window.__pmTheme.phoneScale);
         window.__pmTheme.phoneScale = nextScale;
@@ -19055,20 +19112,24 @@ ${lines}`;
         }
       };
       const onPointerDown = (event) => {
-        if (state.isMinimized || event.button !== 0) return;
+        if (state.isMinimized || event.button !== 0 || resizing) return;
         resizing = true;
         pointerId = event.pointerId;
+        activeHandle = event.currentTarget;
+        resizeCorner = activeHandle?.dataset?.resizeCorner || "se";
         startX = event.clientX;
         startY = event.clientY;
         previousScale = Number(window.__pmTheme.phoneScale) || 1;
         startScale = normalizePhoneScale(previousScale);
         window.__pmTheme.phoneScale = startScale;
         el.classList.add("is-resizing");
-        handle.setPointerCapture?.(pointerId);
+        activeHandle?.setPointerCapture?.(pointerId);
         if (event.cancelable) event.preventDefault();
       };
-      handle.addEventListener("pointerdown", onPointerDown);
-      handle.addEventListener("lostpointercapture", finish);
+      for (const handle of resizeHandles) {
+        handle.addEventListener("pointerdown", onPointerDown);
+        handle.addEventListener("lostpointercapture", finish);
+      }
       window.addEventListener("pointermove", onPointerMove, { passive: false });
       window.addEventListener("pointerup", finish);
       window.addEventListener("pointercancel", finish);
@@ -19078,8 +19139,10 @@ ${lines}`;
       applyPhoneScale(el);
       return () => {
         finish();
-        handle.removeEventListener("pointerdown", onPointerDown);
-        handle.removeEventListener("lostpointercapture", finish);
+        for (const handle of resizeHandles) {
+          handle.removeEventListener("pointerdown", onPointerDown);
+          handle.removeEventListener("lostpointercapture", finish);
+        }
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", finish);
         window.removeEventListener("pointercancel", finish);
@@ -19167,6 +19230,7 @@ ${lines}`;
     return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="\u5267\u60C5\u7EBF\u8DEF\uFF1A${escapeAttr(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}">
       <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-status ${plan.enabled ? "is-active" : ""}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? "true" : "false"}" aria-label="${plan.enabled ? "\u505C\u6B62\u5F15\u5BFC" : "\u5F00\u59CB\u5F15\u5BFC"}" title="${plan.enabled ? "\u505C\u6B62\u5F15\u5BFC" : "\u5F00\u59CB\u5F15\u5BFC"}" ${writable ? "" : "disabled"}>${plan.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}</button><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? "true" : "false"}"><b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? "true" : "false"}" aria-label="\u7EBF\u8DEF\u64CD\u4F5C" title="\u7EBF\u8DEF\u64CD\u4F5C">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? "" : "hidden"}>
         <button type="button" role="menuitem" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">\u7EE7\u7EED\u8BA8\u8BBA</button>
+        <button type="button" role="menuitem" data-story-oracle-action="edit-plan-injection" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u7F16\u8F91\u4E3B\u804A\u5929\u5F15\u5BFC</button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u5220\u9664\u7EBF\u8DEF</button>
       </div></div>
       <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
@@ -19356,7 +19420,7 @@ ${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
       page.querySelectorAll('[data-story-oracle-action="mode"]').forEach((button) => {
         button.disabled = busy;
       });
-      page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="settings"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="delete-plan"]').forEach((button) => {
+      page.querySelectorAll('[data-story-oracle-action="world-books"], [data-story-oracle-action="settings"], [data-story-oracle-action="clear-plans"], [data-story-oracle-action="clear"], [data-story-oracle-action="toggle-plan"], [data-story-oracle-action="edit-plan-injection"], [data-story-oracle-action="delete-plan"]').forEach((button) => {
         button.disabled = busy || !writable || button.dataset.storyOracleAvailable === "false";
       });
     };
@@ -19410,6 +19474,67 @@ ${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
           render("\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002");
         } catch (error) {
           render(`\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\u4FDD\u5B58\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
+        }
+      });
+      return true;
+    };
+    const showStoryOraclePlanInjectionEditor = (planId) => {
+      if (!isUsableStorageId(activeStorageId) || !writable || typeof deps.makeOverlay !== "function") return false;
+      const plan = storyOraclePlans(store, activeStorageId).find((item) => item.id === planId);
+      if (!plan) return false;
+      const opener = page?.querySelector(`[data-story-oracle-plan-id="${CSS.escape(planId)}"] [data-story-oracle-action="edit-plan-injection"]`);
+      let selectedIntensity = plan.intensity;
+      let intensityControllable = storyOraclePlanIntensityControllable(plan);
+      const syncIntensityControls = () => overlay.querySelectorAll("[data-story-oracle-plan-intensity]").forEach((button) => {
+        const selected = button.dataset.storyOraclePlanIntensity === selectedIntensity;
+        button.disabled = !intensityControllable;
+        button.classList.toggle("is-accent", selected);
+        button.classList.toggle("is-secondary", !selected);
+        button.setAttribute("aria-pressed", String(selected));
+      });
+      const intensityButtons = Object.entries(STORY_ORACLE_INTENSITIES).map(([key, item]) => `<button type="button" class="pm-action-button ${plan.intensity === key ? "is-accent" : "is-secondary"}" data-story-oracle-plan-intensity="${key}" aria-pressed="${plan.intensity === key}" ${intensityControllable ? "" : "disabled"}>${item.label}</button>`).join("");
+      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-plan-injection-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-plan-injection-title">\u7F16\u8F91\u4E3B\u804A\u5929\u5F15\u5BFC</b><button type="button" class="pm-modal-close" data-story-oracle-plan-editor-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><div class="pm-settings-field"><span class="pm-cfg-label">\u63A8\u8FDB\u5F3A\u5EA6</span><div class="pm-story-oracle-intensity-controls">${intensityButtons}</div></div><label class="pm-settings-field" for="pm-story-oracle-plan-injection"><span class="pm-cfg-label">\u5B9E\u9645\u5199\u5165\u4E3B\u804A\u5929\u7684\u5F15\u5BFC\u6587\u672C</span><textarea id="pm-story-oracle-plan-injection" class="pm-cfg-input" name="planInjection" rows="12" maxlength="${18e3}">${escapeHtml(storyOraclePlanInjectionText(plan))}</textarea></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-plan-editor-action="reset">\u6062\u590D\u9ED8\u8BA4</button><button type="button" class="pm-action-button is-accent" data-story-oracle-plan-editor-action="save">\u4FDD\u5B58</button></div></div>`, { opener });
+      overlay?.querySelector('[data-story-oracle-plan-editor-action="close"]')?.focus({ preventScroll: true });
+      overlay?.querySelector('[data-story-oracle-plan-editor-action="close"]')?.addEventListener("click", () => deps.closeOverlay?.("close"));
+      overlay?.querySelectorAll("[data-story-oracle-plan-intensity]").forEach((button) => button.addEventListener("click", () => {
+        const nextIntensity = button.dataset.storyOraclePlanIntensity;
+        if (!STORY_ORACLE_INTENSITIES[nextIntensity] || !intensityControllable) return;
+        const textarea = overlay.querySelector('[name="planInjection"]');
+        if (textarea) textarea.value = textarea.value.replace(storyOraclePlanIntensityLine(selectedIntensity), storyOraclePlanIntensityLine(nextIntensity));
+        selectedIntensity = nextIntensity;
+        syncIntensityControls();
+      }));
+      overlay?.querySelector('[name="planInjection"]')?.addEventListener("input", (event) => {
+        const currentLine = storyOraclePlanIntensityLine(selectedIntensity);
+        intensityControllable = String(event.currentTarget?.value || "").includes(currentLine);
+        syncIntensityControls();
+      });
+      overlay?.querySelector('[data-story-oracle-plan-editor-action="reset"]')?.addEventListener("click", () => {
+        const current = storyOraclePlans(store, activeStorageId).find((item) => item.id === planId);
+        const textarea = overlay.querySelector('[name="planInjection"]');
+        if (current && textarea) {
+          selectedIntensity = current.intensity;
+          intensityControllable = true;
+          textarea.value = buildStoryOraclePlanDefaultInjection(current);
+          syncIntensityControls();
+        }
+      });
+      overlay?.querySelector('[data-story-oracle-plan-editor-action="save"]')?.addEventListener("click", async () => {
+        const request = mutationRequest();
+        try {
+          const currentPlan = storyOraclePlans(store, request.storageId).find((item) => item.id === planId);
+          let nextStore = storyOraclePlanIntensityControllable(currentPlan) ? setStoryOraclePlanIntensity(store, request.storageId, planId, selectedIntensity) : store;
+          const savedPlan = storyOraclePlans(nextStore, request.storageId).find((item) => item.id === planId);
+          const content = overlay.querySelector('[name="planInjection"]')?.value;
+          nextStore = content === buildStoryOraclePlanDefaultInjection(savedPlan) ? resetStoryOraclePlanInjection(nextStore, request.storageId, planId) : setStoryOraclePlanCustomInjection(nextStore, request.storageId, planId, content);
+          if (!await persistIfCurrent(nextStore, request)) return;
+          store = nextStore;
+          const injectionResult = typeof deps.applyBidirectionalInjection === "function" ? await deps.applyBidirectionalInjection() : null;
+          const injectionIssue = storyOracleInjectionIssue(injectionResult);
+          deps.closeOverlay?.("close");
+          render(injectionIssue ? `\u4E3B\u804A\u5929\u5F15\u5BFC\u5DF2\u4FDD\u5B58\uFF0C\u4F46\u6CE8\u5165\u672A\u5B8C\u5168\u751F\u6548\uFF1A${injectionIssue}` : "\u4E3B\u804A\u5929\u5F15\u5BFC\u5DF2\u4FDD\u5B58\u3002");
+        } catch (error) {
+          if (requestIsCurrent(request)) render(`\u4E3B\u804A\u5929\u5F15\u5BFC\u4FDD\u5B58\u5931\u8D25\uFF1A${generationErrorMessage(error)}`);
         }
       });
       return true;
@@ -19530,6 +19655,11 @@ ${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
       }
       if (button.dataset.storyOracleAction === "settings") {
         showStoryOracleSettings();
+        return;
+      }
+      if (button.dataset.storyOracleAction === "edit-plan-injection") {
+        openPlanMenuId = "";
+        showStoryOraclePlanInjectionEditor(button.dataset.storyOraclePlanId);
         return;
       }
       if (["continue-plan", "toggle-plan", "delete-plan", "clear-plans"].includes(button.dataset.storyOracleAction)) {
@@ -20196,7 +20326,10 @@ ${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
   <section class="pm-phone-page pm-story-oracle-page" data-phone-page="story-oracle" hidden></section>
 </div>
 </div>
-<div class="pm-phone-resize-handle" role="separator" aria-label="\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" aria-orientation="horizontal" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>`;
+<div class="pm-phone-resize-handle" data-resize-corner="nw" role="separator" aria-label="\u4ECE\u5DE6\u4E0A\u89D2\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="ne" role="separator" aria-label="\u4ECE\u53F3\u4E0A\u89D2\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="sw" role="separator" aria-label="\u4ECE\u5DE6\u4E0B\u89D2\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>
+<div class="pm-phone-resize-handle" data-resize-corner="se" role="separator" aria-label="\u4ECE\u53F3\u4E0B\u89D2\u8C03\u6574\u624B\u673A\u7A97\u53E3\u5927\u5C0F" title="\u62D6\u52A8\u8C03\u6574\u624B\u673A\u5927\u5C0F"></div>`;
       document.body.appendChild(state.phoneWindow);
       applyPhoneScale2(state.phoneWindow);
       window.__pmShowPhonePage = pageController.show;
@@ -20241,7 +20374,7 @@ ${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
         }
       });
       unbindIsland = bindIsland2(state.phoneWindow, state.phoneWindow.querySelector(".pm-island"));
-      unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelector(".pm-phone-resize-handle"));
+      unbindPhoneResize = bindPhoneResize(state.phoneWindow, state.phoneWindow.querySelectorAll(".pm-phone-resize-handle"));
       applyTheme();
       applyBackground();
       state.isGroupChat = false;
