@@ -4417,12 +4417,14 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', to
 requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-content', { display: 'flex', 'min-height': '0', overflow: 'hidden' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-list', { flex: '1 1 auto', 'min-height': '0', 'overflow-y': 'auto' });
+requireText('style.css Story Oracle route surface contract', css, '.pm-story-oracle-plan-list{background:var(--pm-color-surface-control);}');
 requireCssDeclarations(cssRules, '.pm-story-oracle-tab', { 'min-height': 'var(--pm-size-control-compact)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-tab.is-selected', { color: 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-tab.is-selected::after', { background: 'var(--pm-color-accent)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-card)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-page)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { color: 'var(--pm-color-text-primary)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status', { display: 'grid', width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-circle)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,

@@ -1534,7 +1534,7 @@
     "styles/core.css::root::.pm-story-oracle-plan-menu::border-radius::var(--pm-radius-card) !important",
     "styles/core.css::root::.pm-story-oracle-tab.is-selected::color::var(--pm-color-accent) !important",
     "styles/core.css::root::.pm-story-oracle-plan-toggle::color::var(--pm-color-text-primary) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status::border-radius::var(--pm-radius-pill) !important",
+    "styles/core.css::root::.pm-story-oracle-plan-status::border-radius::var(--pm-radius-circle) !important",
     "styles/core.css::root::.pm-story-oracle-plan-status::border::0 !important",
     "styles/core.css::root::.pm-story-oracle-plan-status::box-shadow::none !important",
     "styles/core.css::root::.pm-story-oracle-plan-status::color::var(--pm-color-text-secondary) !important",
