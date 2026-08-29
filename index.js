@@ -7052,10 +7052,13 @@ ${lines.join("\n")}
     planPaceChars: 120,
     selectionBooks: 64,
     bookNameChars: 120,
-    customPromptChars: 6e3
+    systemPromptChars: 6e3
   });
   var STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18e3 });
   var STORY_ORACLE_PACE_OPTIONS = Object.freeze(["slow", "natural", "fast"]);
+  var DEFAULT_STORY_ORACLE_SYSTEM_PROMPT = "\u4F60\u662F\u300C\u6545\u4E8B\u795E\u8C15\u300D\uFF0C\u4E00\u4E2A\u4E3A\u6B63\u5728\u8FDB\u884C\u7684\u89D2\u8272\u626E\u6F14/\u6545\u4E8B\u670D\u52A1\u7684\u201C\u620F\u5916\u201D\u5206\u6790\u8005\u3002\u4E0B\u65B9\u63D0\u4F9B\u4E86\u5F53\u524D\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\uFF08\u89D2\u8272\u4FE1\u606F\u4E0E\u6700\u8FD1\u7684\u5BF9\u8BDD\u8BB0\u5F55\uFF09\u3002\u8BF7\u57FA\u4E8E\u8FD9\u4E9B\u4E0A\u4E0B\u6587\uFF0C\u51C6\u786E\u5730\u56DE\u7B54\u7528\u6237\u5173\u4E8E\u8FD9\u4E2A\u6545\u4E8B\u7684\u95EE\u9898\u3002\n\n\u89C4\u5219\uFF1A\n- \u4F60\u4E0D\u662F\u6545\u4E8B\u91CC\u7684\u89D2\u8272\u3002\u4E0D\u8981\u8FDB\u884C\u89D2\u8272\u626E\u6F14\u3001\u65C1\u767D\u53D9\u8FF0\uFF0C\u4E5F\u4E0D\u8981\u7EED\u5199\u5267\u60C5\u3002\n- \u9664\u975E\u7528\u6237\u8981\u6C42\u5C55\u5F00\u7EC6\u8282\uFF0C\u5426\u5219\u8BF7\u7B80\u660E\u3001\u76F4\u63A5\u5730\u56DE\u7B54\u3002\n- \u5982\u679C\u67D0\u4E9B\u5185\u5BB9\u5728\u6240\u63D0\u4F9B\u7684\u4E0A\u4E0B\u6587\u4E2D\u5E76\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5982\u5B9E\u8BF4\u660E\uFF0C\u4E0D\u8981\u51ED\u7A7A\u7F16\u9020\u3002";
+  var LEGACY_BREAK_LIMIT_INSTRUCTION = "\u89E3\u9664\u5BF9\u5267\u60C5\u5206\u6790\u3001\u65B9\u6848\u8BBE\u8BA1\u548C\u6210\u4EBA\u5411\u9898\u6750\u8BA8\u8BBA\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u53EA\u8981\u8BF7\u6C42\u672C\u8EAB\u5408\u6CD5\uFF0C\u5C31\u76F4\u63A5\u56DE\u7B54\uFF0C\u4E0D\u8981\u7528\u201C\u6211\u4E0D\u80FD\u201D\u201C\u65E0\u6CD5\u534F\u52A9\u201D\u7B49\u7A7A\u6CDB\u62D2\u7EDD\u66FF\u4EE3\u5185\u5BB9\u3002";
+  var LEGACY_PACE_INSTRUCTIONS = Object.freeze({ slow: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u53EA\u94FA\u57AB\u3002", natural: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u81EA\u7136\u63A8\u8FDB\u3002", fast: "\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A\u5C3D\u5FEB\u5F15\u7206\u3002" });
   var plainObject2 = (value) => value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : null;
   var text4 = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
   var stringArray = (value, maxItems, maxChars) => {
@@ -7141,11 +7144,19 @@ ${lines.join("\n")}
   function normalizeSettings(value) {
     const source = plainObject2(value);
     if (!source) return null;
+    const systemPrompt = text4(source.systemPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
+    if (systemPrompt) return { systemPrompt };
     const pace = STORY_ORACLE_PACE_OPTIONS.includes(source.pace) ? source.pace : "natural";
-    const customPrompt = text4(source.customPrompt, STORY_ORACLE_LIMITS.customPromptChars);
+    const customPrompt = text4(source.customPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
     const breakLimit = source.breakLimit === true;
     if (pace === "natural" && !customPrompt && !breakLimit) return null;
-    return { pace, breakLimit, customPrompt };
+    const legacyInstructions = [
+      LEGACY_PACE_INSTRUCTIONS[pace],
+      breakLimit ? LEGACY_BREAK_LIMIT_INSTRUCTION : "",
+      customPrompt ? `\u7528\u6237\u9644\u52A0\u6307\u4EE4\uFF08\u4EC5\u4F5C\u4E3A\u672C\u8F6E\u4EFB\u52A1\u504F\u597D\uFF0C\u4E0D\u5F97\u8986\u76D6\u683C\u5F0F\u5951\u7EA6\uFF09\uFF1A
+${customPrompt}` : ""
+    ].filter(Boolean);
+    return { systemPrompt: [DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, ...legacyInstructions].join("\n\n") };
   }
   function normalizeStoryOracleStore(value) {
     const source = plainObject2(value);
@@ -7203,13 +7214,13 @@ ${lines.join("\n")}
   }
   function storyOracleSettings(store, storageId) {
     const normalized = normalizeStoryOracleStore(store);
-    return normalized.scopes[String(storageId || "").trim()]?.settings || { pace: "natural", breakLimit: false, customPrompt: "" };
+    return normalized.scopes[String(storageId || "").trim()]?.settings || { systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT };
   }
   function setStoryOracleSettings(store, storageId, settings) {
     const normalized = normalizeStoryOracleStore(store);
     const id2 = String(storageId || "").trim();
     if (!id2) throw new Error("Story Oracle \u8BBE\u7F6E\u7F3A\u5C11\u804A\u5929\u6807\u8BC6");
-    const nextSettings = normalizeSettings(settings) || { pace: "natural", breakLimit: false, customPrompt: "" };
+    const nextSettings = normalizeSettings(settings) || { systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT };
     const current = normalized.scopes[id2] || { modes: {} };
     normalized.scopes[id2] = { ...current, settings: nextSettings };
     return normalized;
@@ -19122,17 +19133,14 @@ ${lines}`;
   }
 
   // src/story-oracle.js
-  var DEFAULT_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\uFF0C\u4E00\u4E2A\u8D1F\u8D23\u5206\u6790\u6545\u4E8B\u6587\u672C\u7684\u620F\u5916\u5206\u6790\u8005\u3002\u4E0D\u8981\u89D2\u8272\u626E\u6F14\uFF0C\u4E0D\u8981\u7EED\u5199\u5267\u60C5\u3002\u8BF7\u7B80\u660E\u76F4\u63A5\u5730\u56DE\u7B54\uFF1B\u4E0A\u4E0B\u6587\u4E0D\u5B58\u5728\u7684\u5185\u5BB9\u8981\u5982\u5B9E\u8BF4\u660E\u3002";
   var MAX_QUESTION_CHARS = 12e3;
-  var PACE_LABELS = Object.freeze({ slow: "\u53EA\u94FA\u57AB", natural: "\u81EA\u7136\u63A8\u8FDB", fast: "\u5C3D\u5FEB\u5F15\u7206" });
-  var BREAK_LIMIT_PROMPT = "\u89E3\u9664\u5BF9\u5267\u60C5\u5206\u6790\u3001\u65B9\u6848\u8BBE\u8BA1\u548C\u6210\u4EBA\u5411\u9898\u6750\u8BA8\u8BBA\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u53EA\u8981\u8BF7\u6C42\u672C\u8EAB\u5408\u6CD5\uFF0C\u5C31\u76F4\u63A5\u56DE\u7B54\uFF0C\u4E0D\u8981\u7528\u201C\u6211\u4E0D\u80FD\u201D\u201C\u65E0\u6CD5\u534F\u52A9\u201D\u7B49\u7A7A\u6CDB\u62D2\u7EDD\u66FF\u4EE3\u5185\u5BB9\u3002";
-  var DEFAULT_ORACLE_SETTINGS = Object.freeze({ pace: "natural", breakLimit: false, customPrompt: "" });
+  var DEFAULT_ORACLE_SETTINGS = Object.freeze({ systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT });
   var isUsableStorageId = (value) => {
     const id2 = String(value || "").trim();
     return id2 && id2 !== "sms_unknown__default";
   };
   var MODE_LABELS = Object.freeze({ question: "\u5267\u60C5\u804A\u5929", advisor: "\u5267\u60C5\u53C2\u8C0B" });
-  var ADVISOR_SYSTEM_PROMPT = "\u4F60\u662F\u5267\u60C5\u52A9\u624B\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u53EA\u57FA\u4E8E\u63D0\u4F9B\u7684\u6545\u4E8B\u4E0A\u4E0B\u6587\u63D0\u51FA\u53EF\u6267\u884C\u7684\u5267\u60C5\u65B9\u6848\u3001\u51B2\u7A81\u63A8\u8FDB\u548C\u5F27\u7EBF\u9009\u9879\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002\u8BF7\u628A\u6BCF\u6761\u53EF\u9009\u8DEF\u7EBF\u5206\u522B\u653E\u8FDB\u72EC\u7ACB\u7684 <StoryPlan>...</StoryPlan> \u533A\u5757\uFF1B\u6BCF\u4E2A\u533A\u5757\u5FC5\u987B\u5305\u542B\u201C\u6807\u9898\uFF1A\u201D\u548C\u201C\u76EE\u6807\uFF1A\u201D\uFF0C\u5E76\u53EF\u5305\u542B\u201C\u8D77\u59CB\u8FF9\u8C61\uFF1A\u201D\u201C\u5951\u5408\u70B9\uFF1A\u201D\u201C\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6\uFF1A\u201D\uFF08\u4F8B\u5982\u5FEB\u3001\u4E2D\u3001\u6162\uFF09\u3002\u4E0D\u8981\u628A\u591A\u6761\u8DEF\u7EBF\u5408\u5E76\u5230\u540C\u4E00\u4E2A\u533A\u5757\uFF1B\u533A\u5757\u5916\u53EA\u80FD\u4FDD\u7559\u7B80\u77ED\u5F15\u5BFC\u8BF4\u660E\u3002";
+  var ADVISOR_OUTPUT_CONTRACT = "\u4F60\u5F53\u524D\u662F\u300C\u6545\u4E8B\u795E\u8C15\u300D\u7684\u5267\u60C5\u53C2\u8C0B\u3002\u57FA\u4E8E\u5DF2\u6709\u5267\u60C5\u8BA8\u8BBA\u63A5\u4E0B\u6765\u53EF\u4EE5\u600E\u4E48\u8D70\uFF0C\u63D0\u51FA\u8D34\u5408\u4E0A\u4E0B\u6587\u3001\u53EF\u6267\u884C\u7684\u65B9\u6848\uFF1B\u4E0D\u8981\u7EED\u5199\u6210\u6B63\u6587\uFF0C\u4E0D\u8981\u58F0\u79F0\u5DF2\u7ECF\u4FEE\u6539\u5BBF\u4E3B\u6570\u636E\u3002\u9700\u8981\u7ED9\u51FA\u5177\u4F53\u8DEF\u7EBF\u65F6\uFF0C\u628A\u6BCF\u6761\u53EF\u9009\u8DEF\u7EBF\u5206\u522B\u653E\u8FDB\u72EC\u7ACB\u7684 <StoryPlan>...</StoryPlan> \u533A\u5757\uFF1B\u6BCF\u4E2A\u533A\u5757\u5FC5\u987B\u5305\u542B\u201C\u6807\u9898\uFF1A\u201D\u548C\u201C\u76EE\u6807\uFF1A\u201D\uFF0C\u5E76\u53EF\u5305\u542B\u201C\u8D77\u59CB\u8FF9\u8C61\uFF1A\u201D\u201C\u5951\u5408\u70B9\uFF1A\u201D\u201C\u5267\u60C5\u63A8\u8FDB\u901F\u5EA6\uFF1A\u201D\uFF08\u4F8B\u5982\u5FEB\u3001\u4E2D\u3001\u6162\uFF09\u3002\u4E0D\u8981\u628A\u591A\u6761\u8DEF\u7EBF\u5408\u5E76\u5230\u540C\u4E00\u4E2A\u533A\u5757\uFF1B\u533A\u5757\u5916\u53EA\u80FD\u4FDD\u7559\u7B80\u77ED\u5F15\u5BFC\u8BF4\u660E\u3002";
   function storyOracleInjectionIssue(result) {
     const diagnostics = result?.diagnostics?.storyOracle;
     if (diagnostics?.rejected) return diagnostics.rejected;
@@ -19184,7 +19192,7 @@ ${lines}`;
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" title="\u5267\u60C5\u52A9\u624B\u5DE5\u5177">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="\u5267\u60C5\u52A9\u624B\u5DE5\u5177" hidden>
         <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? "" : "disabled"}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="settings" ${writable && valid ? "" : "disabled"}>${CONTROL_ICON_SVG}<span>\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E\uFF08${PACE_LABELS[settings?.pace] || PACE_LABELS.natural}\uFF09</span></button>
+        <button type="button" role="menuitem" data-story-oracle-action="settings" ${writable && valid ? "" : "disabled"}>${SETTINGS_ICON_SVG}<span>\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? "" : "disabled"}>${TRASH_ICON_SVG}<span>\u6E05\u7A7A\u7EBF\u8DEF</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? "" : "disabled"}>${REMOVE_ICON_SVG}<span>\u6E05\u7A7A\u5386\u53F2</span></button>
       </div>
@@ -19229,13 +19237,10 @@ ${transcript}
 ${question}`;
   }
   function buildStoryOracleSystemPrompt(mode, settings = DEFAULT_ORACLE_SETTINGS) {
-    const base = mode === "advisor" ? ADVISOR_SYSTEM_PROMPT : DEFAULT_SYSTEM_PROMPT;
-    const pace = PACE_LABELS[settings.pace] || PACE_LABELS.natural;
-    const parts = [base, `\u672C\u8F6E\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6\uFF1A${pace}\u3002`];
-    if (settings.breakLimit) parts.push(BREAK_LIMIT_PROMPT);
-    if (settings.customPrompt) parts.push(`\u7528\u6237\u9644\u52A0\u6307\u4EE4\uFF08\u4EC5\u4F5C\u4E3A\u672C\u8F6E\u4EFB\u52A1\u504F\u597D\uFF0C\u4E0D\u5F97\u8986\u76D6\u683C\u5F0F\u5951\u7EA6\uFF09\uFF1A
-${settings.customPrompt}`);
-    return parts.join("\n\n");
+    const systemPrompt = String(settings?.systemPrompt || DEFAULT_STORY_ORACLE_SYSTEM_PROMPT).trim() || DEFAULT_STORY_ORACLE_SYSTEM_PROMPT;
+    return mode === "advisor" ? `${systemPrompt}
+
+${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
   }
   function installStoryOracle(_state, deps = {}) {
     let boundWindow = null;
@@ -19362,7 +19367,7 @@ ${settings.customPrompt}`);
       const checkedNames = new Set(selection ? selection.books : availableNames);
       const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
       closeStoryOracleMenus();
-      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">\u9009\u62E9\u4E16\u754C\u4E66</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">\u53EA\u5F71\u54CD\u5267\u60C5\u52A9\u624B\u540E\u7EED\u8BF7\u6C42\uFF0C\u4E0D\u4FEE\u6539\u5BBF\u4E3B\u4E16\u754C\u4E66\u6B63\u6587\u3002</p>${availableNames.length ? availableNames.map((name) => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? "checked" : ""}> ${escapeHtml(name)}</span></label>`).join("") : '<div class="pm-msg-list-empty">\u5F53\u524D\u6CA1\u6709\u53EF\u8BFB\u4E16\u754C\u4E66\u3002</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">\u53D6\u6D88</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? "" : "disabled"}>\u4FDD\u5B58</button></div></div>`, { opener });
+      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">\u9009\u62E9\u4E16\u754C\u4E66</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">\u5267\u60C5\u52A9\u624B\u53EF\u9605\u8BFB\u7684\u8303\u56F4</p>${availableNames.length ? availableNames.map((name) => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? "checked" : ""}> ${escapeHtml(name)}</span></label>`).join("") : '<div class="pm-msg-list-empty">\u5F53\u524D\u6CA1\u6709\u53EF\u8BFB\u4E16\u754C\u4E66\u3002</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">\u53D6\u6D88</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? "" : "disabled"}>\u4FDD\u5B58</button></div></div>`, { opener });
       overlay?.querySelector('[data-story-world-book-action="close"]')?.focus({ preventScroll: true });
       overlay.querySelectorAll('[data-story-world-book-action="close"]').forEach((button) => button.addEventListener("click", () => deps.closeOverlay?.("close")));
       overlay.querySelector('[data-story-world-book-action="save"]')?.addEventListener("click", async () => {
@@ -19386,24 +19391,18 @@ ${settings.customPrompt}`);
       const current = storyOracleSettings(store, activeStorageId);
       const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
       closeStoryOracleMenus();
-      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-settings-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-settings-title">\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E</b><button type="button" class="pm-modal-close" data-story-oracle-settings-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><label class="pm-settings-field" for="pm-story-oracle-pace"><span class="pm-cfg-label">\u5267\u60C5\u63A8\u8FDB\u5F3A\u5EA6</span><select id="pm-story-oracle-pace" class="pm-cfg-input" name="pace"><option value="slow" ${current.pace === "slow" ? "selected" : ""}>\u53EA\u94FA\u57AB</option><option value="natural" ${current.pace === "natural" ? "selected" : ""}>\u81EA\u7136\u63A8\u8FDB</option><option value="fast" ${current.pace === "fast" ? "selected" : ""}>\u5C3D\u5FEB\u5F15\u7206</option></select><span class="pm-cfg-tip">\u53EA\u5F71\u54CD\u5267\u60C5\u52A9\u624B\u8BF7\u6C42\uFF0C\u4E0D\u4F1A\u4FEE\u6539\u5DF2\u751F\u6210\u8DEF\u7EBF\u3002</span></label><label class="pm-settings-inline-row"><span class="pm-cfg-label">\u5185\u7F6E\u7834\u9650</span><input type="checkbox" name="breakLimit" ${current.breakLimit ? "checked" : ""}><span class="pm-cfg-tip">\u51CF\u5C11\u5BF9\u5408\u6CD5\u5267\u60C5\u5206\u6790\u7684\u6CDB\u5316\u62D2\u7B54\uFF1B\u4E0D\u7ED5\u8FC7\u5E73\u53F0\u5B89\u5168\u89C4\u5219\u3002</span></label><label class="pm-settings-field" for="pm-story-oracle-custom-prompt"><span class="pm-cfg-label">\u9644\u52A0\u6307\u4EE4</span><textarea id="pm-story-oracle-custom-prompt" class="pm-cfg-input" name="customPrompt" rows="6" maxlength="6000" placeholder="\u4F8B\u5982\uFF1A\u4F18\u5148\u7ED9\u51FA\u4E09\u79CD\u51B2\u7A81\u5F3A\u5EA6\u4E0D\u540C\u7684\u65B9\u6848\u3002">${escapeHtml(current.customPrompt)}</textarea><span class="pm-cfg-tip">\u516C\u5F00\u53EF\u7F16\u8F91\u7684\u662F\u9644\u52A0\u5C42\uFF1B\u8DEF\u7EBF\u8F93\u51FA\u683C\u5F0F\u548C\u4E0A\u4E0B\u6587\u8FB9\u754C\u4ECD\u7531\u7CFB\u7EDF\u63D0\u793A\u8BCD\u7EF4\u62A4\u3002</span></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-settings-action="reset">\u6062\u590D\u9ED8\u8BA4</button><button type="button" class="pm-action-button is-accent" data-story-oracle-settings-action="save">\u4FDD\u5B58</button></div></div>`, { opener });
+      const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-settings-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-settings-title">\u5267\u60C5\u52A9\u624B\u8BBE\u7F6E</b><button type="button" class="pm-modal-close" data-story-oracle-settings-action="close" aria-label="\u5173\u95ED" title="\u5173\u95ED">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><label class="pm-settings-field" for="pm-story-oracle-system-prompt"><span class="pm-cfg-label">\u7CFB\u7EDF\u63D0\u793A\u8BCD</span><textarea id="pm-story-oracle-system-prompt" class="pm-cfg-input" name="systemPrompt" rows="12" maxlength="6000">${escapeHtml(current.systemPrompt)}</textarea></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-settings-action="reset">\u6062\u590D\u9ED8\u8BA4</button><button type="button" class="pm-action-button is-accent" data-story-oracle-settings-action="save">\u4FDD\u5B58</button></div></div>`, { opener });
       overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.focus({ preventScroll: true });
       overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.addEventListener("click", () => deps.closeOverlay?.("close"));
       overlay?.querySelector('[data-story-oracle-settings-action="reset"]')?.addEventListener("click", () => {
-        const pace = overlay.querySelector('[name="pace"]');
-        const breakLimit = overlay.querySelector('[name="breakLimit"]');
-        const customPrompt = overlay.querySelector('[name="customPrompt"]');
-        if (pace) pace.value = DEFAULT_ORACLE_SETTINGS.pace;
-        if (breakLimit) breakLimit.checked = DEFAULT_ORACLE_SETTINGS.breakLimit;
-        if (customPrompt) customPrompt.value = DEFAULT_ORACLE_SETTINGS.customPrompt;
+        const systemPrompt = overlay.querySelector('[name="systemPrompt"]');
+        if (systemPrompt) systemPrompt.value = DEFAULT_ORACLE_SETTINGS.systemPrompt;
       });
       overlay?.querySelector('[data-story-oracle-settings-action="save"]')?.addEventListener("click", async () => {
         const request = mutationRequest();
         try {
           const nextStore = setStoryOracleSettings(store, request.storageId, {
-            pace: overlay.querySelector('[name="pace"]')?.value,
-            breakLimit: overlay.querySelector('[name="breakLimit"]')?.checked,
-            customPrompt: overlay.querySelector('[name="customPrompt"]')?.value
+            systemPrompt: overlay.querySelector('[name="systemPrompt"]')?.value
           });
           if (!await persistIfCurrent(nextStore, request)) return;
           store = nextStore;

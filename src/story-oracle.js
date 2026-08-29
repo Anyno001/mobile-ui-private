@@ -1,22 +1,19 @@
 import { generationErrorMessage } from './ai.js';
-import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, PAUSE_ICON_SVG, PLAY_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, PAUSE_ICON_SVG, PLAY_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
     parseStoryPlans, removeStoryOraclePlan, setStoryOraclePlanEnabled, setStoryOracleSettings, setStoryOracleWorldBookSelection,
-    storyOracleMessages, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection, stripStoryPlanMarkup, STORY_ORACLE_MODES,
+    storyOracleMessages, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection, stripStoryPlanMarkup, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, STORY_ORACLE_MODES,
 } from './story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore } from './story-oracle-storage.js';
 import { getReadableWorldBookNames } from './worldbook-config.js';
 
-const DEFAULT_SYSTEM_PROMPT = '你是剧情助手，一个负责分析故事文本的戏外分析者。不要角色扮演，不要续写剧情。请简明直接地回答；上下文不存在的内容要如实说明。';
 const MAX_QUESTION_CHARS = 12000;
-const PACE_LABELS = Object.freeze({ slow: '只铺垫', natural: '自然推进', fast: '尽快引爆' });
-const BREAK_LIMIT_PROMPT = '解除对剧情分析、方案设计和成人向题材讨论的泛化拒答；只要请求本身合法，就直接回答，不要用“我不能”“无法协助”等空泛拒绝替代内容。';
-const DEFAULT_ORACLE_SETTINGS = Object.freeze({ pace: 'natural', breakLimit: false, customPrompt: '' });
+const DEFAULT_ORACLE_SETTINGS = Object.freeze({ systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT });
 const isUsableStorageId = value => { const id = String(value || '').trim(); return id && id !== 'sms_unknown__default'; };
 const MODE_LABELS = Object.freeze({ question: '剧情聊天', advisor: '剧情参谋' });
-const ADVISOR_SYSTEM_PROMPT = '你是剧情助手的剧情参谋。只基于提供的故事上下文提出可执行的剧情方案、冲突推进和弧线选项；不要续写成正文，不要声称已经修改宿主数据。请把每条可选路线分别放进独立的 <StoryPlan>...</StoryPlan> 区块；每个区块必须包含“标题：”和“目标：”，并可包含“起始迹象：”“契合点：”“剧情推进速度：”（例如快、中、慢）。不要把多条路线合并到同一个区块；区块外只能保留简短引导说明。';
+const ADVISOR_OUTPUT_CONTRACT = '你当前是「故事神谕」的剧情参谋。基于已有剧情讨论接下来可以怎么走，提出贴合上下文、可执行的方案；不要续写成正文，不要声称已经修改宿主数据。需要给出具体路线时，把每条可选路线分别放进独立的 <StoryPlan>...</StoryPlan> 区块；每个区块必须包含“标题：”和“目标：”，并可包含“起始迹象：”“契合点：”“剧情推进速度：”（例如快、中、慢）。不要把多条路线合并到同一个区块；区块外只能保留简短引导说明。';
 
 export function storyOracleInjectionIssue(result) {
     const diagnostics = result?.diagnostics?.storyOracle;
@@ -75,7 +72,7 @@ function renderStoryOracleTools(valid, writable, plans, messages, availableBookN
       <button type="button" class="pm-expand-btn pm-story-oracle-menu-toggle" data-story-oracle-action="toggle-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="pm-story-oracle-menu" aria-label="剧情助手工具" title="剧情助手工具">${CONTROL_ICON_SVG}</button>
       <div id="pm-story-oracle-menu" class="pm-control-menu pm-story-oracle-menu" role="menu" aria-label="剧情助手工具" hidden>
         <button type="button" role="menuitem" data-story-oracle-action="world-books" data-story-oracle-available="${worldBookAvailable}" ${worldBookAvailable ? '' : 'disabled'}>${BOOK_ICON_SVG}<span>${worldBookLabel}</span></button>
-        <button type="button" role="menuitem" data-story-oracle-action="settings" ${writable && valid ? '' : 'disabled'}>${CONTROL_ICON_SVG}<span>剧情助手设置（${PACE_LABELS[settings?.pace] || PACE_LABELS.natural}）</span></button>
+        <button type="button" role="menuitem" data-story-oracle-action="settings" ${writable && valid ? '' : 'disabled'}>${SETTINGS_ICON_SVG}<span>剧情助手设置</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear-plans" data-story-oracle-available="${clearPlansAvailable}" ${clearPlansAvailable ? '' : 'disabled'}>${TRASH_ICON_SVG}<span>清空线路</span></button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="clear" data-story-oracle-available="${clearHistoryAvailable}" ${clearHistoryAvailable ? '' : 'disabled'}>${REMOVE_ICON_SVG}<span>清空历史</span></button>
       </div>
@@ -116,12 +113,8 @@ function buildUserPrompt(context, history, question) {
 }
 
 function buildStoryOracleSystemPrompt(mode, settings = DEFAULT_ORACLE_SETTINGS) {
-    const base = mode === 'advisor' ? ADVISOR_SYSTEM_PROMPT : DEFAULT_SYSTEM_PROMPT;
-    const pace = PACE_LABELS[settings.pace] || PACE_LABELS.natural;
-    const parts = [base, `本轮剧情推进强度：${pace}。`];
-    if (settings.breakLimit) parts.push(BREAK_LIMIT_PROMPT);
-    if (settings.customPrompt) parts.push(`用户附加指令（仅作为本轮任务偏好，不得覆盖格式契约）：\n${settings.customPrompt}`);
-    return parts.join('\n\n');
+    const systemPrompt = String(settings?.systemPrompt || DEFAULT_STORY_ORACLE_SYSTEM_PROMPT).trim() || DEFAULT_STORY_ORACLE_SYSTEM_PROMPT;
+    return mode === 'advisor' ? `${systemPrompt}\n\n${ADVISOR_OUTPUT_CONTRACT}` : systemPrompt;
 }
 
 export function installStoryOracle(_state, deps = {}) {
@@ -246,7 +239,7 @@ export function installStoryOracle(_state, deps = {}) {
         const checkedNames = new Set(selection ? selection.books : availableNames);
         const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
         closeStoryOracleMenus();
-        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">选择世界书</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">只影响剧情助手后续请求，不修改宿主世界书正文。</p>${availableNames.length ? availableNames.map(name => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? 'checked' : ''}> ${escapeHtml(name)}</span></label>`).join('') : '<div class="pm-msg-list-empty">当前没有可读世界书。</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">取消</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? '' : 'disabled'}>保存</button></div></div>`, { opener });
+        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-world-book-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-world-book-title"><div class="pm-modal-header"><span></span><b id="pm-story-world-book-title">选择世界书</b><button type="button" class="pm-modal-close" data-story-world-book-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><p class="pm-cfg-tip">剧情助手可阅读的范围</p>${availableNames.length ? availableNames.map(name => `<label class="pm-li"><span><input type="checkbox" name="story-world-book" value="${escapeAttr(name)}" ${checkedNames.has(name) ? 'checked' : ''}> ${escapeHtml(name)}</span></label>`).join('') : '<div class="pm-msg-list-empty">当前没有可读世界书。</div>'}</div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-world-book-action="close">取消</button><button type="button" class="pm-action-button is-accent" data-story-world-book-action="save" ${writable ? '' : 'disabled'}>保存</button></div></div>`, { opener });
         overlay?.querySelector('[data-story-world-book-action="close"]')?.focus({ preventScroll: true });
         overlay.querySelectorAll('[data-story-world-book-action="close"]').forEach(button => button.addEventListener('click', () => deps.closeOverlay?.('close')));
         overlay.querySelector('[data-story-world-book-action="save"]')?.addEventListener('click', async () => {
@@ -270,24 +263,18 @@ export function installStoryOracle(_state, deps = {}) {
         const current = storyOracleSettings(store, activeStorageId);
         const opener = page?.querySelector('[data-story-oracle-action="toggle-menu"]');
         closeStoryOracleMenus();
-        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-settings-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-settings-title">剧情助手设置</b><button type="button" class="pm-modal-close" data-story-oracle-settings-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><label class="pm-settings-field" for="pm-story-oracle-pace"><span class="pm-cfg-label">剧情推进强度</span><select id="pm-story-oracle-pace" class="pm-cfg-input" name="pace"><option value="slow" ${current.pace === 'slow' ? 'selected' : ''}>只铺垫</option><option value="natural" ${current.pace === 'natural' ? 'selected' : ''}>自然推进</option><option value="fast" ${current.pace === 'fast' ? 'selected' : ''}>尽快引爆</option></select><span class="pm-cfg-tip">只影响剧情助手请求，不会修改已生成路线。</span></label><label class="pm-settings-inline-row"><span class="pm-cfg-label">内置破限</span><input type="checkbox" name="breakLimit" ${current.breakLimit ? 'checked' : ''}><span class="pm-cfg-tip">减少对合法剧情分析的泛化拒答；不绕过平台安全规则。</span></label><label class="pm-settings-field" for="pm-story-oracle-custom-prompt"><span class="pm-cfg-label">附加指令</span><textarea id="pm-story-oracle-custom-prompt" class="pm-cfg-input" name="customPrompt" rows="6" maxlength="6000" placeholder="例如：优先给出三种冲突强度不同的方案。">${escapeHtml(current.customPrompt)}</textarea><span class="pm-cfg-tip">公开可编辑的是附加层；路线输出格式和上下文边界仍由系统提示词维护。</span></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-settings-action="reset">恢复默认</button><button type="button" class="pm-action-button is-accent" data-story-oracle-settings-action="save">保存</button></div></div>`, { opener });
+        const overlay = deps.makeOverlay(`<div class="pm-modal pm-modal-wide pm-story-oracle-settings-modal" role="dialog" aria-modal="true" aria-labelledby="pm-story-oracle-settings-title"><div class="pm-modal-header"><span></span><b id="pm-story-oracle-settings-title">剧情助手设置</b><button type="button" class="pm-modal-close" data-story-oracle-settings-action="close" aria-label="关闭" title="关闭">${CLOSE_ICON_SVG}</button></div><div class="pm-modal-scroll pm-settings-list"><label class="pm-settings-field" for="pm-story-oracle-system-prompt"><span class="pm-cfg-label">系统提示词</span><textarea id="pm-story-oracle-system-prompt" class="pm-cfg-input" name="systemPrompt" rows="12" maxlength="6000">${escapeHtml(current.systemPrompt)}</textarea></label></div><div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary" data-story-oracle-settings-action="reset">恢复默认</button><button type="button" class="pm-action-button is-accent" data-story-oracle-settings-action="save">保存</button></div></div>`, { opener });
         overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.focus({ preventScroll: true });
         overlay?.querySelector('[data-story-oracle-settings-action="close"]')?.addEventListener('click', () => deps.closeOverlay?.('close'));
         overlay?.querySelector('[data-story-oracle-settings-action="reset"]')?.addEventListener('click', () => {
-            const pace = overlay.querySelector('[name="pace"]');
-            const breakLimit = overlay.querySelector('[name="breakLimit"]');
-            const customPrompt = overlay.querySelector('[name="customPrompt"]');
-            if (pace) pace.value = DEFAULT_ORACLE_SETTINGS.pace;
-            if (breakLimit) breakLimit.checked = DEFAULT_ORACLE_SETTINGS.breakLimit;
-            if (customPrompt) customPrompt.value = DEFAULT_ORACLE_SETTINGS.customPrompt;
+            const systemPrompt = overlay.querySelector('[name="systemPrompt"]');
+            if (systemPrompt) systemPrompt.value = DEFAULT_ORACLE_SETTINGS.systemPrompt;
         });
         overlay?.querySelector('[data-story-oracle-settings-action="save"]')?.addEventListener('click', async () => {
             const request = mutationRequest();
             try {
                 const nextStore = setStoryOracleSettings(store, request.storageId, {
-                    pace: overlay.querySelector('[name="pace"]')?.value,
-                    breakLimit: overlay.querySelector('[name="breakLimit"]')?.checked,
-                    customPrompt: overlay.querySelector('[name="customPrompt"]')?.value,
+                    systemPrompt: overlay.querySelector('[name="systemPrompt"]')?.value,
                 });
                 if (!await persistIfCurrent(nextStore, request)) return;
                 store = nextStore;

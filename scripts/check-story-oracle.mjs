@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendStoryOracleTurn, buildStoryOraclePlanInjection, clearStoryOraclePlans, clearStoryOracleScope, createEmptyStoryOracleStore, parseStoryPlans, setStoryOraclePlanEnabled, setStoryOracleWorldBookSelection, storyOracleMessages, storyOraclePlans, storyOracleWorldBookSelection } from '../src/story-oracle-model.js';
+import { appendStoryOracleTurn, buildStoryOraclePlanInjection, clearStoryOraclePlans, clearStoryOracleScope, createEmptyStoryOracleStore, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, parseStoryPlans, setStoryOraclePlanEnabled, setStoryOracleSettings, setStoryOracleWorldBookSelection, storyOracleMessages, storyOraclePlans, storyOracleSettings, storyOracleWorldBookSelection } from '../src/story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore, STORY_ORACLE_FALLBACK_KEY } from '../src/story-oracle-storage.js';
 
 let store = createEmptyStoryOracleStore();
@@ -35,6 +35,19 @@ assert.deepEqual(storyOraclePlans(planStore, 'route-chat'), []);
 planStore = appendStoryOracleTurn(planStore, 'route-chat', '问题', '回答', 'question');
 planStore = clearStoryOracleScope(planStore, 'route-chat', 'question');
 assert.deepEqual(storyOracleMessages(planStore, 'route-chat', 'question'), []);
+
+const legacySettingsStore = {
+    version: 1,
+    scopes: { legacy: { modes: {}, settings: { pace: 'fast', breakLimit: true, customPrompt: '优先保留伏笔。' } } },
+};
+const migratedSettings = storyOracleSettings(legacySettingsStore, 'legacy');
+assert.match(migratedSettings.systemPrompt, /本轮剧情推进强度：尽快引爆。/);
+assert.match(migratedSettings.systemPrompt, /优先保留伏笔。/);
+assert.match(migratedSettings.systemPrompt, /不要凭空编造/);
+assert.equal(Object.hasOwn(migratedSettings, 'pace'), false, '迁移后设置只能保留单一系统提示词字段');
+const savedSettingsStore = setStoryOracleSettings(createEmptyStoryOracleStore(), 'settings-chat', { systemPrompt: '只基于已给上下文回答。' });
+assert.equal(storyOracleSettings(savedSettingsStore, 'settings-chat').systemPrompt, '只基于已给上下文回答。');
+assert.equal(storyOracleSettings(createEmptyStoryOracleStore(), 'settings-chat').systemPrompt, DEFAULT_STORY_ORACLE_SYSTEM_PROMPT);
 
 const empty = await loadStoryOracleStore({ idbRead: async () => ({ ok: true, value: undefined }), storage: { getItem: () => null } });
 assert.equal(empty.writable, true, '首次空存储必须可写');

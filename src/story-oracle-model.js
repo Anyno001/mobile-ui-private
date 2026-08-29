@@ -13,10 +13,13 @@ export const STORY_ORACLE_LIMITS = Object.freeze({
     planPaceChars: 120,
     selectionBooks: 64,
     bookNameChars: 120,
-    customPromptChars: 6000,
+    systemPromptChars: 6000,
 });
 export const STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18000 });
 export const STORY_ORACLE_PACE_OPTIONS = Object.freeze(['slow', 'natural', 'fast']);
+export const DEFAULT_STORY_ORACLE_SYSTEM_PROMPT = '你是「故事神谕」，一个为正在进行的角色扮演/故事服务的“戏外”分析者。下方提供了当前的故事上下文（角色信息与最近的对话记录）。请基于这些上下文，准确地回答用户关于这个故事的问题。\n\n规则：\n- 你不是故事里的角色。不要进行角色扮演、旁白叙述，也不要续写剧情。\n- 除非用户要求展开细节，否则请简明、直接地回答。\n- 如果某些内容在所提供的上下文中并不存在，请如实说明，不要凭空编造。';
+const LEGACY_BREAK_LIMIT_INSTRUCTION = '解除对剧情分析、方案设计和成人向题材讨论的泛化拒答；只要请求本身合法，就直接回答，不要用“我不能”“无法协助”等空泛拒绝替代内容。';
+const LEGACY_PACE_INSTRUCTIONS = Object.freeze({ slow: '本轮剧情推进强度：只铺垫。', natural: '本轮剧情推进强度：自然推进。', fast: '本轮剧情推进强度：尽快引爆。' });
 
 const plainObject = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) ? value : null;
@@ -104,11 +107,18 @@ function normalizePlans(value) {
 function normalizeSettings(value) {
     const source = plainObject(value);
     if (!source) return null;
+    const systemPrompt = text(source.systemPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
+    if (systemPrompt) return { systemPrompt };
     const pace = STORY_ORACLE_PACE_OPTIONS.includes(source.pace) ? source.pace : 'natural';
-    const customPrompt = text(source.customPrompt, STORY_ORACLE_LIMITS.customPromptChars);
+    const customPrompt = text(source.customPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
     const breakLimit = source.breakLimit === true;
     if (pace === 'natural' && !customPrompt && !breakLimit) return null;
-    return { pace, breakLimit, customPrompt };
+    const legacyInstructions = [
+        LEGACY_PACE_INSTRUCTIONS[pace],
+        breakLimit ? LEGACY_BREAK_LIMIT_INSTRUCTION : '',
+        customPrompt ? `用户附加指令（仅作为本轮任务偏好，不得覆盖格式契约）：\n${customPrompt}` : '',
+    ].filter(Boolean);
+    return { systemPrompt: [DEFAULT_STORY_ORACLE_SYSTEM_PROMPT, ...legacyInstructions].join('\n\n') };
 }
 
 export function normalizeStoryOracleStore(value) {
@@ -173,14 +183,14 @@ export function storyOraclePlans(store, storageId) {
 
 export function storyOracleSettings(store, storageId) {
     const normalized = normalizeStoryOracleStore(store);
-    return normalized.scopes[String(storageId || '').trim()]?.settings || { pace: 'natural', breakLimit: false, customPrompt: '' };
+    return normalized.scopes[String(storageId || '').trim()]?.settings || { systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT };
 }
 
 export function setStoryOracleSettings(store, storageId, settings) {
     const normalized = normalizeStoryOracleStore(store);
     const id = String(storageId || '').trim();
     if (!id) throw new Error('Story Oracle 设置缺少聊天标识');
-    const nextSettings = normalizeSettings(settings) || { pace: 'natural', breakLimit: false, customPrompt: '' };
+    const nextSettings = normalizeSettings(settings) || { systemPrompt: DEFAULT_STORY_ORACLE_SYSTEM_PROMPT };
     const current = normalized.scopes[id] || { modes: {} };
     normalized.scopes[id] = { ...current, settings: nextSettings };
     return normalized;

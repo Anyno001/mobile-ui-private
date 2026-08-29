@@ -4353,7 +4353,7 @@ const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
 for (const expected of [
-  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'MORE_ICON_SVG', 'PLAY_ICON_SVG', 'PAUSE_ICON_SVG',
+  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'MORE_ICON_SVG', 'PLAY_ICON_SVG', 'PAUSE_ICON_SVG', 'SETTINGS_ICON_SVG',
   'class="pm-expand-btn pm-story-oracle-menu-toggle"',
   'class="pm-control-menu pm-story-oracle-menu"',
   'role="menu" aria-label="剧情助手工具"',
@@ -4401,6 +4401,12 @@ if (!/pm-story-oracle-plan-more[\s\S]*MORE_ICON_SVG/.test(storyOracleCode)) fail
 if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: route and history clear actions must remain distinct');
 }
+for (const expected of ['剧情助手可阅读的范围', 'name="systemPrompt"', 'DEFAULT_STORY_ORACLE_SYSTEM_PROMPT', 'ADVISOR_OUTPUT_CONTRACT']) {
+  requireText('story-oracle.js settings contract', storyOracleCode, expected);
+}
+for (const forbidden of ['只影响剧情助手后续请求，不修改宿主世界书正文。', '剧情助手设置（${PACE_LABELS', 'name="breakLimit"', 'name="customPrompt"']) {
+  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: obsolete Story Oracle settings or developer-facing copy remains (${forbidden})`);
+}
 
 if (!/class="pm-control-menu pm-story-oracle-menu"[\s\S]*data-story-oracle-action="world-books"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: world-book entry must remain inside the magic-wand menu');
@@ -4424,7 +4430,13 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-tab.is-selected::after', { ba
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-page)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { color: 'var(--pm-color-text-primary)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status', { display: 'grid', width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-circle)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-head', { position: 'relative' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', top: 'calc(100% + var(--pm-space-1))', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
+for (const selector of ['.pm-story-oracle-world-book-modal .pm-modal-scroll', '.pm-story-oracle-settings-modal .pm-modal-scroll']) {
+  requireCssDeclarations(cssRules, selector, { gap: 'var(--pm-space-3)', padding: 'var(--pm-space-4)' });
+}
+requireCssDeclarations(cssRules, '.pm-story-oracle-world-book-modal .pm-cfg-tip', { 'margin-bottom': 'var(--pm-space-1)', 'text-align': 'left' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-settings-field', { gap: 'var(--pm-space-2)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,
@@ -5162,11 +5174,14 @@ if (readmeIntro !== '个人自用项目，基于 [K20070831/sillytavern-phone-mo
 for (const expected of [
   'K20070831/sillytavern-phone-mode-1',
   'https://github.com/K20070831/sillytavern-phone-mode-1',
+  'https://github.com/namelessone88/story-oracle',
+  'https://github.com/JulyXP3/story-oracle-patch',
+  'https://github.com/DlSNlGHT/World',
+  '三位作者的借物。',
   '打开 SillyTavern 的扩展管理页面。',
   '安装后输入 `/phone` 启动。',
   '可以在设置页面固定 `/phone`，方便后续启动。',
   '仅用于个人自用维护。',
-  '当前维护者已取得上游作者许可。',
   '备份可能包含 API Key 和聊天数据，请勿公开。',
 ]) requireText('README', readme, expected);
 for (const forbidden of [
