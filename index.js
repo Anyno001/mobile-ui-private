@@ -19150,27 +19150,18 @@ ${lines}`;
   }
   function renderStoryOraclePlans(plans = [], writable = true, expandedPlanIds = /* @__PURE__ */ new Set(), focusedSourceId = "", openPlanMenuId = "") {
     const sortedPlans = [...plans].sort((a, b) => b.createdAt - a.createdAt || b.order - a.order || b.id.localeCompare(a.id));
-    const chronologicalPlans = [...sortedPlans].reverse();
-    const sourceRounds = /* @__PURE__ */ new Map();
-    chronologicalPlans.forEach((plan) => {
-      const sourceKey = plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`;
-      if (!sourceRounds.has(sourceKey)) sourceRounds.set(sourceKey, sourceRounds.size + 1);
-    });
     const remainingPlans = sortedPlans;
     if (!remainingPlans.length) return "";
-    return `<section class="pm-story-oracle-plan-workbench" aria-label="\u8DEF\u7EBF\u5DE5\u4F5C\u53F0"><div class="pm-story-oracle-plans-summary"><b>\u8DEF\u7EBF\u5DE5\u4F5C\u53F0</b><span>${plans.length} \u6761\u8DEF\u7EBF \xB7 ${plans.filter((plan) => plan.enabled).length} \u6761\u6B63\u5728\u5F15\u5BFC \xB7 \u6700\u65B0\u751F\u6210\u7684\u8DEF\u7EBF\u4F18\u5148\u663E\u793A</span></div>${remainingPlans.map((plan) => renderStoryOraclePlan(plan, writable, sourceRounds.get(plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`), expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join("")}</section>`;
+    return `<section class="pm-story-oracle-plan-workbench" aria-label="\u8DEF\u7EBF\u5DE5\u4F5C\u53F0"><div class="pm-story-oracle-plans-summary"><b>\u8DEF\u7EBF\u5DE5\u4F5C\u53F0</b><span>${plans.length} \u6761\u8DEF\u7EBF \xB7 ${plans.filter((plan) => plan.enabled).length} \u6761\u6B63\u5728\u5F15\u5BFC</span></div>${remainingPlans.map((plan) => renderStoryOraclePlan(plan, writable, expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join("")}</section>`;
   }
-  function renderStoryOraclePlan(plan, writable = true, sourceRound = 0, expanded = false, focused = false, menuOpen = false) {
-    const generatedAt = plan.createdAt ? new Date(plan.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-    const sourceLabel = [plan.sourceMessageId ? sourceRound ? `\u7B2C ${sourceRound} \u8F6E` : "" : "\u672A\u5173\u8054\u54CD\u5E94", generatedAt ? `\u751F\u6210\u4E8E ${generatedAt}` : ""].filter(Boolean).join(" \xB7 ");
+  function renderStoryOraclePlan(plan, writable = true, expanded = false, focused = false, menuOpen = false) {
     const details = expanded ? `<div class="pm-story-oracle-plan-details"><span>\u8D77\u59CB\u8FF9\u8C61\uFF1A${escapeHtml(plan.seed || "\u672A\u63D0\u4F9B")}</span><span>\u5951\u5408\u70B9\uFF1A${escapeHtml(plan.why || "\u672A\u63D0\u4F9B")}</span></div>` : "";
-    return `<article class="pm-story-oracle-plan-bubble${focused ? " is-new" : ""}" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="\u5267\u60C5\u7EBF\u8DEF\uFF1A${escapeAttr(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}">
-      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? "true" : "false"}"><span class="pm-story-oracle-plan-status ${plan.enabled ? "is-active" : ""}">${plan.enabled ? "\u5F15\u5BFC\u4E2D" : "\u5F85\u9009\u62E9"}</span><b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}</b><span class="pm-story-oracle-plan-chevron" aria-hidden="true">\u2304</span></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? "true" : "false"}" aria-label="\u7EBF\u8DEF\u64CD\u4F5C" title="\u7EBF\u8DEF\u64CD\u4F5C">${CONTROL_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? "" : "hidden"}>
+    return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="\u5267\u60C5\u7EBF\u8DEF\uFF1A${escapeAttr(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}">
+      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? "true" : "false"}"><span class="pm-story-oracle-plan-status ${plan.enabled ? "is-active" : ""}">${plan.enabled ? "\u5F15\u5BFC\u4E2D" : "\u5F85\u9009\u62E9"}</span><b>${escapeHtml(plan.title || plan.goal || "\u672A\u547D\u540D\u7EBF\u8DEF")}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? "true" : "false"}" aria-label="\u7EBF\u8DEF\u64CD\u4F5C" title="\u7EBF\u8DEF\u64CD\u4F5C">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? "" : "hidden"}>
         <button type="button" role="menuitem" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>${plan.enabled ? "\u505C\u6B62\u5F15\u5BFC" : "\u5F00\u59CB\u5F15\u5BFC"}</button>
         <button type="button" role="menuitem" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">\u7EE7\u7EED\u8BA8\u8BBA</button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? "" : "disabled"}>\u5220\u9664\u7EBF\u8DEF</button>
       </div></div>
-      ${sourceLabel ? `<small class="pm-story-oracle-plan-source">${escapeHtml(sourceLabel)}</small>` : ""}
       <span>\u76EE\u6807\uFF1A${escapeHtml(plan.goal || plan.title || "")}</span>
       ${plan.pace ? `<span>\u63A8\u8FDB\u901F\u5EA6\uFF1A${escapeHtml(plan.pace)}</span>` : ""}
       ${details}

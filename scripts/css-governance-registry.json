@@ -1517,7 +1517,22 @@
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-dark) !important",
     "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::border-color::var(--pm-color-accent) !important",
     "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::outline-offset::var(--pm-space-px-1) !important",
-    "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::outline::var(--pm-space-0-5) solid var(--pm-color-accent) !important"
+    "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::outline::var(--pm-space-0-5) solid var(--pm-color-accent) !important",
+    "styles/core.css::root::.pm-story-oracle-tab::border::0 !important",
+    "styles/core.css::root::.pm-story-oracle-tab::border-radius::var(--pm-radius-pill) !important",
+    "styles/core.css::root::.pm-story-oracle-tab::box-shadow::none !important",
+    "styles/core.css::root::.pm-story-oracle-plan-bubble::border::0 !important",
+    "styles/core.css::root::.pm-story-oracle-plan-bubble::border-radius::var(--pm-radius-card) !important",
+    "styles/core.css::root::.pm-story-oracle-plan-bubble::box-shadow::none !important",
+    "styles/core.css::root::.pm-story-oracle-plan-toggle::border::0 !important",
+    "styles/core.css::root::.pm-story-oracle-plan-toggle::border-radius::var(--pm-radius-card) !important",
+    "styles/core.css::root::.pm-story-oracle-plan-toggle::box-shadow::none !important",
+    "styles/core.css::root::.pm-story-oracle-plan-more::border::0 !important",
+    "styles/core.css::root::.pm-story-oracle-plan-more::border-radius::var(--pm-radius-circle) !important",
+    "styles/core.css::root::.pm-story-oracle-plan-more::box-shadow::none !important",
+    "styles/core.css::root::.pm-story-oracle-plan-menu::border::0 !important",
+    "styles/core.css::root::.pm-story-oracle-plan-menu::border-radius::var(--pm-radius-card) !important"
+
   ],
   "incrementalHardcodeBaseline": [
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::min-height::72px !important",

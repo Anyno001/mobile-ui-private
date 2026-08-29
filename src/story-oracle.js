@@ -1,5 +1,5 @@
 import { generationErrorMessage } from './ai.js';
-import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
@@ -38,28 +38,19 @@ export function storyOracleInjectionIssue(result) {
 
 function renderStoryOraclePlans(plans = [], writable = true, expandedPlanIds = new Set(), focusedSourceId = '', openPlanMenuId = '') {
     const sortedPlans = [...plans].sort((a, b) => b.createdAt - a.createdAt || b.order - a.order || b.id.localeCompare(a.id));
-    const chronologicalPlans = [...sortedPlans].reverse();
-    const sourceRounds = new Map();
-    chronologicalPlans.forEach(plan => {
-        const sourceKey = plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`;
-        if (!sourceRounds.has(sourceKey)) sourceRounds.set(sourceKey, sourceRounds.size + 1);
-    });
     const remainingPlans = sortedPlans;
     if (!remainingPlans.length) return '';
-    return `<section class="pm-story-oracle-plan-workbench" aria-label="路线工作台"><div class="pm-story-oracle-plans-summary"><b>路线工作台</b><span>${plans.length} 条路线 · ${plans.filter(plan => plan.enabled).length} 条正在引导 · 最新生成的路线优先显示</span></div>${remainingPlans.map(plan => renderStoryOraclePlan(plan, writable, sourceRounds.get(plan.sourceMessageId || `unlinked-${plan.createdAt || 0}`), expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join('')}</section>`;
+    return `<section class="pm-story-oracle-plan-workbench" aria-label="路线工作台"><div class="pm-story-oracle-plans-summary"><b>路线工作台</b><span>${plans.length} 条路线 · ${plans.filter(plan => plan.enabled).length} 条正在引导</span></div>${remainingPlans.map(plan => renderStoryOraclePlan(plan, writable, expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join('')}</section>`;
 }
 
-function renderStoryOraclePlan(plan, writable = true, sourceRound = 0, expanded = false, focused = false, menuOpen = false) {
-    const generatedAt = plan.createdAt ? new Date(plan.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const sourceLabel = [plan.sourceMessageId ? (sourceRound ? `第 ${sourceRound} 轮` : '') : '未关联响应', generatedAt ? `生成于 ${generatedAt}` : ''].filter(Boolean).join(' · ');
+function renderStoryOraclePlan(plan, writable = true, expanded = false, focused = false, menuOpen = false) {
     const details = expanded ? `<div class="pm-story-oracle-plan-details"><span>起始迹象：${escapeHtml(plan.seed || '未提供')}</span><span>契合点：${escapeHtml(plan.why || '未提供')}</span></div>` : '';
-    return `<article class="pm-story-oracle-plan-bubble${focused ? ' is-new' : ''}" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="剧情线路：${escapeAttr(plan.title || plan.goal || '未命名线路')}">
-      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? 'true' : 'false'}"><span class="pm-story-oracle-plan-status ${plan.enabled ? 'is-active' : ''}">${plan.enabled ? '引导中' : '待选择'}</span><b>${escapeHtml(plan.title || plan.goal || '未命名线路')}</b><span class="pm-story-oracle-plan-chevron" aria-hidden="true">⌄</span></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="线路操作" title="线路操作">${CONTROL_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? '' : 'hidden'}>
+    return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="剧情线路：${escapeAttr(plan.title || plan.goal || '未命名线路')}">
+      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? 'true' : 'false'}"><span class="pm-story-oracle-plan-status ${plan.enabled ? 'is-active' : ''}">${plan.enabled ? '引导中' : '待选择'}</span><b>${escapeHtml(plan.title || plan.goal || '未命名线路')}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="线路操作" title="线路操作">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? '' : 'hidden'}>
         <button type="button" role="menuitem" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>${plan.enabled ? '停止引导' : '开始引导'}</button>
         <button type="button" role="menuitem" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
       </div></div>
-      ${sourceLabel ? `<small class="pm-story-oracle-plan-source">${escapeHtml(sourceLabel)}</small>` : ''}
       <span>目标：${escapeHtml(plan.goal || plan.title || '')}</span>
       ${plan.pace ? `<span>推进速度：${escapeHtml(plan.pace)}</span>` : ''}
       ${details}

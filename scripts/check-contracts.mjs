@@ -420,7 +420,10 @@ function requireCssDeclarations(rules, selector, expected) {
   for (const [property, value] of Object.entries(expected)) {
     const actual = rule.declarations.get(property);
     const normalizedExpected = normalizeStyleTokenExpectation(value);
-    if (normalizeCssValue(actual) !== normalizeCssValue(normalizedExpected)) failures.push(`style.css:${rule.line}: ${selector} expected ${property}:${normalizedExpected}, received ${actual ?? '<missing>'}`);
+    const expectedRequiresImportant = /\s!important$/i.test(normalizeCssValue(normalizedExpected));
+    const normalizedActual = normalizeCssValue(actual).replace(/\s!important$/i, '');
+    const expectedValue = normalizeCssValue(normalizedExpected).replace(/\s!important$/i, '');
+    if (normalizedActual !== expectedValue || (expectedRequiresImportant && !/\s!important$/i.test(normalizeCssValue(actual)))) failures.push(`style.css:${rule.line}: ${selector} expected ${property}:${normalizedExpected}, received ${actual ?? '<missing>'}`);
   }
 }
 
@@ -4350,7 +4353,7 @@ const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
 for (const expected of [
-  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG',
+  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'MORE_ICON_SVG',
   'class="pm-expand-btn pm-story-oracle-menu-toggle"',
   'class="pm-control-menu pm-story-oracle-menu"',
   'role="menu" aria-label="剧情助手工具"',
@@ -4382,7 +4385,7 @@ if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="su
   failures.push('story-oracle.js: cancel button must precede the icon send button');
 }
 if (!/pm-story-oracle-plan-bubble[\s\S]*开始引导/.test(storyOracleCode)) failures.push('story-oracle.js: each StoryPlan must expose the upstream-style start-guidance action');
-for (const expected of ['pm-story-oracle-plan-workbench', '最新生成的路线优先显示', 'pm-story-oracle-plan-source', '本轮生成 ${parsedResult.plans.length} 条路线，已加入路线工作台。', '本轮已保存，但没有识别到可操作路线。', '本轮文本已保存，路线格式未识别。']) {
+for (const expected of ['pm-story-oracle-plan-workbench', '本轮生成 ${parsedResult.plans.length} 条路线，已加入路线工作台。', '本轮已保存，但没有识别到可操作路线。', '本轮文本已保存，路线格式未识别。']) {
   requireText('story-oracle.js route workbench contract', storyOracleCode, expected);
 }
 if (storyOracleCode.includes('renderPlansForMessage')) failures.push('story-oracle.js: route cards must be rendered by the independent workbench, not message binding');
@@ -4390,6 +4393,10 @@ if (storyOracleCode.includes('renderStoryOracleActivePlans') || storyOracleCode.
   failures.push('story-oracle.js: active StoryPlan strip must not remain as a permanent top-level region');
 }
 if (!storyOracleCode.includes('role="tabpanel"') || !storyOracleCode.includes('查看路线')) failures.push('story-oracle.js: conversation and route views must expose tab panels and a route receipt action');
+for (const forbidden of ['pm-story-oracle-plan-source', 'pm-story-oracle-plan-chevron', '生成于 ${generatedAt}', '第 ${sourceRound} 轮']) {
+  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: route cards must not expose obsolete metadata or faux dropdown affordances (${forbidden})`);
+}
+if (!/pm-story-oracle-plan-more[\s\S]*MORE_ICON_SVG/.test(storyOracleCode)) failures.push('story-oracle.js: route actions must use the neutral more menu icon, not the magic-wand control icon');
 if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: route and history clear actions must remain distinct');
 }
