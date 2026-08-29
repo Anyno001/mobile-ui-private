@@ -1,6 +1,7 @@
 # 天音小笺
 
 个人自用项目，基于 [K20070831/sillytavern-phone-mode-1](https://github.com/K20070831/sillytavern-phone-mode-1) 的二次创作。
+感谢 [namelessone88/story-oracle](https://github.com/namelessone88/story-oracle)、[JulyXP3/story-oracle-patch](https://github.com/JulyXP3/story-oracle-patch) 与 [DlSNlGHT/World](https://github.com/DlSNlGHT/World) 三位作者的借物。
 
 ## 安装
 
@@ -15,5 +16,4 @@
 ## 说明
 
 - 仅用于个人自用维护。
-- 当前维护者已取得上游作者许可。
 - 备份可能包含 API Key 和聊天数据，请勿公开。
