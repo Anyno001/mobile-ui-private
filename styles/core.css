@@ -294,10 +294,6 @@
 .pm-story-oracle-shell{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--pm-color-surface-page);color:var(--pm-color-text-primary);}
 .pm-story-oracle-navbar{grid-template-columns:var(--pm-size-control-compact) minmax(0,1fr) auto;}
 .pm-story-oracle-navbar .pm-name-wrap{padding-inline:var(--pm-space-2);}
-.pm-story-oracle-active-plans{display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1);flex-shrink:0;min-width:0;padding:var(--pm-space-2) var(--pm-space-3);background:var(--pm-color-surface-page);border-bottom:1px solid var(--pm-color-border-subtle);}
-.pm-story-oracle-active-plans-label{flex:0 0 auto;color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);}
-.pm-story-oracle-active-plan-list{display:flex;flex-direction:column;min-width:0;gap:var(--pm-space-1);}
-.pm-story-oracle-active-plan{display:block;min-width:0;overflow-wrap:anywhere;padding:var(--pm-space-1) var(--pm-space-2);color:var(--pm-color-text-primary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
 .pm-story-oracle-nav-right{min-width:0;}
 .pm-story-oracle-menu-wrap{position:relative;z-index:var(--pm-z-menu);display:inline-flex;align-items:center;flex:0 0 auto;}
 .pm-story-oracle-menu{left:0;right:auto;top:auto;bottom:calc(100% + var(--pm-space-1));max-height:none;overflow-y:visible;box-shadow:var(--pm-shadow-floating);}
@@ -305,29 +301,42 @@
 .pm-story-oracle-menu[hidden],.pm-story-oracle-mode-menu[hidden]{display:none;}
 .pm-story-oracle-mode-menu{left:50%;right:auto;top:calc(100% - var(--pm-space-1));bottom:auto;max-height:none;overflow-y:visible;transform:translateX(-50%);box-shadow:var(--pm-shadow-floating);background:var(--pm-color-surface-page);}
 .pm-story-oracle-mode-menu button[aria-checked="true"]{background:var(--pm-color-surface-input);}
-.pm-story-oracle-menu button:focus-visible,.pm-story-oracle-mode-menu button:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}
+.pm-story-oracle-menu button:focus-visible,.pm-story-oracle-mode-menu button:focus-visible{outline:var(--pm-space-0-5) solid var(--pm-color-focus-ring);outline-offset:-2px;}
 .pm-story-oracle-status{flex-shrink:0;padding:var(--pm-space-1) var(--pm-space-3);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);text-align:center;}
 .pm-story-oracle-content{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;}
-.pm-story-oracle-plan-workbench-wrap{flex:0 1 auto;min-height:0;max-height:50%;overflow-y:auto;padding:var(--pm-space-3) var(--pm-space-3) var(--pm-space-2);}
+.pm-story-oracle-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));flex:0 0 auto;border-bottom:1px solid var(--pm-color-border-subtle);}
+.pm-story-oracle-tab{position:relative;min-height:var(--pm-size-control-default);padding:var(--pm-space-2) var(--pm-space-3);background:transparent;color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-story-oracle-tab.is-selected{color:var(--pm-color-text-primary);}
+.pm-story-oracle-tab.is-selected::after{position:absolute;right:var(--pm-space-3);bottom:var(--pm-space-0);left:var(--pm-space-3);height:var(--pm-space-0-5);background:var(--pm-color-text-primary);content:'';}
+.pm-story-oracle-tab-count{display:inline-flex;min-width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);align-items:center;justify-content:center;margin-left:var(--pm-space-1);border-radius:var(--pm-radius-pill);background:var(--pm-color-surface-control);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-helper);}
+.pm-story-oracle-tab:focus-visible,.pm-story-oracle-plan-toggle:focus-visible,.pm-story-oracle-plan-more:focus-visible,.pm-story-oracle-receipt-action:focus-visible{outline:var(--pm-space-0-5) solid var(--pm-color-focus-ring);outline-offset:-2px;}
+.pm-story-oracle-plan-list,.pm-story-oracle-message-list{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;gap:var(--pm-space-3);overflow-y:auto;padding:var(--pm-space-3);}
 .pm-story-oracle-plan-workbench{display:flex;flex-direction:column;gap:var(--pm-space-3);}
-.pm-story-oracle-plans-summary{display:flex;flex-direction:column;align-items:flex-start;gap:var(--pm-space-1);padding:var(--pm-space-2) var(--pm-space-3);background:var(--pm-color-surface-page);}
-.pm-story-oracle-plans-summary>span{display:block;cursor:default;color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
-.pm-story-oracle-plan-bubble{display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1-5);width:100%;max-width:100%;box-sizing:border-box;padding:var(--pm-space-3);background:var(--pm-color-surface-card);border-radius:var(--pm-radius-card);}
-.pm-story-oracle-plan-bubble>b{font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-tight);}
-.pm-story-oracle-plan-bubble>span,.pm-story-oracle-plan-source{display:block;cursor:default;font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary);}
-.pm-story-oracle-plan-bubble .pm-action-row{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;margin-top:var(--pm-space-0);gap:var(--pm-space-1);}
-.pm-story-oracle-plan-bubble .pm-action-button{min-height:var(--pm-size-control-compact);padding:var(--pm-space-1) var(--pm-space-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-control);}
-.pm-story-oracle-plan-bubble .pm-action-button.is-danger{background:transparent;color:var(--pm-color-danger);border-color:var(--pm-color-border-default);}
-.pm-story-oracle-plan-bubble .pm-action-button:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
-.pm-story-oracle-plan-bubble .pm-action-button:disabled{cursor:not-allowed;opacity:var(--pm-opacity-disabled);}
+.pm-story-oracle-plans-summary{display:flex;flex-direction:column;align-items:flex-start;gap:var(--pm-space-1);padding:var(--pm-space-2) var(--pm-space-1);}
+.pm-story-oracle-plans-summary>span{display:block;color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
+.pm-story-oracle-plan-bubble{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1-5);width:100%;max-width:100%;box-sizing:border-box;padding:var(--pm-space-3);background:var(--pm-color-surface-card);border-radius:var(--pm-radius-card);}
+.pm-story-oracle-plan-bubble.is-new{outline:var(--pm-space-0-5) solid var(--pm-color-accent);outline-offset:calc(var(--pm-space-0-5) * -1);}
+.pm-story-oracle-plan-head{display:flex;align-items:flex-start;gap:var(--pm-space-1);min-width:0;}
+.pm-story-oracle-plan-toggle{display:grid;grid-template-columns:auto minmax(0,1fr) auto;flex:1 1 auto;align-items:center;gap:var(--pm-space-1-5);min-width:0;padding:var(--pm-space-0);background:transparent;text-align:left;}
+.pm-story-oracle-plan-toggle>b{min-width:0;overflow-wrap:anywhere;font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-tight);}
+.pm-story-oracle-plan-status{display:inline-flex;align-items:center;min-height:var(--pm-size-control-compact);padding-inline:var(--pm-space-2);border-radius:var(--pm-radius-pill);background:var(--pm-color-surface-control);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-helper);white-space:nowrap;}
+.pm-story-oracle-plan-status.is-active{background:var(--pm-color-accent);color:var(--pm-color-on-accent);}
+.pm-story-oracle-plan-chevron{color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-body);}
+.pm-story-oracle-plan-more{flex:0 0 auto;min-width:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);padding:var(--pm-space-1);background:transparent;color:var(--pm-color-text-primary);}
+.pm-story-oracle-plan-source,.pm-story-oracle-plan-bubble>span{display:block;color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-story-oracle-plan-details{display:flex;flex-direction:column;gap:var(--pm-space-1);padding-top:var(--pm-space-1);}
+.pm-story-oracle-plan-menu{position:absolute;top:var(--pm-space-3);right:var(--pm-space-3);z-index:var(--pm-z-menu);box-shadow:var(--pm-shadow-floating);background:var(--pm-color-surface-page);}
+.pm-story-oracle-plan-menu[hidden]{display:none;}
+.pm-story-oracle-plan-menu button:focus-visible{outline:var(--pm-space-0-5) solid var(--pm-color-focus-ring);outline-offset:-2px;}
+.pm-story-oracle-receipt-action{margin-left:var(--pm-space-1);padding:var(--pm-space-0) var(--pm-space-1);background:transparent;color:var(--pm-color-accent);font-weight:var(--pm-font-weight-semibold);}
+.pm-story-oracle-empty{padding:var(--pm-space-4) var(--pm-space-3);color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-label);text-align:center;}
 .pm-story-oracle-message{display:flex;width:100%;}
 .pm-story-oracle-message.is-user{justify-content:flex-end;}
 .pm-story-oracle-message.is-assistant{justify-content:flex-start;}
 .pm-story-oracle-message .pm-bubble{display:block;max-width:74%;}
 .pm-story-oracle-message.is-user .pm-bubble{align-self:flex-end;background:var(--pm-color-accent);color:var(--pm-color-on-accent);}
 .pm-story-oracle-message.is-assistant .pm-bubble{background:var(--pm-color-surface-card);color:var(--pm-color-text-primary);}
-.pm-story-oracle-message-list{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;gap:var(--pm-space-3);overflow-y:auto;padding:var(--pm-space-3);}
 .pm-story-oracle-composer{position:relative;}
 .pm-story-oracle-composer .pm-generation-cancel{flex:0 0 auto;}
-@media(max-width:320px){.pm-story-oracle-plan-workbench-wrap{padding-inline:var(--pm-space-2);}.pm-story-oracle-message-list{padding-inline:var(--pm-space-2);}.pm-story-oracle-plan-bubble .pm-action-row{grid-template-columns:1fr;}}
+@media(max-width:320px){.pm-story-oracle-plan-list,.pm-story-oracle-message-list{padding-inline:var(--pm-space-2);}.pm-story-oracle-plan-toggle{grid-template-columns:1fr auto;}.pm-story-oracle-plan-status{grid-column:1 / -1;justify-self:start;}}
 @media(prefers-reduced-motion:reduce){.pm-story-oracle-plan-bubble .pm-action-button{transition:none;}}

@@ -4360,7 +4360,12 @@ for (const expected of [
   'class="pm-nav-btn pm-nav-left-btn"',
   'class="pm-header-icon-button pm-nav-btn pm-close-btn"',
   'class="pm-msg-list pm-story-oracle-message-list"',
-  'class="pm-story-oracle-plan-bubble"',
+  'class="pm-story-oracle-tabs',
+  'role="tablist" aria-label="剧情助手内容"',
+  'data-story-oracle-action="view"',
+  'class="pm-story-oracle-plan-bubble',
+  'data-story-oracle-action="toggle-plan-details"',
+  'data-story-oracle-action="toggle-plan-menu"',
   'data-story-oracle-action="toggle-plan"',
 ]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
 for (const expected of ['<StoryPlan>...</StoryPlan>', '每个区块必须包含“标题：”和“目标：”', '不要把多条路线合并到同一个区块']) requireText('story-oracle.js advisor output contract', storyOracleCode, expected);
@@ -4381,9 +4386,10 @@ for (const expected of ['pm-story-oracle-plan-workbench', '最新生成的路线
   requireText('story-oracle.js route workbench contract', storyOracleCode, expected);
 }
 if (storyOracleCode.includes('renderPlansForMessage')) failures.push('story-oracle.js: route cards must be rendered by the independent workbench, not message binding');
-if (!storyOracleCode.includes('${renderStoryOracleActivePlans(plans)}') || !storyOracleCode.includes('${renderMessages(messages, plans, writable)}')) {
-  failures.push('story-oracle.js: active StoryPlan strip must remain outside the scrolling message body');
+if (storyOracleCode.includes('renderStoryOracleActivePlans') || storyOracleCode.includes('pm-story-oracle-active-plans')) {
+  failures.push('story-oracle.js: active StoryPlan strip must not remain as a permanent top-level region');
 }
+if (!storyOracleCode.includes('role="tabpanel"') || !storyOracleCode.includes('查看路线')) failures.push('story-oracle.js: conversation and route views must expose tab panels and a route receipt action');
 if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
   failures.push('story-oracle.js: route and history clear actions must remain distinct');
 }
@@ -4402,9 +4408,9 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { left: '0', bottom: '
 requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', top: 'calc(100% - var(--pm-space-1))', transform: 'translateX(-50%)', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-content', { display: 'flex', 'min-height': '0', overflow: 'hidden' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-workbench-wrap', { 'max-height': '50%', 'overflow-y': 'auto' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-list', { flex: '1 1 auto', 'min-height': '0', 'overflow-y': 'auto' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-card)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble .pm-action-button.is-danger', { background: 'transparent', color: 'var(--pm-color-danger)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
 for (const expected of [
   `export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');`,

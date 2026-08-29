@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-28T10:20:22.674Z
+- Updated At: 2026-08-29T04:38:33.870Z
 - Status: blocked
 - Phase: review
 
@@ -24,11 +24,14 @@
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [ ] 重建 index.js，执行原型级构建/语法/差异核对，并记录未覆盖的宿主与边缘风险  `#story-oracle-bundle-verification` (in_progress)
+- [ ] 核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项  `#story-oracle-bundle-verification` (in_progress)
 - [x] 冻结第二轮大纲可见性与路线字段契约，确认 pace/sourceMessageId/order/本轮解析收据的最小数据流  `#story-oracle-plan-contract`
 - [x] 修复多轮路线累计、最新路线可见排序、消息绑定失败兜底与生成结果收据  `#story-oracle-plan-visibility`
+- [x] 实现剧情助手二级菜单原型：速度档位、破限预设、提示词/附加指令编辑，并持久化到现有 Store version 1  `#story-oracle-settings-prototype`
+- [ ] 将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单  `#story-oracle-tabbed-layout-redesign`
 - [x] 完成无装饰描边、强呼吸感、深蓝主操作、弱化危险操作、长标题换行和亮暗主题样式  `#story-oracle-ui-visual`
 - [x] 按 TASKOW 参考重构剧情助手页面信息架构、路线工作台、活动路线区、消息流和输入区  `#story-oracle-ui-workbench`
+- [x] 核查上游速度、破限提示词与提示词修改入口实现  `#story-oracle-upstream-prompts`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -76,7 +79,6 @@
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-27T07:35:16.066Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md
 - 2026-08-27T07:36:10.906Z | risk_changed | story-oracle-plan-acceptance | 本地代码与自动门禁已完成；独立 Acceptance Expert 连续两次因 API 403 返回 not_assessed，正式验收阻塞，验收 TODO 保持 pending。
 - 2026-08-27T07:58:35.466Z | risk_changed | story-oracle-plan-release | 全部门禁与提交已完成；git push origin main 在 GitHub 返回 401 后超时，SSH 无私钥、GitHub CLI/token 不可用，远端仍未更新，等待认证恢复。
 - 2026-08-27T08:14:22.511Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。
@@ -96,6 +98,7 @@
 - 2026-08-28T10:09:28.928Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
 - 2026-08-28T10:15:51.964Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
 - 2026-08-28T10:20:22.674Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
+- 2026-08-29T04:38:33.870Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -105,7 +108,7 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-28T10:20:22.674Z",
+  "updatedAt": "2026-08-29T04:38:33.870Z",
   "status": "blocked",
   "phase": "review",
   "currentFocus": "StoryPlan 独立卡片交互已完成，提交已推送，等待真实 SillyTavern 宿主现场验证",
@@ -119,7 +122,7 @@
   "todos": [
     {
       "id": "story-oracle-bundle-verification",
-      "content": "重建 index.js，执行原型级构建/语法/差异核对，并记录未覆盖的宿主与边缘风险",
+      "content": "核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项",
       "status": "in_progress"
     },
     {
@@ -133,6 +136,16 @@
       "status": "completed"
     },
     {
+      "id": "story-oracle-settings-prototype",
+      "content": "实现剧情助手二级菜单原型：速度档位、破限预设、提示词/附加指令编辑，并持久化到现有 Store version 1",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-tabbed-layout-redesign",
+      "content": "将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单",
+      "status": "pending"
+    },
+    {
       "id": "story-oracle-ui-visual",
       "content": "完成无装饰描边、强呼吸感、深蓝主操作、弱化危险操作、长标题换行和亮暗主题样式",
       "status": "completed"
@@ -140,6 +153,11 @@
     {
       "id": "story-oracle-ui-workbench",
       "content": "按 TASKOW 参考重构剧情助手页面信息架构、路线工作台、活动路线区、消息流和输入区",
+      "status": "completed"
+    },
+    {
+      "id": "story-oracle-upstream-prompts",
+      "content": "核查上游速度、破限提示词与提示词修改入口实现",
       "status": "completed"
     }
   ],
@@ -218,12 +236,6 @@
     }
   ],
   "log": [
-    {
-      "at": "2026-08-27T07:35:16.066Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-phone-app-integration.md"
-    },
     {
       "at": "2026-08-27T07:36:10.906Z",
       "type": "risk_changed",
@@ -337,21 +349,27 @@
       "type": "artifact_changed",
       "refId": "plan",
       "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+    },
+    {
+      "at": "2026-08-29T04:38:33.870Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
-    "todosTotal": 5,
-    "todosCompleted": 4,
+    "todosTotal": 8,
+    "todosCompleted": 6,
     "todosInProgress": 1,
     "todosCancelled": 0,
     "activeRisks": 3
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-28T10:20:22.674Z",
-    "bodyHash": "sha256:73581ee77c5680911318c2e74c2a4928471daf68ec6acb9d709467407790f88f"
+    "generatedAt": "2026-08-29T04:38:33.870Z",
+    "bodyHash": "sha256:9ad6be158d664b2239b09458438dd96523d525072bd36bd08fd4bd6d9f3784bc"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->
