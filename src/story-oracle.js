@@ -1,5 +1,5 @@
 import { generationErrorMessage } from './ai.js';
-import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, PAUSE_ICON_SVG, PLAY_ICON_SVG, REMOVE_ICON_SVG, SEND_ICON_SVG, TRASH_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope,
@@ -40,14 +40,13 @@ function renderStoryOraclePlans(plans = [], writable = true, expandedPlanIds = n
     const sortedPlans = [...plans].sort((a, b) => b.createdAt - a.createdAt || b.order - a.order || b.id.localeCompare(a.id));
     const remainingPlans = sortedPlans;
     if (!remainingPlans.length) return '';
-    return `<section class="pm-story-oracle-plan-workbench" aria-label="路线工作台"><div class="pm-story-oracle-plans-summary"><b>路线工作台</b><span>${plans.length} 条路线 · ${plans.filter(plan => plan.enabled).length} 条正在引导</span></div>${remainingPlans.map(plan => renderStoryOraclePlan(plan, writable, expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join('')}</section>`;
+    return `<section class="pm-story-oracle-plan-workbench" aria-label="路线工作台">${remainingPlans.map(plan => renderStoryOraclePlan(plan, writable, expandedPlanIds.has(plan.id), focusedSourceId === plan.sourceMessageId, openPlanMenuId === plan.id)).join('')}</section>`;
 }
 
 function renderStoryOraclePlan(plan, writable = true, expanded = false, focused = false, menuOpen = false) {
     const details = expanded ? `<div class="pm-story-oracle-plan-details"><span>起始迹象：${escapeHtml(plan.seed || '未提供')}</span><span>契合点：${escapeHtml(plan.why || '未提供')}</span></div>` : '';
     return `<article class="pm-story-oracle-plan-bubble" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-label="剧情线路：${escapeAttr(plan.title || plan.goal || '未命名线路')}">
-      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? 'true' : 'false'}"><span class="pm-story-oracle-plan-status ${plan.enabled ? 'is-active' : ''}">${plan.enabled ? '引导中' : '待选择'}</span><b>${escapeHtml(plan.title || plan.goal || '未命名线路')}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="线路操作" title="线路操作">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? '' : 'hidden'}>
-        <button type="button" role="menuitem" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>${plan.enabled ? '停止引导' : '开始引导'}</button>
+      <div class="pm-story-oracle-plan-head"><button type="button" class="pm-story-oracle-plan-status ${plan.enabled ? 'is-active' : ''}" data-story-oracle-action="toggle-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-pressed="${plan.enabled ? 'true' : 'false'}" aria-label="${plan.enabled ? '停止引导' : '开始引导'}" title="${plan.enabled ? '停止引导' : '开始引导'}" ${writable ? '' : 'disabled'}>${plan.enabled ? PAUSE_ICON_SVG : PLAY_ICON_SVG}<span>${plan.enabled ? '引导中' : '待选择'}</span></button><button type="button" class="pm-story-oracle-plan-toggle" data-story-oracle-action="toggle-plan-details" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-expanded="${expanded ? 'true' : 'false'}"><b>${escapeHtml(plan.title || plan.goal || '未命名线路')}</b></button><button type="button" class="pm-story-oracle-plan-more" data-story-oracle-action="toggle-plan-menu" data-story-oracle-plan-id="${escapeAttr(plan.id)}" aria-haspopup="menu" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-label="线路操作" title="线路操作">${MORE_ICON_SVG}</button><div class="pm-story-oracle-plan-menu pm-control-menu" role="menu" ${menuOpen ? '' : 'hidden'}>
         <button type="button" role="menuitem" data-story-oracle-action="continue-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}">继续讨论</button>
         <button type="button" class="pm-control-menu-danger" role="menuitem" data-story-oracle-action="delete-plan" data-story-oracle-plan-id="${escapeAttr(plan.id)}" ${writable ? '' : 'disabled'}>删除线路</button>
       </div></div>
@@ -93,8 +92,9 @@ function renderStoryOraclePage(page, storageId, mode, messages = [], status = ''
     const persistenceHint = writable ? '' : ` 当前为只读保护状态：${readOnlyReason || '历史数据不可安全写入'}。`;
     const statusText = [status || invalidHint, persistenceHint].filter(Boolean).join(' ').trim();
     const routeCount = plans.length;
+    const enabledPlanCount = plans.filter(plan => plan.enabled).length;
     const conversationSelected = view !== 'plans';
-    const tabs = `<div class="pm-story-oracle-tabs" role="tablist" aria-label="剧情助手内容"><button type="button" role="tab" class="pm-story-oracle-tab${conversationSelected ? ' is-selected' : ''}" data-story-oracle-action="view" data-story-oracle-view="conversation" aria-selected="${conversationSelected}" aria-controls="pm-story-oracle-conversation">对话</button><button type="button" role="tab" class="pm-story-oracle-tab${conversationSelected ? '' : ' is-selected'}" data-story-oracle-action="view" data-story-oracle-view="plans" aria-selected="${!conversationSelected}" aria-controls="pm-story-oracle-plans">路线 <span class="pm-story-oracle-tab-count">${routeCount}</span></button></div>`;
+    const tabs = `<div class="pm-story-oracle-tabs" role="tablist" aria-label="剧情助手内容"><button type="button" role="tab" class="pm-story-oracle-tab${conversationSelected ? ' is-selected' : ''}" data-story-oracle-action="view" data-story-oracle-view="conversation" aria-selected="${conversationSelected}" aria-controls="pm-story-oracle-conversation">对话</button><button type="button" role="tab" class="pm-story-oracle-tab${conversationSelected ? '' : ' is-selected'}" data-story-oracle-action="view" data-story-oracle-view="plans" aria-selected="${!conversationSelected}" aria-controls="pm-story-oracle-plans">路线 <span class="pm-story-oracle-tab-count" aria-label="${enabledPlanCount} 条正在引导，共 ${routeCount} 条路线">${enabledPlanCount}/${routeCount}</span></button></div>`;
     const statusMarkup = statusText ? `<p class="pm-story-oracle-status${plans.length && statusText.startsWith('本轮生成') ? ' is-actionable' : ''}" role="status">${escapeHtml(statusText)}${plans.length && statusText.startsWith('本轮生成') ? ' <button type="button" class="pm-story-oracle-receipt-action" data-story-oracle-action="view" data-story-oracle-view="plans">查看路线</button>' : ''}</p>` : '';
     const conversationBody = `<div id="pm-story-oracle-conversation" class="pm-msg-list pm-story-oracle-message-list" role="tabpanel" aria-live="polite">${renderMessages(messages, plans, writable)}</div>`;
     const plansBody = `<div id="pm-story-oracle-plans" class="pm-story-oracle-plan-list" role="tabpanel">${renderStoryOraclePlans(plans, writable, expandedPlanIds, focusedSourceId, openPlanMenuId) || '<div class="pm-story-oracle-empty">还没有路线。切换到剧情参谋后，生成的路线会出现在这里。</div>'}</div>`;
@@ -181,12 +181,15 @@ export function installStoryOracle(_state, deps = {}) {
     const render = (nextStatus = status) => {
         page = getPage();
         if (!page) return;
+        const planScrollTop = page.querySelector('#pm-story-oracle-plans')?.scrollTop;
         if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
         status = nextStatus;
         storyOracleMenuOpen = false;
         storyOracleModeMenuOpen = false;
         const worldBookState = getWorldBookState();
         renderStoryOraclePage(page, activeStorageId, activeMode, activeStorageId && store ? storyOracleMessages(store, activeStorageId, activeMode) : [], status, writable, readOnlyReason, activeStorageId && store ? storyOraclePlans(store, activeStorageId) : [], worldBookState.selection, worldBookState.availableNames, activeStorageId && store ? storyOracleSettings(store, activeStorageId) : DEFAULT_ORACLE_SETTINGS, storyOracleView, expandedPlanIds, focusedSourceId, openPlanMenuId);
+        const planList = page.querySelector('#pm-story-oracle-plans');
+        if (Number.isFinite(planScrollTop) && planList) planList.scrollTop = planScrollTop;
         setBusy(Boolean(controller));
         if (nextStatus && activeStorageId) statusTimer = setTimeout(() => render(''), 3000);
     };
