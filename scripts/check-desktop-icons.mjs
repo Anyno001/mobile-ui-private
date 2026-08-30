@@ -115,6 +115,7 @@ try {
     let cropOptions = null;
     let refreshCount = 0;
     let overlayCount = 0;
+    let overlayHtml = '';
     const savedIcons = [];
     const removedIcons = [];
     const replacedIcons = [];
@@ -128,8 +129,8 @@ try {
     }
     const settings = createDesktopIconSettings({
         openCropper: (source, options) => { cropOptions = { source, ...options }; },
-        makeOverlay: () => { overlayCount += 1; },
-        renderSettingsModal: value => value,
+        makeOverlay: html => { overlayCount += 1; overlayHtml = html; },
+        renderSettingsModal: value => value.content,
         escapeAttr: value => String(value),
         refreshDesktop: () => { refreshCount += 1; },
         ImageCtor: FakeImage,
@@ -148,6 +149,7 @@ try {
     assert.equal(cropOptions.mime, 'image/png'); assert.equal(cropOptions.fit, 'cover'); assert.equal(cropOptions.preserveTransparency, true);
     await cropOptions.onConfirm(valid);
     assert.deepEqual(savedIcons[0], ['chat', valid, { width: 256, height: 256 }]);
+    assert.match(overlayHtml, /pm-desktop-icon-preview is-custom/, '自定义图片预览必须移除默认色块底座');
     assert.equal(refreshCount, 1); assert.ok(overlayCount >= 1, '保存成功后必须重绘设置页');
     await settings.reset('chat');
     assert.deepEqual(removedIcons, ['chat']); assert.equal(refreshCount, 2);

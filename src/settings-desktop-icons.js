@@ -36,7 +36,7 @@ export function createDesktopIconSettings({
     const rows = () => DESKTOP_ICON_IDS.map(appId => {
         const custom = windowRef?.__pmDesktopIcons?.[appId];
         const preview = custom ? `<img src="${escapeAttr(custom)}" alt="">` : FALLBACKS[appId];
-        return `<div class="pm-desktop-icon-row"><span class="pm-desktop-icon-preview">${preview}</span><span><b>${LABELS[appId]}</b><small>${custom ? '自定义图标' : '默认图标'}</small></span><span class="pm-desktop-icon-actions"><input id="pm-desktop-icon-file-${appId}" type="file" accept="image/png,image/webp,image/jpeg" onchange="window.__pmUploadDesktopIcon(this,'${appId}')" hidden><button type="button" class="pm-bg-btn" aria-label="选择${LABELS[appId]}图标" onclick="document.getElementById('pm-desktop-icon-file-${appId}').click()">选择图片</button>${custom ? `<button type="button" class="pm-bg-btn pm-bg-del" onclick="window.__pmResetDesktopIcon('${appId}')">重置</button>` : ''}</span></div>`;
+        return `<div class="pm-desktop-icon-row"><span class="pm-desktop-icon-preview${custom ? ' is-custom' : ''}">${preview}</span><span><b>${LABELS[appId]}</b><small>${custom ? '自定义图标' : '默认图标'}</small></span><span class="pm-desktop-icon-actions"><input id="pm-desktop-icon-file-${appId}" type="file" accept="image/png,image/webp,image/jpeg" onchange="window.__pmUploadDesktopIcon(this,'${appId}')" hidden><button type="button" class="pm-bg-btn" aria-label="选择${LABELS[appId]}图标" onclick="document.getElementById('pm-desktop-icon-file-${appId}').click()">选择图片</button>${custom ? `<button type="button" class="pm-bg-btn pm-bg-del" onclick="window.__pmResetDesktopIcon('${appId}')">重置</button>` : ''}</span></div>`;
     }).join('');
     const showPage = async () => {
         try { await loadIcons(); }

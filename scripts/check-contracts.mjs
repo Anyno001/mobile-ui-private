@@ -3803,6 +3803,9 @@ if (css.includes('--pm-letter-spacing-wide')) {
 }
 requireCssDeclarations(cssRules, '#pm-iphone', { color: 'var(--pm-color-text-primary) !important' });
 requireCssDeclarations(cssRules, '.pm-scene-feed', { background: 'var(--pm-color-surface-card)' });
+requireCssDeclarations(cssRules, '.pm-desktop-app-icon:has(.pm-desktop-icon-stack img)', { background: 'transparent', 'border-color': 'transparent' });
+requireCssDeclarations(cssRules, '.pm-desktop-icon-preview.is-custom', { background: 'transparent', color: 'inherit' });
+requireCssDeclarations(cssRules, '.pm-desktop-icon-preview.is-custom img', { width: '100%', height: '100%' });
 requireCssDeclarations(cssRules, '.pm-scene-post', {
   background: 'var(--pm-color-surface-page)',
   border: '0',

@@ -112,6 +112,7 @@
 .pm-desktop-app:hover{background:color-mix(in srgb,currentColor 6%,transparent);}
 .pm-desktop-app:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
 .pm-desktop-app-icon{width:46px;height:46px;border:1px solid transparent;border-radius:var(--pm-radius-card);background:var(--pm-color-accent);color:var(--pm-color-on-accent);display:grid;place-items:center;}
+.pm-desktop-app-icon:has(.pm-desktop-icon-stack img){background:transparent;border-color:transparent;}
 .pm-desktop-icon-stack{position:relative;display:grid;width:100%;height:100%;place-items:center;}
 .pm-desktop-icon-stack>:is(svg,img){grid-area:1/1;}
 .pm-desktop-app svg{width:23px;height:23px;pointer-events:none;}

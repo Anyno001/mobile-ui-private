@@ -137,7 +137,7 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       </div>
       <div class="pm-settings-section">
         <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('appearance-pack')"><span><b>一键美化</b><small>导出可分享的主题、背景和桌面图标</small></span><span aria-hidden="true">›</span></button>
-        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('desktop-icons')"><span><b>桌面图标</b><small>修改七个桌面入口的透明图片图标</small></span><span aria-hidden="true">›</span></button>
+        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('desktop-icons')"><span><b>桌面图标</b><small>修改七个桌面入口的图片图标</small></span><span aria-hidden="true">›</span></button>
       </div>
       <div class="pm-settings-tail"></div>
     </div>`;
