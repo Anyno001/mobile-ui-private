@@ -27,7 +27,7 @@ export function createBackupController({
     const exportData = async () => {
         const snapshot = await capture();
         const data = {
-            schemaVersion: 15, histories: snapshot.histories, config: snapshot.config,
+            schemaVersion: 17, histories: snapshot.histories, config: snapshot.config,
             theme: legacyBackupTheme(snapshot.theme), profiles: snapshot.profiles,
             groupMeta: snapshot.groupMeta, pokeConfig: snapshot.pokeConfig,
             bidirectional: snapshot.bidirectional, injectionConfig: snapshot.injectionConfig,
@@ -40,7 +40,7 @@ export function createBackupController({
             calendarHolidays: snapshot.calendarHolidays, calendarWeather: snapshot.calendarWeather,
             calendarCycles: snapshot.calendarCycles, calendarRecipes: snapshot.calendarRecipes,
             calendarOutfits: snapshot.calendarOutfits, todayTrend: snapshot.todayTrend,
-            branchLineage: snapshot.branchLineage,
+            branchLineage: snapshot.branchLineage, userGeneration: snapshot.userGeneration, desktopIcons: snapshot.desktopIcons,
         };
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a');

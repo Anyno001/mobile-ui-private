@@ -617,6 +617,7 @@ export function installInteractiveScenes(_state, deps) {
         observeCommunityTurn: chat => communityRunner.observe(chat),
         cancelCommunityGeneration: invalidate,
         bindPhonePageUi,
+        refreshPhoneDesktop: () => refreshDesktop(),
         showPhoneCalendarPage,
         showPhoneDesktopPage,
         async restorePhoneChat(defaultContact) {

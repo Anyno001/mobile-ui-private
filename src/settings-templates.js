@@ -135,6 +135,53 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <div class="pm-bg-row"><span class="pm-bg-label">本联系人</span>${localBackgroundButtons}</div>
         </div>
       </div>
+      <div class="pm-settings-section">
+        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('appearance-pack')"><span><b>一键美化</b><small>导出可分享的主题、背景和桌面图标</small></span><span aria-hidden="true">›</span></button>
+        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('desktop-icons')"><span><b>桌面图标</b><small>修改七个桌面入口的透明图片图标</small></span><span aria-hidden="true">›</span></button>
+      </div>
+      <div class="pm-settings-tail"></div>
+    </div>`;
+}
+
+export function renderAppearancePackSettings() {
+    return `<div class="pm-settings-page pm-appearance-pack-settings">
+      <div class="pm-settings-section">
+        <div class="pm-cfg-tip">仅导出主题外观、桌面/全局/当前联系人背景和七个桌面图标，不含聊天、联系人、API 或其他业务数据。远程图片链接不会被打包。</div>
+        <label class="pm-settings-field" for="pm-appearance-name"><span class="pm-cfg-label">美化名称</span><input id="pm-appearance-name" class="pm-cfg-input" maxlength="60" placeholder="例如：薄荷日记"></label>
+        <label class="pm-settings-field" for="pm-appearance-author"><span class="pm-cfg-label">作者</span><input id="pm-appearance-author" class="pm-cfg-input" maxlength="60" placeholder="可留空"></label>
+        <label class="pm-settings-field" for="pm-appearance-description"><span class="pm-cfg-label">说明</span><textarea id="pm-appearance-description" class="pm-cfg-input" maxlength="500" rows="4" placeholder="可留空"></textarea></label>
+      </div>
+      <div class="pm-settings-section">
+        <label class="pm-action-button is-secondary is-full">选择美化包<input type="file" accept="application/json,.json" onchange="window.__pmImportAppearancePack(this)" hidden></label>
+        <button type="button" class="pm-action-button is-accent is-full" onclick="window.__pmExportAppearancePack()">导出美化包</button>
+      </div>
+      <div class="pm-settings-tail"></div>
+    </div>`;
+}
+
+export function renderAppearancePackPreview(preview) {
+    const meta = preview?.meta || {};
+    const backgrounds = preview?.backgrounds || {};
+    const iconIds = Array.isArray(preview?.iconIds) ? preview.iconIds : [];
+    const theme = preview?.theme || {};
+    const backgroundItems = [
+        ['桌面背景', !!backgrounds.desktop],
+        ['全局背景', !!backgrounds.global],
+        ['当前联系人背景', !!backgrounds.currentContact && preview.currentContactWillApply === true],
+    ].map(([label, included]) => `<li><span>${label}</span><b>${included ? '将覆盖' : '不应用'}</b></li>`).join('');
+    return `<div class="pm-settings-page pm-appearance-pack-preview">
+      <div class="pm-settings-section">
+        <div class="pm-cfg-label">${escapeHtml(meta.name || '未命名美化')}</div>
+        <div class="pm-cfg-tip">作者：${escapeHtml(meta.author || '未填写')}<br>版本：${Number(preview?.schemaVersion) || 1}<br>大小：${Number(preview?.totalBytes) || 0} 字节</div>
+        ${meta.description ? `<p>${escapeHtml(meta.description)}</p>` : ''}
+      </div>
+      <div class="pm-settings-section"><div class="pm-cfg-label">主题</div><div class="pm-cfg-tip">${escapeHtml(theme.darkMode === 'dark' ? '夜间' : '日间')} · ${escapeHtml(theme.preset || 'default')}</div></div>
+      <div class="pm-settings-section"><div class="pm-cfg-label">背景</div><ul class="pm-appearance-preview-list">${backgroundItems}</ul></div>
+      <div class="pm-settings-section"><div class="pm-cfg-label">桌面图标</div><div class="pm-cfg-tip">将覆盖 ${iconIds.length} 项：${escapeHtml(iconIds.join('、') || '无')}</div></div>
+      <div class="pm-action-row">
+        <button type="button" class="pm-action-button is-secondary" onclick="window.__pmCancelAppearanceImport()">取消</button>
+        <button type="button" class="pm-action-button is-accent" onclick="window.__pmConfirmAppearanceImport()">确认导入</button>
+      </div>
       <div class="pm-settings-tail"></div>
     </div>`;
 }

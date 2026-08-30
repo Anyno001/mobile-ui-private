@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Build tooling for the personal Tianyin Xiaojian project.",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --format=iife --platform=browser --target=es2020 --outfile=index.js --legal-comments=none",
+    "build": "esbuild src/main.js --bundle --format=iife --platform=browser --target=es2020 --outfile=index.js --legal-comments=none --minify-syntax --minify-whitespace",
     "check:syntax": "node --check index.js",
     "check:ai": "node scripts/check-ai.mjs",
     "check:emoji": "node scripts/check-emoji.mjs",
@@ -21,7 +21,9 @@
     "check:contracts": "node scripts/check-contracts.mjs",
     "check:story-oracle": "node scripts/check-story-oracle.mjs",
     "check:today-trend": "node scripts/check-today-trend.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend"
+    "check:desktop-icons": "node scripts/check-desktop-icons.mjs",
+    "check:appearance-pack": "node scripts/check-appearance-pack.mjs",
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:behavior && npm run check:interactive && npm run check:pending && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend && npm run check:desktop-icons && npm run check:appearance-pack"
   },
   "devDependencies": {
     "acorn": "8.15.0",

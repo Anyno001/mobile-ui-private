@@ -26,7 +26,7 @@
 .pm-calendar-editor-actions button{width:100%;text-align:center;}
 .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent, var(--pm-color-accent))!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent, var(--pm-color-accent))!important;}
 .pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent)!important;border-color:var(--pm-calendar-accent)!important;}
-.pm-calendar-data-tools{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-none);background:transparent;display:flex;flex-direction:column;gap:var(--pm-space-2);}
+.pm-calendar-data-tools{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-calendar-data-tools h3{margin:var(--pm-space-0);font-size:var(--pm-font-size-compact);}
 .pm-calendar-data-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--pm-space-2);}
 .pm-calendar-data-row select,.pm-calendar-data-row input,.pm-calendar-data-row button,.pm-calendar-database-card>button,.pm-calendar-location-results button{min-width:0;border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-compact);background:var(--pm-color-surface-input);color:var(--pm-color-text-primary);padding:var(--pm-space-2);font:inherit;}
@@ -51,7 +51,7 @@
 .pm-calendar-weather>small{display:block;margin-top:var(--pm-space-0-5);color:var(--pm-color-text-secondary);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);font-weight:500;overflow-wrap:anywhere;}
 .pm-calendar-view-switch svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);display:block;}
 .pm-calendar-empty-day{margin:var(--pm-space-0);color:var(--pm-color-text-placeholder);font-size:var(--pm-font-size-helper);}
-.pm-calendar-editor{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-none);background:transparent;display:flex;flex-direction:column;gap:var(--pm-space-2);}
+.pm-calendar-editor{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-3);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-calendar-editor h3{margin:var(--pm-space-0);font-size:var(--pm-font-size-compact);}
 .pm-calendar-editor input,.pm-calendar-editor textarea,.pm-calendar-editor select{box-sizing:border-box;width:100%;border:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-compact);background:var(--pm-color-surface-input);color:var(--pm-color-text-primary);padding:var(--pm-space-2);font:inherit;}
 .pm-calendar-editor textarea{min-height:58px;resize:vertical;}
@@ -147,7 +147,7 @@
 .pm-calendar-title-chevron{position:absolute;left:100%;top:50%;display:grid;place-items:center;width:16px;height:16px;pointer-events:none;transform:translate(calc(-1 * var(--pm-space-0-5)),-50%);color:var(--pm-color-text-tertiary);}
 .pm-calendar-title-chevron svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);transition:transform var(--pm-motion-normal) var(--pm-motion-ease);}
 .pm-calendar-title-chevron.is-expanded svg{transform:rotate(180deg);}
-.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-none);background:transparent;}
+.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);}
 .pm-calendar-month-panel[hidden]{display:none;}
 .pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0);}
 .pm-calendar-panel-section+.pm-calendar-panel-section{border-top:1px solid var(--pm-color-border-subtle);}

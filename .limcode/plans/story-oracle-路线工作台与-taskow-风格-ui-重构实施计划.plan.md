@@ -5,11 +5,11 @@
 ## TODO LIST
 
 <!-- LIMCODE_TODO_LIST_START -->
-- [ ] 核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项  `#story-oracle-bundle-verification`
+- [x] 核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项  `#story-oracle-bundle-verification`
 - [x] 冻结第二轮大纲可见性与路线字段契约，确认 pace/sourceMessageId/order/本轮解析收据的最小数据流  `#story-oracle-plan-contract`
 - [x] 修复多轮路线累计、最新路线可见排序、消息绑定失败兜底与生成结果收据  `#story-oracle-plan-visibility`
 - [x] 实现剧情助手二级菜单原型：速度档位、破限预设、提示词/附加指令编辑，并持久化到现有 Store version 1  `#story-oracle-settings-prototype`
-- [ ] 将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单  `#story-oracle-tabbed-layout-redesign`
+- [x] 将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单  `#story-oracle-tabbed-layout-redesign`
 - [x] 完成无装饰描边、强呼吸感、深蓝主操作、弱化危险操作、长标题换行和亮暗主题样式  `#story-oracle-ui-visual`
 - [x] 按 TASKOW 参考重构剧情助手页面信息架构、路线工作台、活动路线区、消息流和输入区  `#story-oracle-ui-workbench`
 - [x] 核查上游速度、破限提示词与提示词修改入口实现  `#story-oracle-upstream-prompts`

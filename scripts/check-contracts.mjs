@@ -70,6 +70,8 @@ const rebuiltBundle = await build({
   target: 'es2020',
   outfile: 'index.js',
   legalComments: 'none',
+  minifySyntax: true,
+  minifyWhitespace: true,
   write: false,
 });
 const rebuiltBundleText = rebuiltBundle.outputFiles[0]?.text || '';
@@ -2005,7 +2007,6 @@ function analyzeBackupContract(code, sourceType = 'module') {
         if (name) result.exportFields.add(name);
       }
     }
-    if (node.type === 'MemberExpression' && node.object?.name === 'file' && memberName(node) === 'name') result.importReadsFileName = true;
     if (node.type === 'FunctionDeclaration' && node.id?.name === 'parseBackupData') {
       walk(node.body, child => {
         if (child.type !== 'CallExpression') return;
@@ -2769,6 +2770,8 @@ const settingsWordyControllerCode = sourceModuleByName.get('settings-wordy-contr
 const settingsBackupControllerCode = sourceModuleByName.get('settings-backup-controller.js')?.code || '';
 const settingsBackupValidateCode = sourceModuleByName.get('settings-backup-validate.js')?.code || '';
 const settingsBackupCode = sourceModuleByName.get('settings-backup.js')?.code || '';
+const appearancePackCode = sourceModuleByName.get('appearance-pack.js')?.code || '';
+const settingsAppearancePackCode = sourceModuleByName.get('settings-appearance-pack.js')?.code || '';
 const contactAnalysis = analyze(contactCode, 'module');
 const calendarAnalysis = analyze(calendarCode, 'module');
 const interactiveAnalysis = analyze(interactiveCode, 'module');
@@ -2957,15 +2960,18 @@ for (const expected of [
   'deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
-  'schemaVersion: 15', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
+  'schemaVersion: 17', 'desktopBg: snapshot.desktopBg', 'injectionConfig: snapshot.injectionConfig', 'budgetConfig: snapshot.budgetConfig',
   'galBubbleEnabled: snapshot.galBubbleEnabled',
   'calendarStore: snapshot.calendarStore', 'calendarCycles: snapshot.calendarCycles',
   'calendarRecipes: snapshot.calendarRecipes', 'calendarOutfits: snapshot.calendarOutfits', 'todayTrend: snapshot.todayTrend', 'branchLineage: snapshot.branchLineage',
+  'userGeneration: snapshot.userGeneration', 'desktopIcons: snapshot.desktopIcons',
 ]) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'applyCalendarBackupFields(data, result, objectValue, { includeRecipes: version >= 7, includeOutfits: version >= 12 })');
 for (const expected of [
-  'version > 15', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend', '备份版本 15 缺少 galBubbleEnabled',
+  'version > 17', '备份版本 13 缺少 budgetConfig', '备份版本 14 缺少 todayTrend', '备份版本 15 缺少 galBubbleEnabled', '备份版本 16 缺少 userGeneration', '备份版本 17 缺少 desktopIcons',
   'result.budgetConfig = normalizeBudgetConfig(objectValue(data.budgetConfig, \'budgetConfig\'))',
+  "result.userGeneration = normalizeUserGenerationStore(objectValue(data.userGeneration, 'userGeneration'))",
+  'result.desktopIcons = normalizeDesktopIconBackupPayload(data.desktopIcons)',
 ]) requireText('settings-backup-validate.js', settingsBackupValidateCode, expected);
 for (const expected of [
   'phoneUiState: loadPhoneUiState(interactiveScenes)', 'ambientStatus: normalizeAmbientStatus',
@@ -2977,6 +2983,10 @@ for (const expected of [
   'normalizeBudgetConfig(window.__pmBudgetConfig)', 'window.__pmBudgetConfig = normalizeBudgetConfig(state.budgetConfig)', 'saveBudgetConfig(state.budgetConfig)',
   'window.__pmGalBubbleEnabled = state.galBubbleEnabled === true', 'saveGalBubbleEnabled()',
   'loadBranchLineage()', 'saveBranchLineageForBackup(state.branchLineage || {})',
+  'loadUserGenerationStore()', 'saveUserGenerationStore(userGeneration',
+  'normalizeDesktopIconBackupPayload(await loadDesktopIcons())', 'replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}))',
+  'window.__pmUserGeneration = normalizeUserGenerationStore(state.userGeneration)',
+  'window.__pmDesktopIcons = normalizeDesktopIconBackupPayload(state.desktopIcons || {})',
   'rollbackBranchLineageBackup(applied.branchLineageInserted)', 'completeBranchLineageBackup(applied.branchLineageInserted)', 'saveBranchLineage(state.branchLineage || {})',
 ]) requireText('settings-backup.js', settingsBackupCode, expected);
 requireText('settings-backup-validate.js', settingsBackupValidateCode, 'const assertBranchLineage = value =>');
@@ -2989,6 +2999,34 @@ for (const expected of [
   'cancelCalendarTasks?.(`backup-${reason}`)',
   "cancelCalendarTasks?.('plugin-data-clear')",
 ]) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
+
+for (const expected of [
+  "APPEARANCE_PACK_FORMAT = 'tianyin-appearance'", 'APPEARANCE_PACK_SCHEMA_VERSION = 1',
+  "const ROOT_KEYS = ['format', 'schemaVersion', 'meta', 'appearance']",
+  "const APPEARANCE_KEYS = ['theme', 'backgrounds', 'icons']",
+  "const BACKGROUND_KEYS = ['desktop', 'global', 'currentContact']",
+  "exactKeys(value, ROOT_KEYS, '美化包根节点')", "requireKeys(value, ROOT_KEYS, '美化包根节点')",
+  '美化包版本 ${value.schemaVersion} 高于当前支持版本',
+  '必须是自包含的 PNG、JPEG 或 WebP Data URL',
+  'normalizeDesktopIconBackupPayload(value.icons ?? {})',
+  'APPEARANCE_PACK_MAX_BYTES = 12 * 1024 * 1024',
+]) requireText('appearance-pack.js', appearancePackCode, expected);
+for (const forbidden of ['histories', 'config', 'profiles', 'calendarStore', 'userGeneration', 'apiKey']) {
+  if (appearancePackCode.includes(`appearance.${forbidden}`) || appearancePackCode.includes(`snapshot.${forbidden}`)) {
+    failures.push(`appearance-pack.js: shareable appearance serializer must not consume private field ${forbidden}`);
+  }
+}
+for (const expected of [
+  'parsePack(text)', 'await validateImages(parsed.pack)', 'pendingImport = { parsed, targetKey }',
+  'showPreview(previewFor(parsed, targetKey))', 'snapshot = await captureSnapshot',
+  'beforeLocal: () =>', 'currentContactKey() === pending.targetKey',
+  'return contactApplied ? next.local : snapshot.local',
+  'await persistState(snapshot)', 'await refreshAppearance(snapshot)',
+  '原外观恢复也失败。请勿刷新，并立即导出完整数据备份',
+]) requireText('settings-appearance-pack.js', settingsAppearancePackCode, expected);
+if (/importPack[\s\S]*?saveThemeAction\(/.test(settingsAppearancePackCode.split('const captureSnapshot')[0] || '')) {
+  failures.push('settings-appearance-pack.js: parse/preview phase must not persist appearance state');
+}
 for (const expected of [
   "tasks.begin(storageId, 'scan-context'", 'parentSignal', 'signal: task.signal',
   'isHolidayYearSupported', 'holidayYearRange', 'calendarGenerationCopy', 'calendar-holiday-country',
@@ -3388,7 +3426,7 @@ for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
   'class="pm-scene-pin-action"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
-  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"', 'data-app="today-trend"', '${TREND_ICON_SVG}',
+  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"', 'data-app="today-trend"', "resolveDesktopAppIcon('todayTrend', TREND_ICON_SVG)",
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 }
@@ -3568,8 +3606,8 @@ for (const expected of [
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
-  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-primary)',
-  '.pm-global-setting{border:0;border-radius:var(--pm-radius-none);background:transparent;color:var(--pm-color-text-primary)',
+  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
+  '.pm-global-setting{border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-text-primary)',
   '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-text-tertiary)}',
   '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:0}',
@@ -3685,7 +3723,7 @@ for (const expected of [
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
   '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
-  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-none);background:transparent',
+  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card)',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0)}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
@@ -4252,6 +4290,7 @@ for (const expected of [
 ]) {
   requireText('settings-ui.js', settingsCode, expected);
 }
+requireText('phone-lifecycle.js ambient refresh-only hook', lifecycleCode, 'window.__pmSyncAmbientStatus = () => ambientStatus.sync()');
 for (const [owner, code, expected] of [
   ['phone-directory.js', directoryCode, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'"]],
   ['phone-chat-poke.js', phoneChatPokeCodeForChecks, ['role="checkbox"', 'tabindex="0"', 'aria-checked=', "event.key==='Enter'", 'saveCharacterBehavior()', 'savePokeConfig()', 'behaviorSnapshot', 'pokeSnapshot']],
@@ -4385,6 +4424,7 @@ for (const [label, marker, accessibleName] of [
 const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
 for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
+const userGenerationSupportCode = sourceModuleByName.get('user-generation-support.js')?.code || '';
 for (const expected of [
   'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'MORE_ICON_SVG', 'PLAY_ICON_SVG', 'PAUSE_ICON_SVG', 'SETTINGS_ICON_SVG',
   'class="pm-expand-btn pm-story-oracle-menu-toggle"',
@@ -4407,9 +4447,10 @@ for (const expected of [
 for (const expected of ['<StoryPlan>...</StoryPlan>', '每个区块必须包含“标题：”和“目标：”', '不要把多条路线合并到同一个区块']) requireText('story-oracle.js advisor output contract', storyOracleCode, expected);
 
 for (const expected of [
-  "import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';",
-  'renderBoldText(content)',
-]) requireText('story-oracle.js bold renderer contract', storyOracleCode, expected);
+  'renderSafeMarkdown', 'splitMarkdownBubbles',
+  "const bubbles = assistant ? splitMarkdownBubbles(content)",
+  "assistant ? renderSafeMarkdown(bubble) : renderBoldText(bubble)",
+]) requireText('story-oracle.js multi-bubble markdown contract', storyOracleCode, expected);
 if (storyOracleCode.includes('输入问题，剧情助手会基于当前聊天上下文回答')) failures.push('story-oracle.js: empty message hint must not occupy the message list; use the textarea placeholder instead');
 
 if (storyOracleCode.includes('pm-scene-header')) failures.push('story-oracle.js: session UI must not retain the old scene header');
@@ -4463,6 +4504,30 @@ if (!/<form class="pm-input-bar pm-story-oracle-composer"[\s\S]*renderStoryOracl
 if (!/class="pm-name-trigger pm-story-oracle-mode-trigger"[\s\S]*CHEVRON_DOWN_ICON_SVG/.test(storyOracleCode)) {
   failures.push('story-oracle.js: mode title must expose the compact chevron trigger');
 }
+for (const expected of [
+  "'user-generation': 'User 生成'", 'USER_GENERATION_SYSTEM_PROMPT', 'parseUserGenerationResponse',
+  "const secondaryView = userMode ? 'users' : 'plans'", 'data-story-oracle-action="copy-user"',
+  'data-story-oracle-action="save-user"', 'data-story-oracle-action="revise-user"',
+  'data-story-oracle-action="delete-user"', 'data-story-oracle-action="toggle-user-details"',
+  'aria-expanded="${expanded ? \'true\' : \'false\'}"', '保存到 User 库', '全局共享库',
+  'copyUserGenerationContent', 'loadUserGenerationStore', 'saveUserGenerationStore', 'revisionTarget',
+]) requireText('story-oracle.js User generation contract', storyOracleCode, expected);
+for (const expected of ['USER_GENERATION_SYSTEM_PROMPT', "documentRef.execCommand('copy')", '复制失败，请展开后手动选择', '未成年人参与成人内容时，拒绝该部分']) {
+  requireText('user-generation-support.js contract', userGenerationSupportCode, expected);
+}
+if (!/userMode \? '' : `<button[^`]*data-story-oracle-action="clear-plans"/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: User mode must omit the route clear action');
+}
+if (!/pm-story-oracle-user-card[\s\S]*copy-user[\s\S]*toggle-user-details[\s\S]*revise-user[\s\S]*delete-user/.test(storyOracleCode)) {
+  failures.push('story-oracle.js: User cards must expose copy, expand, revise and delete without route controls');
+}
+const userCardRenderer = storyOracleCode.match(/function renderUserGenerationCard[\s\S]*?\n}\n\nfunction renderUserGenerationLibrary/)?.[0] || '';
+for (const forbidden of ['toggle-plan', 'edit-plan-injection', 'data-story-oracle-plan-intensity', '开始引导', '停止引导']) {
+  if (userCardRenderer.includes(forbidden)) failures.push(`story-oracle.js: User cards must not expose route semantics (${forbidden})`);
+}
+for (const expected of ["'user-generation'", 'parseUserGenerationResponse', 'USER_GENERATION_PROTOCOL_LIMITS', 'collecting', 'complete', 'revision']) {
+  requireText('story-oracle-model.js User generation protocol', storyOracleModelCode, expected);
+}
 requireCssDeclarations(cssRules, '.pm-story-oracle-shell', { height: '100%', 'min-height': '0', display: 'flex', 'flex-direction': 'column' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { left: '0', bottom: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', top: 'calc(100% - var(--pm-space-1))', transform: 'translateX(-50%)', 'box-shadow': 'var(--pm-shadow-floating)' });
@@ -4480,26 +4545,35 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-plan-head', { position: 'rela
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', top: 'calc(100% + var(--pm-space-1))', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls', { display: 'grid', 'grid-template-columns': 'repeat(3,minmax(0,1fr))', gap: 'var(--pm-space-2)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls button', { width: '100%', 'min-height': 'var(--pm-size-control-compact)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-list', { background: 'var(--pm-color-surface-control)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-card.is-pending', { margin: 'var(--pm-space-3)', width: 'auto' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-copy', { 'min-width': 'var(--pm-size-control-compact)', 'min-height': 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-surface-control)', color: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-content', { 'overflow-wrap': 'anywhere', 'white-space': 'normal', color: 'var(--pm-color-text-primary)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-save', { 'align-self': 'stretch', 'min-height': 'var(--pm-size-control-default)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-library-hint', { background: 'color-mix(in srgb,var(--pm-color-warning) 8%,var(--pm-color-surface-page))', color: 'var(--pm-color-text-primary)' });
+for (const selector of ['.pm-story-oracle-user-copy:focus-visible', '.pm-story-oracle-user-save:focus-visible']) requireCssDeclarations(cssRules, selector, { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
 for (const selector of ['.pm-story-oracle-world-book-modal .pm-modal-scroll', '.pm-story-oracle-settings-modal .pm-modal-scroll']) {
   requireCssDeclarations(cssRules, selector, { gap: 'var(--pm-space-3)', padding: 'var(--pm-space-4)' });
 }
 requireCssDeclarations(cssRules, '.pm-story-oracle-world-book-modal .pm-cfg-tip', { 'margin-bottom': 'var(--pm-space-1)', 'text-align': 'left' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-settings-field', { gap: 'var(--pm-space-2)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
-for (const selector of [
-  '.pm-global-setting',
-  '.pm-settings-home button',
-  '.pm-session-behavior-section',
-  '.pm-member-behavior-list button',
-  '.pm-conversation-injection-group',
-  '.pm-calendar-data-tools',
-  '.pm-calendar-editor',
-  '.pm-calendar-month-panel',
-  '.pm-quick-reply-settings section',
-  '.pm-worldbook-column',
+for (const [selector, declarations] of [
+  ['.pm-global-setting', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-settings-home button', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-session-behavior-section', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-member-behavior-list button', { 'border-radius': 'var(--pm-radius-panel)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-conversation-injection-group', { 'border-radius': 'var(--pm-radius-panel)' }],
+  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-quick-reply-settings section', { 'border-radius': 'var(--pm-radius-card)' }],
+  ['.pm-worldbook-column', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
 ]) {
-  requireCssDeclarations(cssRules, selector, { border: '0', 'border-radius': 'var(--pm-radius-none)', background: 'transparent' });
+  requireCssDeclarations(cssRules, selector, { border: '0', ...declarations });
 }
+requireCssDeclarations(cssRules, '.pm-story-oracle-message', { 'flex-direction': 'column', gap: 'var(--pm-space-2)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-message .pm-bubble', { 'white-space': 'normal', 'overflow-wrap': 'anywhere' });
 requireCssDeclarations(cssRules, '.pm-calendar-management-content', { display: 'flex', 'flex-direction': 'column', gap: 'var(--pm-space-2)' });
 requireCssDeclarations(cssRules, '.pm-settings-home button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
 requireCssDeclarations(cssRules, '.pm-member-behavior-list button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
@@ -4782,7 +4856,10 @@ const messagingCode = sourceModuleByName.get('messaging.js')?.code || '';
 for (const expected of [
   'export function renderBoldText(value)',
   "return escapeHtml(value).replace(/\\*\\*(?![\\s*])([\\s\\S]*?\\S)\\*\\*/g, '<strong>$1</strong>');",
-]) requireText('ui.js bold renderer contract', uiCode, expected);
+  'export function splitMarkdownBubbles(value)',
+  'export function renderSafeMarkdown(value)',
+  'return `<pre><code${language}>${escapeHtml(code)}</code></pre>`;',
+]) requireText('ui.js safe markdown renderer contract', uiCode, expected);
 for (const expected of ['renderBoldText', 'return renderBoldText(display);']) {
   requireText('messaging.js bold renderer contract', messagingCode, expected);
 }
@@ -5285,7 +5362,7 @@ const backupMetadataFields = new Set(['schemaVersion']);
 const backupFields = [
   'histories', 'config', 'theme', 'profiles', 'groupMeta',
   'pokeConfig', 'bidirectional', 'emojis', 'characterBehavior',
-  'wordyLimit', 'galBubbleEnabled', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig', 'todayTrend',
+  'wordyLimit', 'galBubbleEnabled', 'desktopBg', 'bgGlobal', 'bgLocal', 'interactiveScenes', 'phoneUiState', 'ambientStatus', 'budgetConfig', 'todayTrend', 'userGeneration',
 ];
 for (const [label, contract] of [
   ['source backup modules', sourceBackupContract],
@@ -5305,7 +5382,9 @@ for (const [label, contract] of [
 }
 for (const expected of [
   'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
-  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_'])",
+  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX])",
+  'DESKTOP_ICON_STORAGE_KEY', 'DESKTOP_ICON_RESOURCE_PREFIX',
+  'USER_GENERATION_FALLBACK_KEY', 'USER_GENERATION_STORE_KEY',
 ]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 requireText('storage-primitives.js', storagePrimitivesCode, "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'");
 const storageCodeForCleanup = sourceModuleByName.get('storage.js')?.code || '';
@@ -5338,6 +5417,17 @@ const symmetricBackupSample = analyzeBackupContract(`
   function parseBackupData(data) { if (Object.hasOwn(data, 'histories')) return data.histories; }
 `);
 if (!symmetricBackupSample.importFields.has('histories')) failures.push('self-test: parseBackupData import detector missed field');
+const backupFileNameSample = analyzeBackupContract(`
+  window.__pmImportData = async input => { const file = input.files[0]; return file.name; };
+`);
+if (!backupFileNameSample.importReadsFileName) failures.push('self-test: backup file.name dependency detector missed import entry');
+const unrelatedFileNameSample = analyzeBackupContract(`
+  const importAppearancePack = async input => { const file = input.files[0]; return file.name; };
+  window.__pmImportData = async input => { const file = input.files[0]; return file.text(); };
+`);
+if (unrelatedFileNameSample.importReadsFileName) {
+  failures.push('self-test: backup file.name detector must ignore unrelated file import flows');
+}
 
 const compatibilityStrings = [
   'PhoneModeDB', 'kv', 'PHONE_SMS_MEMORY',

@@ -9,6 +9,7 @@ import {
     installGalBubble, parseGalBubbleMessages, reconcileGalBubble, uninstallGalBubble,
 } from '../src/gal-bubble.js';
 import { createEmptyTodayTrendStore } from '../src/today-trend-model.js';
+import { createEmptyUserGenerationStore } from '../src/user-generation-model.js';
 import { normalizeThemePreset, THEME_PRESETS } from '../src/config.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
@@ -5525,9 +5526,37 @@ const currentBackup = {
     },
     ambientStatus: { enabled: true },
     branchLineage: validBranchLineage,
+    userGeneration: createEmptyUserGenerationStore(),
+    desktopIcons: { chat: 'data:image/png;base64,AAAA' },
 };
 const parsedLegacyBackup = parseBackupData({ histories: { story: {} } }, currentBackup);
 assert.deepEqual(parsedLegacyBackup.histories, { story: {} });
+assert.deepEqual(parsedLegacyBackup.userGeneration, createEmptyUserGenerationStore(),
+    'v1-v15 备份缺少 User 库时必须兼容为空库');
+const validV15Backup = {
+    schemaVersion: 15,
+    budgetConfig: structuredClone(currentBackup.budgetConfig),
+    galBubbleEnabled: false, todayTrend: createEmptyTodayTrendStore(),
+    worldBookConfig: normalizeWorldBookConfig(null), branchLineage: structuredClone(validBranchLineage),
+};
+assert.deepEqual(parseBackupData(validV15Backup, currentBackup).userGeneration, createEmptyUserGenerationStore(),
+    'v15 备份不得因缺少后加入的 User 库字段而拒绝导入');
+assert.throws(() => parseBackupData({ ...validV15Backup, schemaVersion: 16 }, currentBackup),
+    /备份版本 16 缺少 userGeneration/);
+const importedUserGeneration = { version: 1, items: [{ id: 'user-1', title: '魅魔旅者', summary: '', content: '成年魅魔旅者。', sourceMessageId: 'message-1', createdAt: 1, updatedAt: 1, order: 0 }] };
+const validV16Backup = { ...validV15Backup, schemaVersion: 16, userGeneration: importedUserGeneration };
+const parsedV16Backup = parseBackupData(validV16Backup, currentBackup);
+assert.deepEqual(parsedV16Backup.userGeneration, importedUserGeneration, 'v16 User 库必须规范化后完整往返');
+assert.deepEqual(parsedV16Backup.desktopIcons, {}, 'v1-v16 备份缺少桌面图标时必须兼容为空映射');
+assert.throws(() => parseBackupData({ ...validV16Backup, schemaVersion: 17 }, currentBackup),
+    /备份版本 17 缺少 desktopIcons/);
+const importedDesktopIcons = { chat: 'data:image/png;base64,AAAA', community: 'data:image/png;base64,AAAA' };
+assert.deepEqual(parseBackupData({ ...validV16Backup, schemaVersion: 17, desktopIcons: importedDesktopIcons }, currentBackup).desktopIcons,
+    importedDesktopIcons, 'v17 桌面图标必须规范化后完整往返');
+assert.throws(() => parseBackupData({ ...validV16Backup, schemaVersion: 17, desktopIcons: { unknown: 'data:image/png;base64,AAAA' } }, currentBackup),
+    /desktopIcons 包含未知图标/);
+assert.throws(() => parseBackupData({ ...validV16Backup, schemaVersion: 17, desktopIcons: { chat: 'data:image/jpeg;base64,AAAA' } }, currentBackup),
+    /Base64 PNG/);
 assert.equal(parsedLegacyBackup.desktopBg, currentBackup.desktopBg, 'v1-v5 备份不得覆盖后加入的桌面背景');
 assert.deepEqual(parsedLegacyBackup.interactiveScenes, currentBackup.interactiveScenes);
 assert.deepEqual(parsedLegacyBackup.phoneUiState, currentBackup.phoneUiState);
@@ -6442,6 +6471,8 @@ const createBackupTransactionFixture = (sceneId, ambientStatusEnabled) => ({
     calendarWeather: { version: 1, location: { name: sceneId, latitude: 35, longitude: 139, country: 'JP', timezone: 'Asia/Tokyo' }, lastSuccess: null },
     calendarCycles: { version: 1, scopes: { story: { enabled: true, lastPeriodStart: '2026-07-01', cycleLength: sceneId === 'scene-old' ? 28 : 30, periodLength: 5, overrides: {} } } },
     branchLineage: structuredClone(validBranchLineage),
+    userGeneration: createEmptyUserGenerationStore(),
+    desktopIcons: {},
 });
 const originalBackupFixture = createBackupTransactionFixture('scene-old', true);
 const importedBackupFixture = createBackupTransactionFixture('scene-new', false);
@@ -6728,7 +6759,7 @@ const cleanupStorage = {
 };
 const cleanupIdb = new Map([
     ...PLUGIN_IDB_STATIC_KEYS.map(key => [key, { key }]),
-    [`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}orphan`, { key: 'dynamic' }],
+    ...PLUGIN_IDB_DYNAMIC_PREFIXES.map(prefix => [`${prefix}orphan`, { key: `dynamic:${prefix}` }]),
     ['HOST_EXTENSION_IDB', { key: 'keep-idb' }],
 ]);
 const cleanupResult = await clearPluginData({
@@ -6739,7 +6770,7 @@ const cleanupResult = await clearPluginData({
     deleteIdb: async key => cleanupIdb.delete(key),
 });
 assert.equal(cleanupResult.localKeys, PLUGIN_LOCAL_STORAGE_KEYS.length);
-assert.equal(cleanupResult.idbKeys, PLUGIN_IDB_STATIC_KEYS.length + 1);
+assert.equal(cleanupResult.idbKeys, PLUGIN_IDB_STATIC_KEYS.length + PLUGIN_IDB_DYNAMIC_PREFIXES.length);
 assert.equal(cleanupLocal.get('HOST_EXTENSION_DATA'), 'keep-local');
 assert.equal(cleanupIdb.get('HOST_EXTENSION_IDB').key, 'keep-idb');
 for (const key of PLUGIN_LOCAL_STORAGE_KEYS) assert.equal(cleanupLocal.has(key), false);
@@ -6747,7 +6778,7 @@ assert.equal(cleanupLocal.has(HISTORY_RECOVERY_KEY), false, '插件全量清理�
 assert.equal(cleanupLocal.has(CALENDAR_OUTFIT_STORAGE_KEY), false, '清理成功必须删除穿搭数据');
 assert.equal(cleanupLocal.get('ST_SMS_MIGRATED_V3'), '1', '历史迁移哨兵不得被插件全量清理删除');
 for (const key of PLUGIN_IDB_STATIC_KEYS) assert.equal(cleanupIdb.has(key), false);
-assert.equal(cleanupIdb.has(`${PLUGIN_IDB_DYNAMIC_PREFIXES[0]}orphan`), false);
+for (const prefix of PLUGIN_IDB_DYNAMIC_PREFIXES) assert.equal(cleanupIdb.has(`${prefix}orphan`), false);
 
 const rollbackLocal = new Map([
     [PLUGIN_LOCAL_STORAGE_KEYS[0], 'old-local'],

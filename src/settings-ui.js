@@ -8,8 +8,10 @@ import { openCropper } from './cropper.js';
 import { createApiRequestController } from './settings-api-controller.js';
 import { createApiDraftMode } from './settings-api-mode.js';
 import { createAppearanceController } from './settings-appearance-controller.js';
+import { createAppearancePackController } from './settings-appearance-pack.js';
 import { createBackupController } from './settings-backup-controller.js';
 import { createBackgroundSettings, runBackgroundTransaction } from './settings-background.js';
+import { createDesktopIconSettings } from './settings-desktop-icons.js';
 import { createBudgetController } from './settings-budget-controller.js';
 import { createInjectionResultGuard } from './settings-injection-guard.js';
 import { createGalBubbleController } from './settings-gal-bubble-controller.js';
@@ -18,7 +20,7 @@ import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
 import { installWorldBookSettings } from './settings-worldbook.js';
 import {
-    renderApiSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
+    renderApiSettings, renderAppearancePackPreview, renderAppearancePackSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
 } from './settings-templates.js';
 import { legacyBackupTheme, parseBackupData } from './settings-backup-validate.js';
 import { createBackupStateHandlers, createEmptyCalendarBackupFields, runBackupTransaction } from './settings-backup.js';
@@ -33,6 +35,7 @@ import {
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
 import { createEmptyTodayTrendStore } from './today-trend-model.js';
+import { createEmptyUserGenerationStore } from './user-generation-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 export { createBackupStateHandlers, runBackupTransaction } from './settings-backup.js';
@@ -93,15 +96,24 @@ export function installSettingsUi(deps) {
             theme: { preset: 'default', customRight: '', customLeft: '', borderColor: '', layout: 'standard', darkMode: 'light', ambientStatusEnabled: false, customTitle: '' },
             profiles: [], groupMeta: {}, pokeConfig: {}, bidirectional: {}, injectionConfig: normalizeInjectionConfig(null),
             emojis: [], characterBehavior: {}, worldBookConfig: null, wordyLimit: false, galBubbleEnabled: false,
-            desktopBg: '', bgGlobal: '', bgLocal: {},
+            desktopBg: '', bgGlobal: '', bgLocal: {}, desktopIcons: {},
             interactiveScenes: normalizeInteractiveStore(null), phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
-            ...createEmptyCalendarBackupFields(), todayTrend: createEmptyTodayTrendStore(),
+            ...createEmptyCalendarBackupFields(), todayTrend: createEmptyTodayTrendStore(), userGeneration: createEmptyUserGenerationStore(),
         }),
         afterApplyEmpty: () => { window.__pmBudgetConfig = normalizeBudgetConfig(); },
     });
     const appearanceSettings = createAppearanceController({
         THEME_PRESETS, applyTheme, clone, saveTheme, renderLookSettings, renderSettingsModal, makeOverlay,
         escapeAttr, safeJS, getCurrentPersona, getStorageId, backgroundSettings,
+    });
+    const desktopIconSettings = createDesktopIconSettings({
+        openCropper, makeOverlay, renderSettingsModal, escapeAttr,
+        refreshDesktop: deps.refreshPhoneDesktop,
+    });
+    const appearancePackSettings = createAppearancePackController({
+        backgroundSettings, getStorageId, getCurrentPersona,
+        renderPage: renderAppearancePackSettings, renderPreview: renderAppearancePackPreview, renderSettingsModal, makeOverlay,
+        applyTheme, applyBackground, refreshDesktop: deps.refreshPhoneDesktop,
     });
     window.__pmDeleteProfile = idx => apiSettings.deleteProfile(idx);
     window.__pmPickProfile = idx => apiSettings.pickProfile(idx);
@@ -118,6 +130,13 @@ export function installSettingsUi(deps) {
     window.__pmUploadBg = (input, scope) => appearanceSettings.uploadBackground(input, scope);
     window.__pmBgUrl = scope => appearanceSettings.setBackgroundUrl(scope);
     window.__pmClearBg = scope => appearanceSettings.clearBackground(scope);
+    window.__pmUploadDesktopIcon = (input, appId) => desktopIconSettings.upload(input, appId);
+    window.__pmResetDesktopIcon = appId => desktopIconSettings.reset(appId);
+    window.__pmResetAllDesktopIcons = () => desktopIconSettings.resetAll();
+    window.__pmExportAppearancePack = () => appearancePackSettings.exportPack();
+    window.__pmImportAppearancePack = input => appearancePackSettings.importPack(input);
+    window.__pmConfirmAppearanceImport = () => appearancePackSettings.confirmImport();
+    window.__pmCancelAppearanceImport = () => appearancePackSettings.cancelImport();
     window.__pmExportData = () => backupSettings.exportData();
     window.__pmImportData = input => backupSettings.importData(input);
     window.__pmClearAllData = () => backupSettings.clearAllData();
@@ -138,6 +157,14 @@ export function installSettingsUi(deps) {
         }
         if (page === 'backup') {
             makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
+            return;
+        }
+        if (page === 'appearance-pack') {
+            await appearancePackSettings.showPage();
+            return;
+        }
+        if (page === 'desktop-icons') {
+            await desktopIconSettings.showPage();
             return;
         }
         if (page === 'quick-reply') {

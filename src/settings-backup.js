@@ -14,6 +14,7 @@ import { createEmptyWeatherStore, normalizeWeatherStore } from './calendar-weath
 import { cloneEmojiLibrary } from './emoji-media.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
+import { loadDesktopIcons, normalizeDesktopIconBackupPayload, replaceDesktopIcons } from './desktop-icon-storage.js';
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { materializeLocalBackgrounds, saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import { normalizeTodayTrendStore } from './today-trend-model.js';
@@ -25,6 +26,8 @@ import {
     completeBranchLineageBackup, loadBranchLineage, rollbackBranchLineageBackup, saveBranchLineageForBackup,
     savePhoneUiState, saveBranchLineage, saveBudgetConfig, saveGalBubbleEnabled, savePokeConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
 } from './storage.js';
+import { loadUserGenerationStore, saveUserGenerationStore } from './user-generation-storage.js';
+import { normalizeUserGenerationStore } from './user-generation-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -131,9 +134,12 @@ export async function runBackupTransaction({
 
 
 export function createBackupStateHandlers(deps = {}) {
+    let userGenerationWriteState = null;
     const capture = async () => {
         const interactiveScenes = normalizeInteractiveStore(await loadInteractiveScenes());
         const branchLineage = await loadBranchLineage();
+        const desktopIcons = normalizeDesktopIconBackupPayload(await loadDesktopIcons());
+        userGenerationWriteState = await loadUserGenerationStore();
         return {
             histories: clone(window.__pmHistories || {}), config: clone(window.__pmConfig || {}),
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
@@ -152,6 +158,8 @@ export function createBackupStateHandlers(deps = {}) {
             calendarCycles: loadCalendarCycles(), calendarRecipes: loadCalendarRecipes(), calendarOutfits: loadCalendarOutfits(),
             todayTrend: normalizeTodayTrendStore(await loadTodayTrendStore()),
             branchLineage: clone(branchLineage),
+            userGeneration: normalizeUserGenerationStore(userGenerationWriteState.store),
+            desktopIcons,
         };
     };
     const apply = async state => {
@@ -172,6 +180,8 @@ export function createBackupStateHandlers(deps = {}) {
         window.__pmBgLocal = clone(state.bgLocal || {}); window.__pmPhoneUiState = phoneUiState;
         window.__pmTodayTrend = normalizeTodayTrendStore(state.todayTrend);
         window.__pmBranchLineage = clone(state.branchLineage || {});
+        window.__pmUserGeneration = normalizeUserGenerationStore(state.userGeneration);
+        window.__pmDesktopIcons = normalizeDesktopIconBackupPayload(state.desktopIcons || {});
         return {
             ...state, interactiveScenes, phoneUiState, ambientStatus,
             calendarStore: normalizeCalendarStore(state.calendarStore),
@@ -183,6 +193,8 @@ export function createBackupStateHandlers(deps = {}) {
             calendarOutfits: normalizeOutfitStore(state.calendarOutfits),
             todayTrend: normalizeTodayTrendStore(state.todayTrend),
             branchLineage: clone(state.branchLineage || {}),
+            userGeneration: normalizeUserGenerationStore(state.userGeneration),
+            desktopIcons: normalizeDesktopIconBackupPayload(state.desktopIcons || {}),
         };
     };
     const persist = async (state, phase = 'apply', applied = null) => {
@@ -207,6 +219,14 @@ export function createBackupStateHandlers(deps = {}) {
             throw new Error('日历与菜谱数据保存失败：浏览器存储不可用');
         }
         await saveTodayTrendStore(state.todayTrend);
+        const userGeneration = normalizeUserGenerationStore(state.userGeneration);
+        if (!userGenerationWriteState) userGenerationWriteState = await loadUserGenerationStore();
+        if (!userGenerationWriteState.writable) throw new Error(`User 库保存失败：${userGenerationWriteState.readOnlyReason || '当前为只读保护状态'}`);
+        await saveUserGenerationStore(userGeneration, {
+            readOnlyReason: userGenerationWriteState.readOnlyReason,
+            writeHandle: userGenerationWriteState.writeHandle,
+        });
+        await replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}));
         if (phase === 'rollback') {
             if (applied?.branchLineageInserted) await rollbackBranchLineageBackup(applied.branchLineageInserted);
             else await saveBranchLineage(state.branchLineage || {});

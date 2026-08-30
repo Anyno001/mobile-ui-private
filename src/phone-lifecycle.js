@@ -10,6 +10,7 @@ import {
 import { getPendingMessages } from './pending-messages.js';
 import { bindPressGesture } from './press-gesture.js';
 import { loadBgSettings } from './storage-background.js';
+import { loadDesktopIcons } from './desktop-icon-storage.js';
 import { installStoryOracle } from './story-oracle.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
@@ -232,6 +233,7 @@ export function installPhoneLifecycle(state, deps) {
         isSuspended: () => state.isMinimized,
     });
 
+    window.__pmSyncAmbientStatus = () => ambientStatus.sync();
     window.__pmSetAmbientStatus = (enabled) => {
         const previous = window.__pmTheme?.ambientStatusEnabled === true;
         if (!ambientStatus.setEnabled(enabled)) {
@@ -409,7 +411,11 @@ export function installPhoneLifecycle(state, deps) {
         } catch (e) { window.__pmConfig = { apiUrl: '', apiKey: '', model: '', temperature: 1.2, useIndependent: false }; }
         loadProfiles(); loadBidirectional(); loadInjectionConfig(); loadTheme(); loadPokeConfig(); loadCharacterBehavior();
         loadWordyLimit(); loadGalBubbleEnabled(); loadBudgetConfig(); loadWorldBookConfig(); migrateOldHistory();
-        await Promise.all([loadGroupMeta(), loadEmojis()]);
+        await Promise.all([
+            loadGroupMeta(),
+            loadEmojis(),
+            loadDesktopIcons().catch(error => { window.__pmDesktopIcons = {}; console.warn('[phone-mode] 桌面图标加载失败，已使用默认图标', error); }),
+        ]);
         loadBgSettings().then(() => { try { applyBackground(); } catch (e) {} });
         hookGenerationEvent();
         const c = getCtx(), defaultChar = c?.characters?.[c.characterId]?.name ?? 'AI';

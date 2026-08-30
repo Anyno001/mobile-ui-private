@@ -1,5 +1,6 @@
 import { getInteractivePresets } from './interactive-scene-ai.js';
 import { createCommunityTemplate } from './interactive-scene-model.js';
+import { DESKTOP_ICON_SIZE, isValidDesktopIconRuntimeData } from './desktop-icon-storage.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     BOOK_ICON_SVG, CONTACTS_ICON_SVG, CONTROL_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, HOME_ICON_SVG,
@@ -8,6 +9,12 @@ import {
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const DEFAULT_DESKTOP_TITLE = '天音小笺';
+export function resolveDesktopAppIcon(appId, fallbackSvg) {
+    const dataUrl = globalThis.window?.__pmDesktopIcons?.[appId];
+    if (!isValidDesktopIconRuntimeData(dataUrl)) return fallbackSvg;
+    const removeInvalidImage = `if(this.naturalWidth!==${DESKTOP_ICON_SIZE}||this.naturalHeight!==${DESKTOP_ICON_SIZE})this.remove()`;
+    return `<span class="pm-desktop-icon-stack">${fallbackSvg}<img src="${escapeAttr(dataUrl)}" alt="" aria-hidden="true" onload="${removeInvalidImage}" onerror="this.remove()"></span>`;
+}
 const DANMAKU_TONES = ['blue', 'pink', 'cyan', 'gold'];
 
 function stableDanmakuHash(item) {
@@ -83,15 +90,15 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
     const templates = sharedCommunityTemplates.map(template => `<article class="pm-desktop-pin pm-desktop-template" style="--scene-accent:${escapeAttr(sceneAccent(template))}"><button type="button" data-action="desktop-import-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="导入社区模板：${escapeAttr(template.title)}"><b>${escapeHtml(template.title)}</b></button><button type="button" data-action="dismiss-community-template" data-template-id="${escapeAttr(template.id)}" aria-label="从当前桌面移除 ${escapeAttr(template.title)} 模板">移除</button></article>`).join('');
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="应用">
-            <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="会话" title="会话"><span class="pm-desktop-app-icon">${CHAT_ICON_SVG}</span><span class="pm-desktop-app-label">会话</span></button>
-            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="联系人" title="联系人"><span class="pm-desktop-app-icon">${CONTACTS_ICON_SVG}</span><span class="pm-desktop-app-label">联系人</span></button>
-            <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${SETTINGS_ICON_SVG}</span><span class="pm-desktop-app-label">设置</span></button>
-            <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${CALENDAR_ICON_SVG}</span><span class="pm-desktop-app-label">日历</span></button>
-            <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${TREND_ICON_SVG}</span><span class="pm-desktop-app-label">今日风向</span></button>
-            <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="剧情助手" title="剧情助手"><span class="pm-desktop-app-icon">${SPARKLES_ICON_SVG}</span><span class="pm-desktop-app-label">剧情助手</span></button>
+            <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="会话" title="会话"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('chat', CHAT_ICON_SVG)}</span><span class="pm-desktop-app-label">会话</span></button>
+            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="联系人" title="联系人"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('directory', CONTACTS_ICON_SVG)}</span><span class="pm-desktop-app-label">联系人</span></button>
+            <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('settings', SETTINGS_ICON_SVG)}</span><span class="pm-desktop-app-label">设置</span></button>
+            <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('calendar', CALENDAR_ICON_SVG)}</span><span class="pm-desktop-app-label">日历</span></button>
+            <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('todayTrend', TREND_ICON_SVG)}</span><span class="pm-desktop-app-label">今日风向</span></button>
+            <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="剧情助手" title="剧情助手"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('storyOracle', SPARKLES_ICON_SVG)}</span><span class="pm-desktop-app-label">剧情助手</span></button>
         </div>
         <section class="pm-desktop-pins"><h3>固定社区</h3>${pins}${templates}</section>
-        <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="发布一条">${COMMUNITY_ICON_SVG}<span>发布一条</span></button></div>`;
+        <div class="pm-desktop-community-dock"><button type="button" data-action="desktop-community" aria-label="发布一条">${resolveDesktopAppIcon('community', COMMUNITY_ICON_SVG)}<span>发布一条</span></button></div>`;
 }
 
 function renderPresetOptions(selected) {

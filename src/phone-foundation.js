@@ -117,6 +117,7 @@ export function installPhoneFoundation(state, deps) {
         qrLabel: '天音',
         phoneScale: 1,
     };
+    window.__pmDesktopIcons = window.__pmDesktopIcons || {};
     window.__pmDesktopBg = window.__pmDesktopBg || '';
     window.__pmBgGlobal = window.__pmBgGlobal || '';
     window.__pmBgLocal = window.__pmBgLocal || {};

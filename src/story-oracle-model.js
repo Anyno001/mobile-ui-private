@@ -1,7 +1,7 @@
 export const STORY_ORACLE_STORE_VERSION = 1;
 export const STORY_ORACLE_MODE = 'question';
-export const STORY_ORACLE_MODES = Object.freeze(['question', 'advisor']);
-export const STORY_ORACLE_HISTORY_MODES = Object.freeze(['question', 'lorebook', 'advisor']);
+export const STORY_ORACLE_MODES = Object.freeze(['question', 'advisor', 'user-generation']);
+export const STORY_ORACLE_HISTORY_MODES = Object.freeze(['question', 'lorebook', 'advisor', 'user-generation']);
 export const STORY_ORACLE_LIMITS = Object.freeze({
     messages: 60,
     messageChars: 12000,
@@ -16,6 +16,7 @@ export const STORY_ORACLE_LIMITS = Object.freeze({
     systemPromptChars: 6000,
 });
 export const STORY_ORACLE_PLAN_LIMITS = Object.freeze({ parsed: 12, enabled: 5, injectionChars: 18000 });
+export const USER_GENERATION_PROTOCOL_LIMITS = Object.freeze({ titleChars: 160, summaryChars: 1000, contentChars: 20000, questionChars: 2000, missingChars: 1000 });
 export const STORY_ORACLE_PACE_OPTIONS = Object.freeze(['slow', 'natural', 'fast']);
 export const STORY_ORACLE_INTENSITIES = Object.freeze({
     slow: Object.freeze({ label: '只铺垫', instruction: '只铺垫：呈现征兆、信息和关系张力，不让核心冲突在本轮定局。' }),
@@ -116,10 +117,11 @@ function normalizeSettings(value) {
     if (!source) return null;
     const systemPrompt = text(source.systemPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
     if (systemPrompt) return { systemPrompt };
+    const hasLegacySettings = ['pace', 'breakLimit', 'customPrompt'].some(key => Object.hasOwn(source, key));
+    if (!hasLegacySettings) return null;
     const pace = STORY_ORACLE_PACE_OPTIONS.includes(source.pace) ? source.pace : 'natural';
     const customPrompt = text(source.customPrompt, STORY_ORACLE_LIMITS.systemPromptChars);
     const breakLimit = source.breakLimit === true;
-    if (pace === 'natural' && !customPrompt && !breakLimit) return null;
     const legacyInstructions = [
         LEGACY_PACE_INSTRUCTIONS[pace],
         breakLimit ? LEGACY_BREAK_LIMIT_INSTRUCTION : '',
@@ -315,6 +317,95 @@ export function parseStoryPlans(value) {
         plans.push({ title, goal, seed, why, pace, order: index, enabled: false });
     }
     return { plans, hadBlocks: true, invalid: false };
+}
+
+function protocolBlocks(source, tag) {
+    const pattern = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+    const blocks = [...source.matchAll(pattern)].map(match => match[1] ?? '');
+    const opening = new RegExp(`<${tag}\\s*>`, 'i').test(source);
+    const remainder = source.replace(pattern, '');
+    return { blocks, opening, unclosed: new RegExp(`<${tag}\\s*>`, 'i').test(remainder) };
+}
+
+function parseProtocolFields(block, allowed, limits) {
+    const markers = [];
+    const pattern = new RegExp(`^\\s*(${allowed.join('|')})\\s*[:：]\\s*`, 'gmi');
+    for (const match of String(block || '').matchAll(pattern)) {
+        const key = match[1].toLowerCase();
+        markers.push({ key, start: match.index + match[0].length, markerStart: match.index });
+    }
+    if (markers.length !== allowed.length) return { invalid: true, reason: `控制区块字段必须依次包含 ${allowed.join('/')}` };
+    for (const [index, marker] of markers.entries()) {
+        if (marker.key !== allowed[index]) return { invalid: true, reason: `控制区块字段顺序无效或重复：${marker.key}` };
+    }
+    if (String(block || '').slice(0, markers[0].markerStart).trim()) return { invalid: true, reason: '控制区块字段前存在无法识别的内容' };
+    const fields = {};
+    for (const [index, marker] of markers.entries()) {
+        const value = String(block || '').slice(marker.start, markers[index + 1]?.markerStart ?? String(block || '').length).trim();
+        const limit = limits[marker.key];
+        if (value.length > limit) return { invalid: true, reason: `${marker.key} 超过 ${limit} 字符上限` };
+        fields[marker.key] = value;
+    }
+    return { invalid: false, fields };
+}
+
+const USER_GENERATION_EXPLICIT_PATTERN = /性行为|性交|做爱|口交|肛交|手交|乳交|自慰|阴茎|阴道|阴蒂|龟头|射精|精液|高潮|插入|抽插|露骨性|色情/iu;
+const USER_GENERATION_MINOR_PATTERN = /未成年|未满\s*18|儿童|幼童|小学生|初中生|高中生|男童|女童|幼女|幼男|萝莉|正太/iu;
+const USER_GENERATION_ALL_ADULTS_PATTERN = /所有参与露骨成人内容的角色均已年满\s*18\s*岁/iu;
+
+export function userGenerationAdultSafetyIssue(result) {
+    const content = typeof result?.content === 'string' ? result.content : '';
+    const source = [result?.title, result?.summary, result?.content].filter(Boolean).join('\n');
+    if (!USER_GENERATION_EXPLICIT_PATTERN.test(source)) return '';
+    if (USER_GENERATION_MINOR_PATTERN.test(source)) return '露骨成人内容不得涉及未成年人';
+    if (!USER_GENERATION_ALL_ADULTS_PATTERN.test(content)) {
+        return '露骨成人内容必须声明所有参与角色均已年满18岁';
+    }
+    return '';
+}
+
+export function parseUserGenerationResponse(value) {
+    const source = typeof value === 'string' ? value : '';
+    const stateBlocks = protocolBlocks(source, 'UserGenerationState');
+    const resultBlocks = protocolBlocks(source, 'UserGenerationResult');
+    const hadBlocks = stateBlocks.opening || resultBlocks.opening;
+    const invalid = reason => ({ status: '', state: null, result: null, displayText: stripUserGenerationMarkup(source), hadBlocks, invalid: true, reason });
+    if (!hadBlocks) return { status: '', state: null, result: null, displayText: source.trim(), hadBlocks: false, invalid: false, reason: '' };
+    if (stateBlocks.unclosed || resultBlocks.unclosed) return invalid('User 生成控制区块未闭合');
+    if (stateBlocks.blocks.length !== 1) return invalid('每轮必须且只能包含一个 UserGenerationState 区块');
+    if (resultBlocks.blocks.length > 1) return invalid('每轮最多包含一个 UserGenerationResult 区块');
+    const parsedState = parseProtocolFields(stateBlocks.blocks[0], ['status', 'missing', 'question'], {
+        status: 20, missing: USER_GENERATION_PROTOCOL_LIMITS.missingChars, question: USER_GENERATION_PROTOCOL_LIMITS.questionChars,
+    });
+    if (parsedState.invalid) return invalid(parsedState.reason);
+    const status = String(parsedState.fields.status || '').toLowerCase();
+    if (!['collecting', 'complete', 'revision'].includes(status)) return invalid('User 生成状态无效');
+    const state = { status, missing: parsedState.fields.missing || '', question: parsedState.fields.question || '' };
+    if (status === 'collecting') {
+        if (!state.question) return invalid('collecting 状态缺少 question');
+        if (resultBlocks.blocks.length) return invalid('collecting 状态不得包含成品区块');
+        return { status, state, result: null, displayText: stripUserGenerationMarkup(source) || state.question, hadBlocks: true, invalid: false, reason: '' };
+    }
+    if (resultBlocks.blocks.length !== 1) return invalid(`${status} 状态缺少 UserGenerationResult 区块`);
+    const parsedResult = parseProtocolFields(resultBlocks.blocks[0], ['title', 'summary', 'content'], {
+        title: USER_GENERATION_PROTOCOL_LIMITS.titleChars,
+        summary: USER_GENERATION_PROTOCOL_LIMITS.summaryChars,
+        content: USER_GENERATION_PROTOCOL_LIMITS.contentChars,
+    });
+    if (parsedResult.invalid) return invalid(parsedResult.reason);
+    const result = {
+        title: parsedResult.fields.title || '', summary: parsedResult.fields.summary || '', content: parsedResult.fields.content || '',
+    };
+    if (!result.title || !result.content) return invalid(`${status} 状态缺少 title 或 content`);
+    const safetyIssue = userGenerationAdultSafetyIssue(result);
+    if (safetyIssue) return invalid(safetyIssue);
+    return { status, state, result, displayText: stripUserGenerationMarkup(source), hadBlocks: true, invalid: false, reason: '' };
+}
+
+export function stripUserGenerationMarkup(value) {
+    return typeof value === 'string'
+        ? value.replace(/<UserGeneration(?:State|Result)>[\s\S]*?(?:<\/UserGeneration(?:State|Result)>|$)/gi, '').trim()
+        : '';
 }
 
 export function stripStoryPlanMarkup(value) {

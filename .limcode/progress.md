@@ -1,6 +1,6 @@
 # 项目进度
 - Project: mobile-ui-private
-- Updated At: 2026-08-29T04:38:33.870Z
+- Updated At: 2026-08-29T20:42:15.185Z
 - Status: blocked
 - Phase: review
 
@@ -8,30 +8,30 @@
 
 <!-- LIMCODE_PROGRESS_SUMMARY_START -->
 - 当前进度：3/3 个里程碑已完成；最新：trend-svg-mapping-release
-- 当前焦点：StoryPlan 独立卡片交互已完成，提交已推送，等待真实 SillyTavern 宿主现场验证
-- 最新结论：本地提交 8d80da0 已成功推送到 origin/main；代码层独立验收第 8 轮通过（blocking=0、major=0、minor=0、advisory=1）。
-- 当前阻塞：尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。
-- 下一步：在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。
+- 当前焦点：剧情助手 User 生成模式的真实 SillyTavern 宿主人工回归
+- 最新结论：源码、专项测试、构建、全量门禁与独立验收均通过；Acceptance Expert 结论为 0 blocking、0 major、0 minor、1 advisory。
+- 当前阻塞：当前受控浏览器未连接真实 SillyTavern 宿主，无法验证 /phone 端到端生成、跨聊天共享、刷新恢复、Clipboard 权限拒绝、320px 与键盘焦点。
+- 下一步：在真实 SillyTavern 宿主按计划执行人工回归；通过后关闭 acceptance TODO。
 <!-- LIMCODE_PROGRESS_SUMMARY_END -->
 
 ## 关联文档
 
 <!-- LIMCODE_PROGRESS_ARTIFACTS_START -->
-- 设计：`.limcode/design/story-oracle-phone-app.md`
-- 计划：`.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md`
+- 设计：`.limcode/design/story-oracle-user-generation-mode.md`
+- 计划：`.limcode/plans/desktop-icons-and-appearance-pack.md`
 <!-- LIMCODE_PROGRESS_ARTIFACTS_END -->
 
 ## 当前 TODO 快照
 
 <!-- LIMCODE_PROGRESS_TODOS_START -->
-- [ ] 核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项  `#story-oracle-bundle-verification` (in_progress)
-- [x] 冻结第二轮大纲可见性与路线字段契约，确认 pace/sourceMessageId/order/本轮解析收据的最小数据流  `#story-oracle-plan-contract`
-- [x] 修复多轮路线累计、最新路线可见排序、消息绑定失败兜底与生成结果收据  `#story-oracle-plan-visibility`
-- [x] 实现剧情助手二级菜单原型：速度档位、破限预设、提示词/附加指令编辑，并持久化到现有 Store version 1  `#story-oracle-settings-prototype`
-- [ ] 将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单  `#story-oracle-tabbed-layout-redesign`
-- [x] 完成无装饰描边、强呼吸感、深蓝主操作、弱化危险操作、长标题换行和亮暗主题样式  `#story-oracle-ui-visual`
-- [x] 按 TASKOW 参考重构剧情助手页面信息架构、路线工作台、活动路线区、消息流和输入区  `#story-oracle-ui-workbench`
-- [x] 核查上游速度、破限提示词与提示词修改入口实现  `#story-oracle-upstream-prompts`
+- [ ] 自动化构建/全量门禁/体积核对与独立验收专家已通过；待在真实 SillyTavern 宿主完成图标上传与回退、触摸裁剪、美化包导入、联系人切换及亮暗/320px 视觉冒烟后最终关闭。  `#appearance-host-acceptance` (in_progress)
+- [x] 实现 tianyin-appearance 独立美化包白名单格式、大小限制与导出。  `#appearance-pack-format`
+- [x] 实现美化包解析预校验、预览确认、联系人锁定、事务导入和失败恢复。  `#appearance-pack-import`
+- [x] 补齐美化包、备份、隐私负例、回滚、CSS/ARIA 等机器门禁。  `#appearance-tests-gates`
+- [x] 参数化现有裁剪器并保持默认背景裁剪行为不变，新增透明 PNG 图标模式与回归测试。  `#cropper-icon-mode`
+- [x] 实现七项桌面图标的 IndexedDB 清单/资源存储、容量限制、损坏隔离、补偿回滚与安全清理登记。  `#desktop-icon-storage`
+- [x] 接入七项桌面入口渲染与设置 UI，支持上传裁剪、单项重置、全部重置和即时刷新。  `#desktop-icon-ui-render`
+- [x] 将桌面图标资产纳入完整备份的新 schema、旧版本兼容、持久化与事务回滚。  `#full-backup-icons`
 <!-- LIMCODE_PROGRESS_TODOS_END -->
 
 ## 项目里程碑
@@ -71,34 +71,32 @@
 ## 风险与阻塞
 
 <!-- LIMCODE_PROGRESS_RISKS_START -->
-- story-oracle-license | active | 上游许可证边界未确认：上游无标准 LICENSE，未确认再分发授权；当前实现仅保留必要交互语义，未直接复制上游实现。
-- story-oracle-writeback-contract | active | 宿主写回契约缺失：未发现可确认的宿主消息、角色或世界书正文写回接口；开始引导仅通过现有扩展提示注入链影响主聊天，不伪造宿主正文写回。
-- story-oracle-host-matrix | active | 真实宿主现场矩阵未完成：尚未在真实 SillyTavern 宿主完成亮色/暗色、窄屏、键盘焦点、刷新恢复、扩展提示参数和实际 prompt 注入检查。
+- user-generation-host-regression | active | 真实 SillyTavern 宿主回归未执行：自动化无法覆盖真实宿主生命周期、Clipboard 权限、跨聊天可见性、320px 布局和辅助技术行为。
 <!-- LIMCODE_PROGRESS_RISKS_END -->
 
 ## 最近更新
 
 <!-- LIMCODE_PROGRESS_LOG_START -->
-- 2026-08-27T07:36:10.906Z | risk_changed | story-oracle-plan-acceptance | 本地代码与自动门禁已完成；独立 Acceptance Expert 连续两次因 API 403 返回 not_assessed，正式验收阻塞，验收 TODO 保持 pending。
-- 2026-08-27T07:58:35.466Z | risk_changed | story-oracle-plan-release | 全部门禁与提交已完成；git push origin main 在 GitHub 返回 401 后超时，SSH 无私钥、GitHub CLI/token 不可用，远端仍未更新，等待认证恢复。
-- 2026-08-27T08:14:22.511Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。
-- 2026-08-27T08:14:22.511Z | risk_changed | story-oracle-plan-acceptance | 发布完成后仍保留正式验收阻塞：Acceptance Expert 连续两次因 API 403 返回 not_assessed。
-- 2026-08-27T08:16:44.634Z | milestone_recorded | story-oracle-plan-release | 提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。
-- 2026-08-27T14:41:54.064Z | updated | story-oracle-ui-session-alignment | 剧情助手本轮 UI/线路体验改动已完成：移除正常绑定提示、专属菜单白底、危险清空态、顶部已注入大纲条、注入失败回显；本地门禁全部通过。
-- 2026-08-27T14:41:54.064Z | risk_changed | story-oracle-independent-acceptance | Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。
-- 2026-08-27T18:58:28.375Z | updated | story-oracle-route-picker-visible | 最新代码已将每个 StoryPlan 拆为独立 pm-story-oracle-plan-bubble，并提供开始引导/停止引导按钮；活动线路位于 navbar 后、消息滚动容器外。
-- 2026-08-27T18:58:28.375Z | updated | story-oracle-independent-acceptance-blocked | Acceptance Expert 第五轮仍报告 UI 动作级测试、独立命令对账与真实宿主证据不足；保留阻塞状态。
-- 2026-08-27T18:59:23.683Z | updated | story-oracle-independent-acceptance-blocked | 续传后重新核对最新静态契约；保留独立验收阻塞，不将源码通过等同于生产放行。
-- 2026-08-27T19:06:22.939Z | updated | story-oracle-independent-acceptance-blocked | 已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。
-- 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-route-picker-visible | 完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。
-- 2026-08-27T19:09:49.146Z | milestone_recorded | story-oracle-independent-acceptance | 第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。
-- 2026-08-28T09:46:42.488Z | artifact_changed | design | 同步设计文档：.limcode/design/story-oracle-phone-app.md
-- 2026-08-28T09:50:38.367Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
-- 2026-08-28T09:53:07.505Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
-- 2026-08-28T10:09:28.928Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
-- 2026-08-28T10:15:51.964Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
-- 2026-08-28T10:20:22.674Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
-- 2026-08-29T04:38:33.870Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md
+- 2026-08-29T05:27:41.160Z | risk_changed | story-oracle-publish-network | git push 连接重置且 git ls-remote 无法连接 GitHub 443；停止重复推送，等待网络恢复后再发布。
+- 2026-08-29T05:36:12.698Z | updated | story-oracle-rounding-cleanup-release | 提交 c4a040c 已通过临时代理成功推送，git ls-remote 确认 origin/main 精确指向该提交；网络发布阻塞解除。
+- 2026-08-29T06:07:25.556Z | updated | story-oracle-route-interaction-density-release | 提交 d473eb0 已通过临时代理推送，git ls-remote 确认 origin/main 精确指向该提交；完成紧凑导航、路线计数、主题选中态、SVG 状态切换与路线滚动保持修复。
+- 2026-08-29T06:23:15.635Z | updated | story-oracle-route-surface-refinement-release | 提交 0b6a2b7 已通过临时代理推送，git ls-remote 确认 origin/main 精确指向该提交；完成路线纯 SVG 状态控件、标题对齐与字号、灰底白卡和菜单定位修复。
+- 2026-08-29T17:15:50.800Z | artifact_changed | design | 同步设计文档：.limcode/design/story-oracle-user-generation-mode.md
+- 2026-08-29T17:20:44.727Z | artifact_changed | plan | 同步计划文档：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T17:36:47.292Z | artifact_changed | plan | 同步计划文档：.limcode/plans/desktop-icons-and-appearance-pack.md
+- 2026-08-29T17:43:07.331Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T17:43:07.606Z | milestone_recorded | user-gen-plan-contract-recon | 完成 User 生成模式前置调用链侦察，确认独立全局存储、备份 schema 16、现有 AI 调用与 CSS owner。
+- 2026-08-29T18:07:36.730Z | milestone_recorded | cropper-icon-mode | 完成裁剪器参数化和透明图标模式，定向检查通过。
+- 2026-08-29T18:07:36.784Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md
+- 2026-08-29T18:38:42.852Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md
+- 2026-08-29T18:49:21.628Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T19:21:17.044Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md
+- 2026-08-29T19:54:56.411Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md
+- 2026-08-29T19:59:51.734Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T20:28:25.261Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T20:39:22.579Z | milestone_recorded | user-generation-independent-acceptance | 修复成年声明字段归属与空 IDB 主键 fallback 写句柄后，重新通过专项、构建、全量门禁和独立验收；仅剩真实宿主人工回归。
+- 2026-08-29T20:39:22.608Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md
+- 2026-08-29T20:42:15.185Z | artifact_changed | plan | 同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md
 <!-- LIMCODE_PROGRESS_LOG_END -->
 
 <!-- LIMCODE_PROGRESS_METADATA_START -->
@@ -108,56 +106,56 @@
   "projectId": "mobile-ui-private",
   "projectName": "mobile-ui-private",
   "createdAt": "2026-08-14T05:55:56.978Z",
-  "updatedAt": "2026-08-29T04:38:33.870Z",
+  "updatedAt": "2026-08-29T20:42:15.185Z",
   "status": "blocked",
   "phase": "review",
-  "currentFocus": "StoryPlan 独立卡片交互已完成，提交已推送，等待真实 SillyTavern 宿主现场验证",
-  "latestConclusion": "本地提交 8d80da0 已成功推送到 origin/main；代码层独立验收第 8 轮通过（blocking=0、major=0、minor=0、advisory=1）。",
-  "currentBlocker": "尚未在真实 SillyTavern 宿主完成亮暗主题、窄屏、键盘焦点、刷新恢复、世界书选择和实际扩展提示注入矩阵。",
-  "nextAction": "在目标 SillyTavern 宿主执行现场回归；现场验证前不宣称完整生产放行。",
+  "currentFocus": "剧情助手 User 生成模式的真实 SillyTavern 宿主人工回归",
+  "latestConclusion": "源码、专项测试、构建、全量门禁与独立验收均通过；Acceptance Expert 结论为 0 blocking、0 major、0 minor、1 advisory。",
+  "currentBlocker": "当前受控浏览器未连接真实 SillyTavern 宿主，无法验证 /phone 端到端生成、跨聊天共享、刷新恢复、Clipboard 权限拒绝、320px 与键盘焦点。",
+  "nextAction": "在真实 SillyTavern 宿主按计划执行人工回归；通过后关闭 acceptance TODO。",
   "activeArtifacts": {
-    "design": ".limcode/design/story-oracle-phone-app.md",
-    "plan": ".limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+    "design": ".limcode/design/story-oracle-user-generation-mode.md",
+    "plan": ".limcode/plans/desktop-icons-and-appearance-pack.md"
   },
   "todos": [
     {
-      "id": "story-oracle-bundle-verification",
-      "content": "核对既有构建产物与原型级门禁证据，记录未覆盖宿主风险并关闭历史收尾项",
+      "id": "appearance-host-acceptance",
+      "content": "自动化构建/全量门禁/体积核对与独立验收专家已通过；待在真实 SillyTavern 宿主完成图标上传与回退、触摸裁剪、美化包导入、联系人切换及亮暗/320px 视觉冒烟后最终关闭。",
       "status": "in_progress"
     },
     {
-      "id": "story-oracle-plan-contract",
-      "content": "冻结第二轮大纲可见性与路线字段契约，确认 pace/sourceMessageId/order/本轮解析收据的最小数据流",
+      "id": "appearance-pack-format",
+      "content": "实现 tianyin-appearance 独立美化包白名单格式、大小限制与导出。",
       "status": "completed"
     },
     {
-      "id": "story-oracle-plan-visibility",
-      "content": "修复多轮路线累计、最新路线可见排序、消息绑定失败兜底与生成结果收据",
+      "id": "appearance-pack-import",
+      "content": "实现美化包解析预校验、预览确认、联系人锁定、事务导入和失败恢复。",
       "status": "completed"
     },
     {
-      "id": "story-oracle-settings-prototype",
-      "content": "实现剧情助手二级菜单原型：速度档位、破限预设、提示词/附加指令编辑，并持久化到现有 Store version 1",
+      "id": "appearance-tests-gates",
+      "content": "补齐美化包、备份、隐私负例、回滚、CSS/ARIA 等机器门禁。",
       "status": "completed"
     },
     {
-      "id": "story-oracle-tabbed-layout-redesign",
-      "content": "将剧情助手重构为“对话 / 路线”平级视图，移除顶部双常驻路线区，采用路线摘要卡、展开详情与局部操作菜单",
-      "status": "pending"
-    },
-    {
-      "id": "story-oracle-ui-visual",
-      "content": "完成无装饰描边、强呼吸感、深蓝主操作、弱化危险操作、长标题换行和亮暗主题样式",
+      "id": "cropper-icon-mode",
+      "content": "参数化现有裁剪器并保持默认背景裁剪行为不变，新增透明 PNG 图标模式与回归测试。",
       "status": "completed"
     },
     {
-      "id": "story-oracle-ui-workbench",
-      "content": "按 TASKOW 参考重构剧情助手页面信息架构、路线工作台、活动路线区、消息流和输入区",
+      "id": "desktop-icon-storage",
+      "content": "实现七项桌面图标的 IndexedDB 清单/资源存储、容量限制、损坏隔离、补偿回滚与安全清理登记。",
       "status": "completed"
     },
     {
-      "id": "story-oracle-upstream-prompts",
-      "content": "核查上游速度、破限提示词与提示词修改入口实现",
+      "id": "desktop-icon-ui-render",
+      "content": "接入七项桌面入口渲染与设置 UI，支持上传裁剪、单项重置、全部重置和即时刷新。",
+      "status": "completed"
+    },
+    {
+      "id": "full-backup-icons",
+      "content": "将桌面图标资产纳入完整备份的新 schema、旧版本兼容、持久化与事务回滚。",
       "status": "completed"
     }
   ],
@@ -217,159 +215,147 @@
   ],
   "risks": [
     {
-      "id": "story-oracle-license",
-      "title": "上游许可证边界未确认",
-      "description": "上游无标准 LICENSE，未确认再分发授权；当前实现仅保留必要交互语义，未直接复制上游实现。",
-      "status": "active"
-    },
-    {
-      "id": "story-oracle-writeback-contract",
-      "title": "宿主写回契约缺失",
-      "description": "未发现可确认的宿主消息、角色或世界书正文写回接口；开始引导仅通过现有扩展提示注入链影响主聊天，不伪造宿主正文写回。",
-      "status": "active"
-    },
-    {
-      "id": "story-oracle-host-matrix",
-      "title": "真实宿主现场矩阵未完成",
-      "description": "尚未在真实 SillyTavern 宿主完成亮色/暗色、窄屏、键盘焦点、刷新恢复、扩展提示参数和实际 prompt 注入检查。",
+      "id": "user-generation-host-regression",
+      "title": "真实 SillyTavern 宿主回归未执行",
+      "description": "自动化无法覆盖真实宿主生命周期、Clipboard 权限、跨聊天可见性、320px 布局和辅助技术行为。",
       "status": "active"
     }
   ],
   "log": [
     {
-      "at": "2026-08-27T07:36:10.906Z",
+      "at": "2026-08-29T05:27:41.160Z",
       "type": "risk_changed",
-      "refId": "story-oracle-plan-acceptance",
-      "message": "本地代码与自动门禁已完成；独立 Acceptance Expert 连续两次因 API 403 返回 not_assessed，正式验收阻塞，验收 TODO 保持 pending。"
+      "refId": "story-oracle-publish-network",
+      "message": "git push 连接重置且 git ls-remote 无法连接 GitHub 443；停止重复推送，等待网络恢复后再发布。"
     },
     {
-      "at": "2026-08-27T07:58:35.466Z",
-      "type": "risk_changed",
-      "refId": "story-oracle-plan-release",
-      "message": "全部门禁与提交已完成；git push origin main 在 GitHub 返回 401 后超时，SSH 无私钥、GitHub CLI/token 不可用，远端仍未更新，等待认证恢复。"
-    },
-    {
-      "at": "2026-08-27T08:14:22.511Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-plan-release",
-      "message": "提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；工作树仅剩项目进度账本的状态修正。"
-    },
-    {
-      "at": "2026-08-27T08:14:22.511Z",
-      "type": "risk_changed",
-      "refId": "story-oracle-plan-acceptance",
-      "message": "发布完成后仍保留正式验收阻塞：Acceptance Expert 连续两次因 API 403 返回 not_assessed。"
-    },
-    {
-      "at": "2026-08-27T08:16:44.634Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-plan-release",
-      "message": "提交 09f4733 已成功推送到 origin/main，远端指针已核对一致；当前仅同步项目进度账本，正式独立验收仍因 API 403 阻塞。"
-    },
-    {
-      "at": "2026-08-27T14:41:54.064Z",
+      "at": "2026-08-29T05:36:12.698Z",
       "type": "updated",
-      "refId": "story-oracle-ui-session-alignment",
-      "message": "剧情助手本轮 UI/线路体验改动已完成：移除正常绑定提示、专属菜单白底、危险清空态、顶部已注入大纲条、注入失败回显；本地门禁全部通过。"
+      "refId": "story-oracle-rounding-cleanup-release",
+      "message": "提交 c4a040c 已通过临时代理成功推送，git ls-remote 确认 origin/main 精确指向该提交；网络发布阻塞解除。"
     },
     {
-      "at": "2026-08-27T14:41:54.064Z",
-      "type": "risk_changed",
-      "refId": "story-oracle-independent-acceptance",
-      "message": "Acceptance Expert 连续三次超时无返回，正式独立验收阻塞；未将本轮 TODO 标记为完成。"
-    },
-    {
-      "at": "2026-08-27T18:58:28.375Z",
+      "at": "2026-08-29T06:07:25.556Z",
       "type": "updated",
-      "refId": "story-oracle-route-picker-visible",
-      "message": "最新代码已将每个 StoryPlan 拆为独立 pm-story-oracle-plan-bubble，并提供开始引导/停止引导按钮；活动线路位于 navbar 后、消息滚动容器外。"
+      "refId": "story-oracle-route-interaction-density-release",
+      "message": "提交 d473eb0 已通过临时代理推送，git ls-remote 确认 origin/main 精确指向该提交；完成紧凑导航、路线计数、主题选中态、SVG 状态切换与路线滚动保持修复。"
     },
     {
-      "at": "2026-08-27T18:58:28.375Z",
+      "at": "2026-08-29T06:23:15.635Z",
       "type": "updated",
-      "refId": "story-oracle-independent-acceptance-blocked",
-      "message": "Acceptance Expert 第五轮仍报告 UI 动作级测试、独立命令对账与真实宿主证据不足；保留阻塞状态。"
+      "refId": "story-oracle-route-surface-refinement-release",
+      "message": "提交 0b6a2b7 已通过临时代理推送，git ls-remote 确认 origin/main 精确指向该提交；完成路线纯 SVG 状态控件、标题对齐与字号、灰底白卡和菜单定位修复。"
     },
     {
-      "at": "2026-08-27T18:59:23.683Z",
-      "type": "updated",
-      "refId": "story-oracle-independent-acceptance-blocked",
-      "message": "续传后重新核对最新静态契约；保留独立验收阻塞，不将源码通过等同于生产放行。"
-    },
-    {
-      "at": "2026-08-27T19:06:22.939Z",
-      "type": "updated",
-      "refId": "story-oracle-independent-acceptance-blocked",
-      "message": "已准备窄读补齐 action 分派、持久化/注入顺序、存储恢复与转义证据；第八轮将作为最后一次自动验收。"
-    },
-    {
-      "at": "2026-08-27T19:09:49.146Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-route-picker-visible",
-      "message": "完成上游式 StoryPlan 独立路线气泡与开始引导按钮；启用路线在 navbar 下方独立区域置顶显示。"
-    },
-    {
-      "at": "2026-08-27T19:09:49.146Z",
-      "type": "milestone_recorded",
-      "refId": "story-oracle-independent-acceptance",
-      "message": "第 8 轮独立 Acceptance Expert 通过：blocking=0、major=0、minor=0、advisory=1；代码层放行，现场宿主矩阵仍待验证。"
-    },
-    {
-      "at": "2026-08-28T09:46:42.488Z",
+      "at": "2026-08-29T17:15:50.800Z",
       "type": "artifact_changed",
       "refId": "design",
-      "message": "同步设计文档：.limcode/design/story-oracle-phone-app.md"
+      "message": "同步设计文档：.limcode/design/story-oracle-user-generation-mode.md"
     },
     {
-      "at": "2026-08-28T09:50:38.367Z",
+      "at": "2026-08-29T17:20:44.727Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "message": "同步计划文档：.limcode/plans/story-oracle-user-generation-mode.plan.md"
     },
     {
-      "at": "2026-08-28T09:53:07.505Z",
+      "at": "2026-08-29T17:36:47.292Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "message": "同步计划文档：.limcode/plans/desktop-icons-and-appearance-pack.md"
     },
     {
-      "at": "2026-08-28T10:09:28.928Z",
+      "at": "2026-08-29T17:43:07.331Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md"
     },
     {
-      "at": "2026-08-28T10:15:51.964Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "at": "2026-08-29T17:43:07.606Z",
+      "type": "milestone_recorded",
+      "refId": "user-gen-plan-contract-recon",
+      "message": "完成 User 生成模式前置调用链侦察，确认独立全局存储、备份 schema 16、现有 AI 调用与 CSS owner。"
     },
     {
-      "at": "2026-08-28T10:20:22.674Z",
-      "type": "artifact_changed",
-      "refId": "plan",
-      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "at": "2026-08-29T18:07:36.730Z",
+      "type": "milestone_recorded",
+      "refId": "cropper-icon-mode",
+      "message": "完成裁剪器参数化和透明图标模式，定向检查通过。"
     },
     {
-      "at": "2026-08-29T04:38:33.870Z",
+      "at": "2026-08-29T18:07:36.784Z",
       "type": "artifact_changed",
       "refId": "plan",
-      "message": "同步计划文档：.limcode/plans/story-oracle-路线工作台与-taskow-风格-ui-重构实施计划.plan.md"
+      "message": "同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md"
+    },
+    {
+      "at": "2026-08-29T18:38:42.852Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md"
+    },
+    {
+      "at": "2026-08-29T18:49:21.628Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md"
+    },
+    {
+      "at": "2026-08-29T19:21:17.044Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md"
+    },
+    {
+      "at": "2026-08-29T19:54:56.411Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md"
+    },
+    {
+      "at": "2026-08-29T19:59:51.734Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md"
+    },
+    {
+      "at": "2026-08-29T20:28:25.261Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md"
+    },
+    {
+      "at": "2026-08-29T20:39:22.579Z",
+      "type": "milestone_recorded",
+      "refId": "user-generation-independent-acceptance",
+      "message": "修复成年声明字段归属与空 IDB 主键 fallback 写句柄后，重新通过专项、构建、全量门禁和独立验收；仅剩真实宿主人工回归。"
+    },
+    {
+      "at": "2026-08-29T20:39:22.608Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/story-oracle-user-generation-mode.plan.md"
+    },
+    {
+      "at": "2026-08-29T20:42:15.185Z",
+      "type": "artifact_changed",
+      "refId": "plan",
+      "message": "同步计划 TODO 快照：.limcode/plans/desktop-icons-and-appearance-pack.md"
     }
   ],
   "stats": {
     "milestonesTotal": 3,
     "milestonesCompleted": 3,
     "todosTotal": 8,
-    "todosCompleted": 6,
+    "todosCompleted": 7,
     "todosInProgress": 1,
     "todosCancelled": 0,
-    "activeRisks": 3
+    "activeRisks": 1
   },
   "render": {
     "rendererVersion": 1,
-    "generatedAt": "2026-08-29T04:38:33.870Z",
-    "bodyHash": "sha256:9ad6be158d664b2239b09458438dd96523d525072bd36bd08fd4bd6d9f3784bc"
+    "generatedAt": "2026-08-29T20:42:15.185Z",
+    "bodyHash": "sha256:2266eb213f116cfcf1eb5a1ac285c982b8ac2e3ea79bdfd9d548b8c1e4ffcb59"
   }
 }
 <!-- LIMCODE_PROGRESS_METADATA_END -->

@@ -1,6 +1,7 @@
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { normalizeBudgetConfig } from './budget.js';
 import { normalizeThemePreset } from './config.js';
+import { normalizeDesktopIconBackupPayload } from './desktop-icon-storage.js';
 import {
     INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
@@ -8,6 +9,7 @@ import {
 import { getStorageIdFor } from './host-context.js';
 import { applyCalendarBackupFields } from './settings-backup.js';
 import { createEmptyTodayTrendStore, normalizeTodayTrendStore } from './today-trend-model.js';
+import { createEmptyUserGenerationStore, normalizeUserGenerationStore } from './user-generation-model.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -273,7 +275,7 @@ export function parseBackupData(data, current) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('备份根节点必须是对象');
     const version = data.schemaVersion === undefined ? 1 : data.schemaVersion;
     if (!Number.isInteger(version) || version < 1) throw new Error('备份版本无效');
-    if (version > 15) throw new Error(`备份版本 ${version} 高于当前支持版本 15`);
+    if (version > 17) throw new Error(`备份版本 ${version} 高于当前支持版本 17`);
     const result = clone(current);
     if (Object.hasOwn(data, 'histories')) result.histories = objectValue(data.histories, 'histories');
     if (Object.hasOwn(data, 'config')) result.config = objectValue(data.config, 'config');
@@ -342,6 +344,18 @@ export function parseBackupData(data, current) {
         result.todayTrend = assertTodayTrendBackupStore(data.todayTrend);
     } else {
         result.todayTrend = createEmptyTodayTrendStore();
+    }
+    if (version >= 16) {
+        if (!Object.hasOwn(data, 'userGeneration')) throw new Error('备份版本 16 缺少 userGeneration');
+        result.userGeneration = normalizeUserGenerationStore(objectValue(data.userGeneration, 'userGeneration'));
+    } else {
+        result.userGeneration = createEmptyUserGenerationStore();
+    }
+    if (version >= 17) {
+        if (!Object.hasOwn(data, 'desktopIcons')) throw new Error('备份版本 17 缺少 desktopIcons');
+        result.desktopIcons = normalizeDesktopIconBackupPayload(data.desktopIcons);
+    } else {
+        result.desktopIcons = {};
     }
     return result;
 }
