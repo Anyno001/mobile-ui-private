@@ -99,8 +99,9 @@ try {
     assert.match(desktop, /data-action="desktop-community"[\s\S]*?<img [^>]*aria-hidden="true"/);
     assert.match(desktop, /data-app="directory"[\s\S]*?<svg /, '未配置入口必须保留默认 SVG');
     const customIcon = resolveDesktopAppIcon('chat', '<svg id="fallback"></svg>');
-    assert.match(customIcon, /<svg id="fallback"><\/svg>[\s\S]*<img /, '自定义图片下层必须保留默认 SVG');
-    assert.match(customIcon, /onerror="this\.remove\(\)"/, '解码失败必须移除图片并露出默认 SVG');
+    assert.match(customIcon, /<svg id="fallback"><\/svg>[\s\S]*<img /, '图片异常时必须保留默认 SVG 作为回退');
+    assert.match(customIcon, /previousElementSibling\.hidden=true/, '图片正常解码后必须隐藏默认 SVG，防止底图透出');
+    assert.match(customIcon, /previousElementSibling\.hidden=false;this\.remove\(\)/, '图片解码失败必须恢复默认 SVG');
     assert.match(customIcon, /naturalWidth!==256\|\|this\.naturalHeight!==256/, '运行时解码尺寸异常必须回退');
     globalThis.window.__pmDesktopIcons.chat = 'data:image/svg+xml;base64,PHN2Zz4=';
     assert.equal(resolveDesktopAppIcon('chat', '<svg id="fallback"></svg>'), '<svg id="fallback"></svg>', '非 PNG 运行时值必须回退默认 SVG');
@@ -144,7 +145,7 @@ try {
     assert.equal(await settings.upload(input, 'chat'), true);
     assert.equal(input.value, '');
     assert.equal(cropOptions.ratio, 1); assert.equal(cropOptions.outputWidth, 256); assert.equal(cropOptions.outputHeight, 256);
-    assert.equal(cropOptions.mime, 'image/png'); assert.equal(cropOptions.fit, 'contain'); assert.equal(cropOptions.preserveTransparency, true);
+    assert.equal(cropOptions.mime, 'image/png'); assert.equal(cropOptions.fit, 'cover'); assert.equal(cropOptions.preserveTransparency, true);
     await cropOptions.onConfirm(valid);
     assert.deepEqual(savedIcons[0], ['chat', valid, { width: 256, height: 256 }]);
     assert.equal(refreshCount, 1); assert.ok(overlayCount >= 1, '保存成功后必须重绘设置页');

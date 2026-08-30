@@ -58,6 +58,7 @@ try {
     let cancelCount = 0;
     openCropper('data:image/png;base64,AA==', { onCancel: () => { cancelCount += 1; } });
     assert.match(activeOverlay.innerHTML, /裁剪图片/);
+    assert.match(activeOverlay.innerHTML, /class="pm-crop-body pm-modal-scroll"/, '裁剪内容必须可滚动，避免在短屏挤掉底部操作按钮');
     assert.match(activeOverlay.innerHTML, /拖动图片调整位置，滚轮\/捏合缩放/);
     assert.deepEqual([...listenersByType.keys()].sort(), ['mousemove', 'mouseup', 'touchend', 'touchmove']);
     for (const type of listenersByType.keys()) assert.equal(listenerCount(type), 1);

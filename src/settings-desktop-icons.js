@@ -41,7 +41,7 @@ export function createDesktopIconSettings({
     const showPage = async () => {
         try { await loadIcons(); }
         catch (error) { if (windowRef) windowRef.__pmDesktopIcons = {}; console.warn('[phone-mode] 桌面图标读取失败', error); }
-        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持 PNG、WebP 或 JPEG，裁剪后统一保存为 256×256 透明 PNG。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
+        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持 PNG、WebP 或 JPEG，裁剪后统一保存为 256×256 PNG，并覆盖整个图标区域。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
     };
 
     let mutation = Promise.resolve();
@@ -70,13 +70,13 @@ export function createDesktopIconSettings({
             openCropper(objectUrl, {
                 objectUrl,
                 title: `设置${LABELS[appId]}图标`,
-                tip: '拖动图片调整位置，缩放后可保留透明留白',
+                tip: '拖动图片调整位置，缩放后会覆盖整个图标区域',
                 confirmText: '使用图标',
                 ratio: 1,
                 outputWidth: DESKTOP_ICON_SIZE,
                 outputHeight: DESKTOP_ICON_SIZE,
                 mime: 'image/png',
-                fit: 'contain',
+                fit: 'cover',
                 preserveTransparency: true,
                 quality: { maxLength: Math.ceil(DESKTOP_ICON_MAX_ITEM_BYTES * 4 / 3) + 64 },
                 onCancel: showPage,

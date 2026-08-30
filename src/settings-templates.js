@@ -152,7 +152,8 @@ export function renderAppearancePackSettings() {
         <label class="pm-settings-field" for="pm-appearance-description"><span class="pm-cfg-label">说明</span><textarea id="pm-appearance-description" class="pm-cfg-input" maxlength="500" rows="4" placeholder="可留空"></textarea></label>
       </div>
       <div class="pm-settings-section">
-        <label class="pm-action-button is-secondary is-full">选择美化包<input type="file" accept="application/json,.json" onchange="window.__pmImportAppearancePack(this)" hidden></label>
+        <input id="pm-appearance-pack-file" type="file" accept="application/json,.json" onchange="window.__pmImportAppearancePack(this)" hidden>
+        <button type="button" class="pm-action-button is-secondary is-full" onclick="document.getElementById('pm-appearance-pack-file').click()">选择美化包</button>
         <button type="button" class="pm-action-button is-accent is-full" onclick="window.__pmExportAppearancePack()">导出美化包</button>
       </div>
       <div class="pm-settings-tail"></div>

@@ -12,8 +12,9 @@ const DEFAULT_DESKTOP_TITLE = '天音小笺';
 export function resolveDesktopAppIcon(appId, fallbackSvg) {
     const dataUrl = globalThis.window?.__pmDesktopIcons?.[appId];
     if (!isValidDesktopIconRuntimeData(dataUrl)) return fallbackSvg;
-    const removeInvalidImage = `if(this.naturalWidth!==${DESKTOP_ICON_SIZE}||this.naturalHeight!==${DESKTOP_ICON_SIZE})this.remove()`;
-    return `<span class="pm-desktop-icon-stack">${fallbackSvg}<img src="${escapeAttr(dataUrl)}" alt="" aria-hidden="true" onload="${removeInvalidImage}" onerror="this.remove()"></span>`;
+    const fallbackOnError = `this.previousElementSibling.hidden=false;this.remove()`;
+    const hideFallbackOnLoad = `if(this.naturalWidth!==${DESKTOP_ICON_SIZE}||this.naturalHeight!==${DESKTOP_ICON_SIZE}){${fallbackOnError}}else this.previousElementSibling.hidden=true`;
+    return `<span class="pm-desktop-icon-stack">${fallbackSvg}<img src="${escapeAttr(dataUrl)}" alt="" aria-hidden="true" onload="${hideFallbackOnLoad}" onerror="${fallbackOnError}"></span>`;
 }
 const DANMAKU_TONES = ['blue', 'pink', 'cyan', 'gold'];
 

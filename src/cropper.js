@@ -77,7 +77,7 @@ export function openCropper(imgDataUrl, options = {}) {
     overlay.innerHTML = `
 <div class="pm-modal pm-modal-wide">
   <div class="pm-modal-header"><span></span><b>${escapeAttr(title)}</b><button type="button" id="pm-crop-close" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
-  <div class="pm-crop-body">
+  <div class="pm-crop-body pm-modal-scroll">
     <div class="pm-crop-tip">${escapeAttr(tip)}</div>
     <div class="pm-crop-frame" id="pm-crop-frame">
       <img id="pm-crop-img" src="${escapeAttr(imgDataUrl)}" alt="">
