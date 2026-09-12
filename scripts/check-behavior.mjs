@@ -3,13 +3,17 @@ import { readFileSync } from 'node:fs';
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, EXTENSION_PROMPT_POSITIONS, MAX_INJECTION_DEPTH,
+    TODAY_TREND_V2_JOURNAL_PREFIX,
 } from '../src/constants.js';
 import {
     getGalBubbleAssistantText, getGalBubblePrompt, getGalBubbleScriptDefinition,
     installGalBubble, parseGalBubbleMessages, reconcileGalBubble, uninstallGalBubble,
 } from '../src/gal-bubble.js';
-import { createEmptyTodayTrendStore } from '../src/today-trend-model.js';
 import { createEmptyUserGenerationStore } from '../src/user-generation-model.js';
+import { createDefaultTodayTrendDynamicsSettings, createEmptyTodayTrendStore, normalizeTodayTrendStore } from '../src/today-trend-model.js';
+import { createTodayTrendStorage, todayTrendJournal, todayTrendV2Authority } from '../src/today-trend-storage.js';
+import { createTodayTrendCommitter } from '../src/today-trend-commit.js';
+import { migrateTodayTrendStoreToV2 } from '../src/today-trend-v2-model.js';
 import { normalizeThemePreset, THEME_PRESETS } from '../src/config.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
@@ -94,6 +98,7 @@ import {
     commitEditedGroupUpdate, installPhoneDirectory, refreshEditedGroupRuntime,
 } from '../src/phone-directory.js';
 import { createPhoneQuoteController } from '../src/phone-quote.js';
+import { createTodayTrendV1Fixture } from './today-trend-test-foundation.mjs';
 function createQuickReplyApiFixture({ set = null, active = false, fail = {}, beforeMutation = null } = {}) {
     const sets = new Map();
     if (set) sets.set(set.name, set);
@@ -2992,7 +2997,10 @@ try {
     window.__pmBudgetConfig = undefined;
     window.__pmEmojis = [];
     try {
+        const branchCommitStore = async () => {};
+        const branchCommitScope = async () => {};
         const officialBranchCalls = [];
+        const officialBranchOptions = [];
         let officialBranchFailure = null;
         const injectionDeps = {
             runtime: createRuntimeState(),
@@ -3000,9 +3008,11 @@ try {
             getStorageId: () => 'story',
             getUserPersona: () => ({ name: '用户' }),
             getInteractiveStore: () => interactiveStoreReady,
-            beginBranchInheritance: async context => {
+            commitTodayTrendStore: branchCommitStore,
+            commitTodayTrendScope: branchCommitScope,
+            beginBranchInheritance: async (context, options) => {
                 if (officialBranchFailure) throw officialBranchFailure;
-                officialBranchCalls.push(context); return { status: 'cloned' };
+                officialBranchCalls.push(context); officialBranchOptions.push(options); return { status: 'cloned' };
             },
         };
         installPhoneFoundation({ phoneWindow: null, phoneActive: false, conversationHistory: [] }, injectionDeps);
@@ -3028,6 +3038,10 @@ try {
         await branchEventResult;
         assert.deepEqual(officialBranchCalls, [injectionContext],
             '官方分支 CHAT_CHANGED 必须把含 main_chat 的最新 getContext 快照交给继承入口');
+        assert.equal(officialBranchOptions[0].commitTodayTrendStore, branchCommitStore,
+            '官方分支继承必须透传已安装的 Today Trend 统一 store 提交器');
+        assert.equal(officialBranchOptions[0].commitTodayTrendScope, branchCommitScope,
+            '官方分支继承必须透传已安装的 Today Trend 统一 scope 提交器');
         assert.deepEqual(injectionDeps.runtime.lastBranchInheritance, {
             status: 'cloned', reason: null, sourceId: null, targetId: null, sourcePresence: null, targetPresence: null,
         }, '宿主监听器必须记录真实继承入口返回的可诊断状态');
@@ -5541,8 +5555,8 @@ const validV15Backup = {
 };
 assert.deepEqual(parseBackupData(validV15Backup, currentBackup).userGeneration, createEmptyUserGenerationStore(),
     'v15 备份不得因缺少后加入的 User 库字段而拒绝导入');
-assert.throws(() => parseBackupData({ ...validV15Backup, schemaVersion: 16 }, currentBackup),
-    /备份版本 16 缺少 userGeneration/);
+assert.deepEqual(parseBackupData({ ...validV15Backup, schemaVersion: 16 }, currentBackup).userGeneration,
+    createEmptyUserGenerationStore(), 'v16 备份缺少 User 库时必须兼容为空库');
 const importedUserGeneration = { version: 1, items: [{ id: 'user-1', title: '魅魔旅者', summary: '', content: '成年魅魔旅者。', sourceMessageId: 'message-1', createdAt: 1, updatedAt: 1, order: 0 }] };
 const validV16Backup = { ...validV15Backup, schemaVersion: 16, userGeneration: importedUserGeneration };
 const parsedV16Backup = parseBackupData(validV16Backup, currentBackup);
@@ -5653,6 +5667,59 @@ assert.throws(() => parseBackupData({ schemaVersion: 14, branchLineage: validBra
 assert.deepEqual(parseBackupData({ schemaVersion: 14, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
     calendarOutfits: importedOutfits, budgetConfig: importedBudgetConfig, todayTrend: createEmptyTodayTrendStore() }, currentBackup).todayTrend,
 createEmptyTodayTrendStore(), 'schema 14 必须恢复今日风向数据');
+const schema16TodayTrend = normalizeTodayTrendStore(createTodayTrendV1Fixture(createDefaultTodayTrendDynamicsSettings));
+const schema16V2Store = migrateTodayTrendStoreToV2(schema16TodayTrend).store;
+const schema16BackupBase = {
+    schemaVersion: 16, branchLineage: validBranchLineage, worldBookConfig: { entries: {}, columns: {} },
+    budgetConfig: importedBudgetConfig, todayTrend: schema16TodayTrend, galBubbleEnabled: false,
+};
+const parsedSchema16Backup = parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16V2Store, migrationBackup: null, storeRevision: 1 },
+}, currentBackup);
+assert.deepEqual(parsedSchema16Backup.todayTrendV2, {
+    v2Store: schema16V2Store, migrationBackup: null, storeRevision: 1,
+}, 'schema 16 必须恢复规范 v2 store、migration backup 与 revision');
+const schema16LegacyV2Store = structuredClone(schema16V2Store);
+schema16LegacyV2Store.globalEnvelope.schemaVersion = 1;
+for (const scopeEnvelope of Object.values(schema16LegacyV2Store.globalEnvelope.payload.scopes)) scopeEnvelope.schemaVersion = 1;
+const parsedSchema16LegacyBackup = parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16LegacyV2Store, migrationBackup: null, storeRevision: 1 },
+}, currentBackup);
+assert.equal(parsedSchema16LegacyBackup.todayTrendV2.v2Store.globalEnvelope.schemaVersion, 2,
+    'schema 16 旧 v2Store 备份必须经显式兼容入口升级 global envelope');
+assert.ok(Object.values(parsedSchema16LegacyBackup.todayTrendV2.v2Store.globalEnvelope.payload.scopes)
+    .every(scopeEnvelope => scopeEnvelope.schemaVersion === 3),
+'schema 16 旧 v2Store 备份必须严格重写全部 scope envelope 到当前 v3');
+assert.equal(schema16LegacyV2Store.globalEnvelope.schemaVersion, 1,
+    'schema 16 旧 v2Store 备份迁移不得原地改写导入对象');
+assert.throws(() => parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16LegacyV2Store, migrationBackup: null, storeRevision: 1, unexpected: true },
+}, currentBackup), /todayTrendV2 内容无效或不是规范格式/,
+'schema 16 旧 v2Store 兼容分支不得绕过备份字段集合约束');
+
+assert.equal(parseBackupData({
+    ...schema16BackupBase, schemaVersion: 15,
+}, currentBackup).todayTrendV2, null, 'schema 15 及更早备份不得伪造 todayTrendV2');
+assert.equal(parseBackupData(schema16BackupBase, currentBackup).todayTrendV2, null,
+    'schema 16 缺少 todayTrendV2 时必须兼容为 null');
+assert.throws(() => parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16V2Store, migrationBackup: null, storeRevision: 2 },
+}, currentBackup), /todayTrendV2 内容无效或不是规范格式/,
+    'schema 16 todayTrendV2 必须拒绝与 v2 envelope 不一致的正整数 storeRevision');
+assert.throws(() => parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16V2Store, migrationBackup: null, storeRevision: 0 },
+}, currentBackup), /todayTrendV2 内容无效或不是规范格式/,
+    'schema 16 todayTrendV2 必须拒绝非正 storeRevision');
+assert.throws(() => parseBackupData({
+    ...schema16BackupBase,
+    todayTrendV2: { v2Store: schema16V2Store, migrationBackup: null, storeRevision: 1, unexpected: true },
+}, currentBackup), /todayTrendV2 内容无效或不是规范格式/,
+    'schema 16 todayTrendV2 必须拒绝额外字段，避免非规范备份静默进入事务');
 const parsedV4Backup = parseBackupData({
     schemaVersion: 4,
     theme: { darkMode: 'light', ambientStatusEnabled: true },
@@ -6529,6 +6596,111 @@ assert.equal(Object.hasOwn(lineageAfterBackupRollback, getStorageIdFor('alice.pn
     '备份回滚只能删除本事务实际插入且未被后续修改的 lineage marker');
 assert.equal(lineageAfterBackupRollback[concurrentBackupTargetId].targetChatId, 'branch-during-backup',
     '备份回滚不得删除事务期间其他合法提交的 lineage marker');
+
+const backupAuthorityKey = 'ST_SMS_TODAY_TREND_V2_AUTHORITY_V1';
+const backupV2StoreKey = 'ST_SMS_TODAY_TREND_V2';
+const previousBackupAuthority = idbValues.has(backupAuthorityKey) ? structuredClone(idbValues.get(backupAuthorityKey)) : undefined;
+const previousBackupV2Store = idbValues.has(backupV2StoreKey) ? structuredClone(idbValues.get(backupV2StoreKey)) : undefined;
+const backupOriginalTrend = createTodayTrendV1Fixture(createDefaultTodayTrendDynamicsSettings);
+const backupImportedTrend = structuredClone(backupOriginalTrend);
+backupImportedTrend.presets.preset.name = '备份导入版本';
+const backupLaterTrend = structuredClone(backupOriginalTrend);
+backupLaterTrend.presets.preset.name = '后续合法提交';
+let backupLaterReceipt = null;
+let backupFenceError = null;
+try {
+    await todayTrendV2Authority.acquire({
+        readV2: true, writeV2: true, serveV2: false, initialStore: backupOriginalTrend,
+    });
+    await todayTrendV2Authority.release({ readV2: true, serveV2: false });
+    try {
+        await runBackupTransaction({
+            capture: backupHandlers.capture,
+            apply: snapshot => backupHandlers.apply(snapshot || {
+                ...importedBackupWithLineage,
+                todayTrend: backupImportedTrend,
+            }),
+            persist: backupHandlers.persist,
+            afterPersist: async phase => {
+                if (phase !== 'apply') return;
+                await todayTrendV2Authority.acquire({ readV2: true, writeV2: true, serveV2: false });
+                backupLaterReceipt = await todayTrendV2Authority.save(backupLaterTrend);
+                throw new Error('backup-fence-after-persist-failed');
+            },
+        });
+    } catch (error) {
+        backupFenceError = error;
+    }
+    assert.equal(backupFenceError?.backupPhase, 'rollback-failed',
+        '备份 apply 后发生后续合法提交时，旧事务必须明确报告 rollback-failed');
+    assert.match(backupFenceError?.cause?.message || '', /backup-fence-after-persist-failed/,
+        '备份 rollback fence 冲突不得掩盖触发回滚的主错误');
+    assert.equal(backupFenceError?.rollbackError?.code, 'TT_STORE_REVISION_CONFLICT',
+        '备份 rollback 必须使用 apply receipt 的 storeRevision 拒绝覆盖后续提交');
+    assert.ok(Number.isSafeInteger(backupLaterReceipt?.storeRevision), '后续合法提交必须返回可验证的 store revision');
+    assert.deepEqual((await todayTrendV2Authority.load()).store, normalizeTodayTrendStore(backupLaterTrend),
+        '备份 rollback fence 冲突后必须保留后续合法提交的 Today Trend store');
+} finally {
+    try { await todayTrendV2Authority.release({ readV2: true, serveV2: false }); } catch {}
+    if (previousBackupAuthority === undefined) idbValues.delete(backupAuthorityKey);
+    else idbValues.set(backupAuthorityKey, previousBackupAuthority);
+    if (previousBackupV2Store === undefined) idbValues.delete(backupV2StoreKey);
+    else idbValues.set(backupV2StoreKey, previousBackupV2Store);
+}
+
+const releaseOnlyFailure = new Error('backup release failed');
+let releaseOnlyRevision = 3;
+const releaseOnlyOptions = [];
+const releaseOnlyAuthority = {
+    load: async () => ({ active: true, store: backupOriginalTrend, authority: null }),
+    status: async () => ({ available: true, owned: false, authority: {
+        ownerTabId: null, readV2: true, writeV2: false, serveV2: false, storeRevision: releaseOnlyRevision,
+    } }),
+    acquire: async () => {},
+    save: async (value, options) => {
+        releaseOnlyOptions.push(structuredClone(options));
+        if (options.expectedStoreRevision !== null && options.expectedStoreRevision !== releaseOnlyRevision) {
+            const error = new Error('backup revision conflict');
+            error.code = 'TT_STORE_REVISION_CONFLICT';
+            throw error;
+        }
+        releaseOnlyRevision += 1;
+        return { store: normalizeTodayTrendStore(value), storeRevision: releaseOnlyRevision };
+    },
+    release: async () => {
+        if (releaseOnlyOptions.length === 1) {
+            releaseOnlyRevision += 1;
+            throw releaseOnlyFailure;
+        }
+    },
+};
+const releaseOnlyBridge = createTodayTrendStorage({ storage: localStorage, v2Authority: releaseOnlyAuthority });
+const releaseOnlyBackupHandlers = createBackupStateHandlers({
+    captureTodayTrendV2Backup: async () => null,
+    saveTodayTrendStore: releaseOnlyBridge.save,
+});
+let releaseOnlyBackupError = null;
+try {
+    await runBackupTransaction({
+        capture: releaseOnlyBackupHandlers.capture,
+        apply: snapshot => releaseOnlyBackupHandlers.apply(snapshot || {
+            ...importedBackupWithLineage,
+            todayTrend: backupImportedTrend,
+        }),
+        persist: releaseOnlyBackupHandlers.persist,
+    });
+} catch (error) {
+    releaseOnlyBackupError = error;
+}
+assert.equal(releaseOnlyBackupError?.backupPhase, 'rollback-failed',
+    'save 已提交但临时 authority 释放失败时，backup 必须进入可诊断的 fenced rollback');
+assert.equal(releaseOnlyBackupError?.cause?.code, 'TT_AUTHORITY_RELEASE_FAILED',
+    'release-only failure 必须保持为触发 rollback 的主错误');
+assert.equal(releaseOnlyBackupError?.cause?.cause, releaseOnlyFailure, 'backup 必须保留底层 release cause');
+assert.equal(releaseOnlyBackupError?.rollbackError?.code, 'TT_STORE_REVISION_CONFLICT',
+    'release-only failure 后的后续合法 revision 必须阻止旧 backup rollback 覆盖');
+assert.equal(releaseOnlyOptions[1]?.expectedStoreRevision, 4,
+    'backup 必须把 release-only failure 携带的 committed receipt 贯穿到 rollback fence');
 
 globalThis.document = {
     getElementById: id => uiElements.get(id) || null,
@@ -8939,6 +9111,13 @@ try {
 }
 
 const previousBranchWindow = globalThis.window;
+let productionTrendSnapshot = null;
+let productionTrendHarnessActive = false;
+let previousProductionBeforeUnloadRegistration;
+let previousProductionWindowAddEventListener;
+let previousProductionDocument;
+let previousProductionEnd;
+let productionEnvironmentPrepared = false;
 try {
     globalThis.window = { ...(previousBranchWindow || {}) };
     const branchContext = {
@@ -9062,6 +9241,31 @@ try {
         '诊断面不得暴露消息正文');
     diagnosticRuntime.lastBranchInheritanceError = { name: 'Error', message: '潜在聊天正文不得经诊断 API 暴露' };
     assert.equal(window.__pmDiag.snapshot().lastBranchInheritanceError?.message, '', '诊断 API 必须剥离原始错误文本');
+    let diagnosticManualRuns = 0;
+    assert.equal(installDiagnosticApi({ runtime: diagnosticRuntime, getCtx: () => branchContext,
+        getStorageId: () => branchIds.target,
+        getCalendarStore: () => ({ scopes: { [branchIds.target]: { baseDate: '2025-04-15' } } }),
+        getTodayTrendStore: async () => ({ scopes: { [branchIds.target]: {
+            operation: { lastSuccessfulAssistantCount: 42 }, dynamics: { active: [{ stages: ['进展一'] }], archived: [{ stages: ['进展二'] }] },
+        } } }),
+        getTodayTrendGenerationState: () => ({ phase: 'failed', lastError: 'TT_HISTORY_STAGE_MISMATCH history producer 与 dynamics stage 追加不一致' }),
+        generateTodayTrend: async () => {
+            diagnosticManualRuns += 1;
+            throw Object.assign(new Error('history producer 与 dynamics stage 追加不一致'), { code: 'TT_HISTORY_STAGE_MISMATCH' });
+        },
+    }), true, '已启用诊断时必须允许用完整插件依赖重装诊断面');
+    const diagnosticTrend = await window.__pmDiag.todayTrend.status();
+    assert.deepEqual(diagnosticTrend.scope, { activeEventCount: 1, archivedEventCount: 1, stageCount: 2, lastSuccessfulAssistantCount: 42 },
+        'Today Trend 诊断只能暴露计数与同步元数据，不得暴露事件或聊天正文');
+    assert.equal(diagnosticTrend.storyDate, '2025-04-15', 'Today Trend 诊断必须读取当前聊天的可信日历日期');
+    assert.deepEqual(diagnosticTrend.generation, { phase: 'failed', errorCode: 'TT_HISTORY_STAGE_MISMATCH' },
+        'Today Trend 状态诊断只能公开稳定错误码，不能透传原始错误正文');
+    assert.equal(JSON.stringify(diagnosticTrend).includes('history producer 与 dynamics stage 追加不一致'), false,
+        'Today Trend 状态诊断不得泄露可能包含事件或聊天内容的错误正文');
+    assert.deepEqual(await window.__pmDiag.todayTrend.runManual(), {
+        ok: false, error: { name: 'Error', code: 'TT_HISTORY_STAGE_MISMATCH', message: 'history producer 与 dynamics stage 追加不一致' },
+    }, '控制台手动测试必须调用插件公开生成入口并保留结构化失败码');
+    assert.equal(diagnosticManualRuns, 1, '控制台手动测试不得绕过插件入口或重复触发 AI');
     delete window.__pmDiagEnabled;
     delete window.__pmDiag;
     delete window.__pmRetryBranch;
@@ -9332,10 +9536,15 @@ try {
     localStorageControl.failSetOnCalls.clear();
     await pmIDBDel(BRANCH_LINEAGE_STORE_KEY);
     const productionTargetId = getStorageIdFor('alice.png', 'production-branch');
-    const productionContext = { ...branchContext, chatId: 'production-branch' };
-    const previousProductionBeforeUnloadRegistration = window.__pmBeforeUnloadRegistered;
-    const previousProductionWindowAddEventListener = window.addEventListener;
-    const previousProductionDocument = globalThis.document;
+    const productionContext = {
+        ...branchContext, chatId: 'production-branch',
+        chat: [{ is_user: true, mes: '分支起点', message_id: 20 }],
+    };
+    previousProductionBeforeUnloadRegistration = window.__pmBeforeUnloadRegistered;
+    previousProductionWindowAddEventListener = window.addEventListener;
+    previousProductionDocument = globalThis.document;
+    previousProductionEnd = window.__pmEnd;
+    productionEnvironmentPrepared = true;
     globalThis.document = {
         visibilityState: 'visible',
         addEventListener() {},
@@ -9346,8 +9555,24 @@ try {
     window.addEventListener = () => {};
     window.__pmBeforeUnloadRegistered = false;
     const productionListeners = new Map();
-    const previousProductionEnd = window.__pmEnd;
     const productionCleanupCalls = [];
+    productionTrendSnapshot = new Map([...idbValues.entries()]
+        .filter(([key]) => key.startsWith('ST_SMS_TODAY_TREND')).map(([key, value]) => [key, structuredClone(value)]));
+    for (const key of [...idbValues.keys()]) if (key.startsWith('ST_SMS_TODAY_TREND')) idbValues.delete(key);
+    await todayTrendJournal.reload();
+    await todayTrendV2Authority.acquire({
+        readV2: true, writeV2: true, serveV2: false, initialStore: todayTrendBranchStore(),
+    });
+    productionTrendHarnessActive = true;
+    let productionTrendRefreshes = 0;
+    const productionTrendCommitter = createTodayTrendCommitter({
+        runtime: {}, journal: todayTrendJournal,
+        refreshInjection: async () => {
+            productionTrendRefreshes += 1;
+            return { failedWrites: 0, failedKeys: [] };
+        },
+    });
+    await productionTrendCommitter.ready();
     const productionLatestHistory = [{ role: 'user', content: 'production-latest-source' }];
     const productionFoundationState = {
         phoneWindow: null,
@@ -9384,6 +9609,8 @@ try {
     const productionFoundationDeps = {
         runtime: createRuntimeState(), getCtx: () => currentProductionEventContext,
         getStorageId: () => productionTargetId, getUserPersona: () => ({ name: '用户' }),
+        commitTodayTrendStore: productionTrendCommitter.commitStore,
+        commitTodayTrendScope: productionTrendCommitter.commitScope,
         applyBidirectionalInjection: () => {},
         cancelCommunityGeneration: reason => productionCleanupCalls.push(['community', reason]),
         cancelCalendarTasks: reason => productionCleanupCalls.push(['calendar', reason]),
@@ -9434,6 +9661,7 @@ try {
         communitySceneIdsByStorage: { [branchIds.source]: ['scene-source'] },
         communitySelectionsByStorage: { [branchIds.source]: { 'scene-source': { mode: 'all' } } },
     }));
+    const productionTrendStatusBefore = await todayTrendV2Authority.status();
     const historyCommitBlocker = blockIDBOperation('put', 'ST_SMS_DATA_V2');
     const lineageCommitBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
     const productionBranch = productionListeners.get('production_chat_changed')[0](productionTargetId);
@@ -9452,7 +9680,12 @@ try {
     } finally {
         historyCommitBlocker.release();
     }
-    await lineageCommitBlocker.entered;
+    const productionInterlock = await Promise.race([
+        lineageCommitBlocker.entered.then(() => ({ entered: true })),
+        productionBranch.then(result => ({ entered: false, result })),
+    ]);
+    assert.equal(productionInterlock.entered, true,
+        `真实生产分支必须进入 lineage 提交窗口：${productionInterlock.result?.error?.message || '提前结束'}`);
     assert.deepEqual(productionCleanupCalls, [],
         '分支持久化尚未完成时不得提前清理旧会话或中断宿主任务');
     try {
@@ -9501,6 +9734,45 @@ try {
         await productionBranch.catch(() => {});
     }
     assert.equal((await productionBranch).status, 'cloned');
+    const productionTrendStatusAfter = await todayTrendV2Authority.status();
+    assert.equal(productionTrendStatusAfter.authority.storeRevision,
+        productionTrendStatusBefore.authority.storeRevision + 1,
+        '真实分支新增必须通过统一 committer 只递增一次 Today Trend store revision');
+    assert.equal(productionTrendStatusAfter.authority.scopeRevisionByStorageId[productionTargetId], 1,
+        '真实分支新增必须只递增一次目标 Today Trend scope revision');
+    const productionTrendLoaded = await todayTrendV2Authority.load();
+    assert.ok(productionTrendLoaded.store.scopes[productionTargetId],
+        '真实分支新增必须把目标 Today Trend scope 持久化到 v2 authority');
+    const productionTrendTargetEnvelope = productionTrendLoaded.v2Store.globalEnvelope.payload.scopes[productionTargetId];
+    assert.equal(productionTrendTargetEnvelope.revision, 1,
+        '真实分支新增持久化后必须由 authority 将目标 canonical scope revision 推进到 1');
+    assert.equal(productionTrendTargetEnvelope.payload.storageId, productionTargetId,
+        '真实分支新增必须改写 canonical payload storageId');
+    assert.equal(productionTrendTargetEnvelope.payload.operation.lastSuccessfulAssistantCount, 20,
+        '真实分支新增必须把 canonical checkpoint 平移到宿主目标楼层，禁止硬编码为 0');
+    assert.equal(productionTrendTargetEnvelope.payload.historyRetentionState.highWaterAssistantCount, null,
+        '真实分支新增必须保持 unknown 高水位为 null，禁止伪造楼层');
+    assert.ok(productionTrendTargetEnvelope.payload.generationSnapshots.length <= 12,
+        '真实分支新增的 canonical snapshot 不得超过 12 个');
+       assert.ok(productionTrendTargetEnvelope.payload.generationSnapshots.some(snapshot => snapshot.assistantCount === 20),
+        '真实分支新增必须把来源 checkpoint snapshot 平移到宿主目标楼层');
+    for (const snapshot of productionTrendTargetEnvelope.payload.generationSnapshots) {
+        assert.equal(Object.hasOwn(snapshot, 'stageDetailsByEvent'), false,
+            'canonical snapshot 不得复制 detail 正文池');
+        assert.equal(Object.hasOwn(snapshot, 'archivedRemovableDataByEvent'), false,
+            'canonical snapshot 不得复制归档 removable 正文池');
+    }
+    assert.equal(productionTrendTargetEnvelope.payload.commitJournal, null,
+        '真实分支新增不得复制来源 scope journal');
+    assert.equal([...idbValues.keys()].some(key => key.startsWith(TODAY_TREND_V2_JOURNAL_PREFIX)), false,
+        '真实分支新增 accepted 后不得遗留开放 journal');
+    assert.equal(productionTrendRefreshes, 1,
+        '真实分支新增必须经统一 committer 只刷新一次 Today Trend 注入');
+    const successfulProductionLineage = await loadBranchLineage();
+    assert.equal(successfulProductionLineage[productionTargetId]?.sourceId, branchIds.source,
+        '真实分支新增成功后必须直接持久化正确的 lineage sourceId');
+    assert.equal(successfulProductionLineage[productionTargetId]?.targetChatId, 'production-branch',
+        '真实分支新增成功后必须直接持久化正确的 lineage targetChatId');
     assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.status, 'cloned',
         '真实 CHAT_CHANGED 链路必须记录已完成的生产继承结果');
     assert.equal(productionFoundationDeps.runtime.lastBranchInheritance?.targetId, productionTargetId,
@@ -9559,12 +9831,18 @@ try {
     productionFoundationDeps.persistCurrentHistory = successfulProductionPersistCurrentHistory;
 
     const failedProductionTargetId = getStorageIdFor('alice.png', 'production-failed-branch');
+    const failedTrendStatusBefore = await todayTrendV2Authority.status();
     currentProductionEventContext = { ...productionEventContext, chatId: 'production-failed-branch' };
     productionFoundationState.phoneActive = true;
     const failedLineageBlocker = blockIDBOperation('put', BRANCH_LINEAGE_STORE_KEY);
     idbControl.abortOperations.push({ type: 'put', key: BRANCH_LINEAGE_STORE_KEY });
     const failedProductionBranch = productionListeners.get('production_chat_changed')[0](failedProductionTargetId);
-    await failedLineageBlocker.entered;
+    const failedProductionInterlock = await Promise.race([
+        failedLineageBlocker.entered.then(() => ({ entered: true })),
+        failedProductionBranch.then(result => ({ entered: false, result })),
+    ]);
+    assert.equal(failedProductionInterlock.entered, true,
+        `失败夹具必须先进入 lineage 提交窗口：${failedProductionInterlock.result?.error?.message || '提前结束'}`);
     try {
         for (const store of ['pokeConfig', 'characterBehavior', 'bidirectional', 'budget']) {
             assert.deepEqual(getActiveDirectoryBranchScopes(store), [failedProductionTargetId],
@@ -9594,16 +9872,50 @@ try {
     }
     assert.equal(Object.hasOwn(JSON.parse(localValues.get('ST_SMS_POKE_CONFIG')), failedProductionTargetId), false,
         'lineage 失败后必须补偿移除真实生产保存器已写入的 target scope');
+    const failedTrendStatusAfter = await todayTrendV2Authority.status();
+    assert.equal(failedTrendStatusAfter.authority.storeRevision,
+        failedTrendStatusBefore.authority.storeRevision + 2,
+        'lineage 失败必须只产生 candidate 与 compensation 两次受控 Today Trend 提交');
+    assert.equal((await todayTrendV2Authority.load()).store.scopes[failedProductionTargetId], undefined,
+        'lineage 失败后的统一 committer 补偿必须移除目标 Today Trend scope');
+    assert.equal([...idbValues.keys()].some(key => key.startsWith(TODAY_TREND_V2_JOURNAL_PREFIX)), false,
+        'lineage 失败完成补偿后不得遗留 prepared、store-written 或 blocked journal');
+    assert.equal(productionTrendRefreshes, 3,
+        '成功新增、失败 candidate 与外层 compensation 必须各刷新一次，不能重复提交补偿');
+    const failedProductionLineage = await loadBranchLineage();
+    assert.equal(failedProductionLineage[failedProductionTargetId], undefined,
+        'lineage 写入失败并补偿后不得遗留阻断重试的伪 marker');
+    assert.equal(failedProductionLineage[productionTargetId]?.sourceId, branchIds.source,
+        '失败分支事务不得破坏此前成功提交的 lineage marker');
     assert.deepEqual(productionCleanupCalls.slice(-3), [
         ['community', 'host-chat-changed'], ['calendar', 'host-chat-changed'], ['end-phone', true],
     ], '继承失败完成后也必须恰好执行一次聊天切换清理');
-    window.__pmEnd = previousProductionEnd;
-    window.addEventListener = previousProductionWindowAddEventListener;
-    window.__pmBeforeUnloadRegistered = previousProductionBeforeUnloadRegistration;
-    globalThis.document = previousProductionDocument;
 } finally {
+    let cleanupError = null;
+    if (productionTrendHarnessActive) {
+        try {
+            assert.equal(await todayTrendV2Authority.release({ readV2: true, serveV2: false }), true,
+                '生产分支夹具必须显式确认 Today Trend authority 释放成功');
+            assert.equal((await todayTrendV2Authority.status()).authority?.ownerTabId, null,
+                '生产分支夹具结束后不得遗留 Today Trend authority owner');
+        } catch (error) { cleanupError = error; }
+    }
+    if (productionTrendSnapshot) {
+        try {
+            for (const key of [...idbValues.keys()]) if (key.startsWith('ST_SMS_TODAY_TREND')) idbValues.delete(key);
+            for (const [key, value] of productionTrendSnapshot) idbValues.set(key, structuredClone(value));
+            await todayTrendJournal.reload();
+        } catch (error) { cleanupError ||= error; }
+    }
+    if (productionEnvironmentPrepared) {
+        try { window.__pmEnd = previousProductionEnd; } catch (error) { cleanupError ||= error; }
+        try { window.addEventListener = previousProductionWindowAddEventListener; } catch (error) { cleanupError ||= error; }
+        try { window.__pmBeforeUnloadRegistered = previousProductionBeforeUnloadRegistration; } catch (error) { cleanupError ||= error; }
+        try { globalThis.document = previousProductionDocument; } catch (error) { cleanupError ||= error; }
+    }
     if (previousBranchWindow === undefined) delete globalThis.window;
     else globalThis.window = previousBranchWindow;
+    if (cleanupError) throw cleanupError;
 }
 
 const quoteTimers = new Map();

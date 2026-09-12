@@ -6,7 +6,7 @@ const names = value => Array.isArray(value) ? [...new Set(value.map(item => text
 export async function gatherTodayTrendContext({
     getCtx, signal, storageId, characterId, characterName, worldBookNames = [],
     includeExistingChat = true, userRequirements = '', worldBookMaxChars = 6000,
-    collectContext = gatherContext,
+    collectContext = gatherContext, historyBatch = null,
 } = {}) {
     if (typeof getCtx !== 'function') throw new TypeError('今日风向上下文缺少上下文读取器');
     const id = text(storageId, 120);
@@ -24,13 +24,14 @@ export async function gatherTodayTrendContext({
     return {
         storageId: id, characterId: roleId, characterName: roleName,
         source: { worldBookNames: selectedBooks, includeExistingChat: includeExistingChat === true, userRequirements: text(userRequirements) },
+        historyBatch: Array.isArray(historyBatch) ? historyBatch : null,
         user: { name: text(host?.userName, 120), description: text(host?.userDesc) },
         character: {
             description: text(host?.cardDesc), personality: text(host?.cardPersonality), scenario: text(host?.cardScenario),
             firstMessage: text(host?.cardFirstMes), exampleMessages: text(host?.cardMesExample),
         },
         worldBookText: text(host?.worldBookText, worldBookMaxChars),
-        mainChatText: includeExistingChat === true ? text(host?.mainChatText, 8000) : '',
-        latestChatText: includeExistingChat === true ? text(host?.latestChatText, 1600) : '',
+        mainChatText: Array.isArray(historyBatch) ? '' : includeExistingChat === true ? text(host?.mainChatText, 8000) : '',
+        latestChatText: Array.isArray(historyBatch) ? '' : includeExistingChat === true ? text(host?.latestChatText, 1600) : '',
     };
 }

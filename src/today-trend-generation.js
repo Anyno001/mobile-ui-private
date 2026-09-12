@@ -1,5 +1,7 @@
 import { generationErrorMessage, parseFirstJsonObject } from './ai.js';
+import { materializeTodayTrendBatchDelta } from './today-trend-batch-delta.js';
 import { gatherTodayTrendContext } from './today-trend-context.js';
+import { normalizeTodayTrendHistoryProducer } from './today-trend-history-reducer.js';
 import { TODAY_TREND_VERSION, normalizeTodayTrendScope, normalizeTodayTrendStore } from './today-trend-model.js';
 import {
     buildTodayTrendGenerationEnvelope,
@@ -19,6 +21,11 @@ const arrayOf = (value, verify, label) => {
     if (!Array.isArray(value)) throw new Error(`今日风向生成${label}必须是数组`);
     value.forEach(verify);
 };
+const nonEmptyTextArray = (value, label) => {
+    if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || !item.trim())) {
+        throw new Error(`今日风向生成${label}必须是非空字符串数组`);
+    }
+};
 const verifyRelation = value => keysOnly(value, ['status', 'evaluation'], '关系');
 const verifyWorld = value => {
     keysOnly(value, ['items'], '世界态势');
@@ -35,16 +42,22 @@ const verifyFactions = value => arrayOf(value, faction => {
 }, '势力图谱');
 const verifyDynamics = value => {
     keysOnly(value, ['active', 'archived'], '事件追踪');
-    for (const bucket of ['active', 'archived']) arrayOf(value[bucket], event => keysOnly(event,
-        ['id', 'type', 'lifecycle', 'title', 'stageLabel', 'origin', 'participants', 'stages', 'latestStage', 'outcome', 'finalResult', 'relatedEventIds', 'createdAt', 'updatedAt'], '动态事件'), '动态事件');
+    for (const bucket of ['active', 'archived']) arrayOf(value[bucket], (event, index) => {
+        const label = `事件追踪.${bucket}[${index}]`;
+        keysOnly(event,
+            ['id', 'type', 'lifecycle', 'title', 'stageLabel', 'origin', 'participants', 'stages', 'latestStage', 'outcome', 'finalResult', 'relatedEventIds', 'createdAt', 'updatedAt'], label);
+        nonEmptyTextArray(event.stages, `${label}.stages`);
+    }, '动态事件');
 };
 
-const withoutDirectParentChildLinks = factions => {
+const sanitizeFactionRelations = factions => {
     if (!Array.isArray(factions)) return factions;
+    const factionIds = new Set(factions.map(faction => faction?.id).filter(id => typeof id === 'string' && id));
     const parentById = new Map(factions.map(faction => [faction?.id, faction?.parentId]));
     return factions.map(faction => {
         if (!Array.isArray(faction?.relatedFactionIds)) return faction;
-        const relatedFactionIds = faction.relatedFactionIds.filter(id => id !== faction.parentId && parentById.get(id) !== faction.id);
+        const relatedFactionIds = faction.relatedFactionIds.filter(id => factionIds.has(id)
+            && id !== faction.parentId && parentById.get(id) !== faction.id);
         return relatedFactionIds.length === faction.relatedFactionIds.length ? faction : { ...faction, relatedFactionIds };
     });
 };
@@ -59,11 +72,12 @@ function parseInitialization(raw) {
     return value;
 }
 
-function parseGeneration(raw) {
+function parseGeneration(raw, { requireHistory = false } = {}) {
     const value = parseFirstJsonObject(raw, '今日风向生成未返回可解析JSON', candidate => own(candidate, 'world') && own(candidate, 'reputation') && own(candidate, 'factions') && own(candidate, 'dynamics'));
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('今日风向生成结果必须是对象');
     const keys = Object.keys(value);
-    if (keys.length !== 4 || !['world', 'reputation', 'factions', 'dynamics'].every(key => own(value, key))) throw new Error('今日风向生成结果包含额外字段');
+    const expected = requireHistory ? ['world', 'reputation', 'factions', 'dynamics', 'history'] : ['world', 'reputation', 'factions', 'dynamics'];
+    if (keys.length !== expected.length || !expected.every(key => own(value, key))) throw new Error('今日风向生成结果包含额外字段');
     if (value.world !== null && (typeof value.world !== 'object' || Array.isArray(value.world))) throw new Error('今日风向生成模块 world 无效');
     if (value.reputation !== null && (typeof value.reputation !== 'object' || Array.isArray(value.reputation))) throw new Error('今日风向生成模块 reputation 无效');
     if (value.factions !== null && !Array.isArray(value.factions)) throw new Error('今日风向生成模块 factions 无效');
@@ -72,6 +86,7 @@ function parseGeneration(raw) {
     if (value.reputation !== null) verifyReputation(value.reputation);
     if (value.factions !== null) verifyFactions(value.factions);
     if (value.dynamics !== null) verifyDynamics(value.dynamics);
+    if (requireHistory) value.history = normalizeTodayTrendHistoryProducer(value.history);
     return value;
 }
 
@@ -132,7 +147,7 @@ function assertTargetedGeneration(parsed, scope, target) {
     const module = ['world', 'reputation', 'faction', 'dynamics'].includes(target?.module) ? target.module : '';
     if (!module) return;
     const key = module === 'faction' ? 'factions' : module;
-    if (Object.entries(parsed).some(([name, value]) => name !== key && value !== null)) {
+    if (['world', 'reputation', 'factions', 'dynamics'].some(name => name !== key && parsed[name] !== null)) {
         throw new Error('单模块刷新返回了未请求模块的变更');
     }
     if (parsed[key] === null) throw new Error('单模块刷新未返回目标模块');
@@ -156,15 +171,25 @@ function assertTargetedGeneration(parsed, scope, target) {
     if (module === 'dynamics') targetedDynamics(scope.dynamics, parsed.dynamics, target.itemId);
 }
 
-function normalizeGeneration(parsed, { scope, preset, allowIncident }) {
+function normalizeGeneration(parsed, { scope, preset, allowIncident, allowHistoricalIncidentRecord = false }) {
     if (!scope || !preset) throw new TypeError('今日风向生成缺少当前资料');
-    const generatedFactions = parsed.factions === null ? null : withoutDirectParentChildLinks(parsed.factions);
+    const generatedFactions = parsed.factions === null ? null : sanitizeFactionRelations(parsed.factions);
+    const normalizeEventLatestStage = event => {
+        if (!event || !Array.isArray(event.stages) || !event.stages.length) return event;
+        const latestStage = event.stages.at(-1);
+        return event.latestStage === latestStage ? event : { ...event, latestStage };
+    };
+    const normalizeDynamicsLatestStages = dynamics => dynamics === null ? null : {
+        ...dynamics,
+        active: dynamics.active.map(normalizeEventLatestStage),
+        archived: dynamics.archived.map(normalizeEventLatestStage),
+    };
     const candidate = {
         ...scope,
         world: parsed.world ?? scope.world,
         reputation: parsed.reputation ?? scope.reputation,
         factions: generatedFactions ?? scope.factions,
-        dynamics: parsed.dynamics ?? scope.dynamics,
+        dynamics: parsed.dynamics === null ? scope.dynamics : normalizeDynamicsLatestStages(parsed.dynamics),
     };
     for (const previous of scope.dynamics.active) {
         const nextEvents = [...candidate.dynamics.active, ...candidate.dynamics.archived];
@@ -208,7 +233,8 @@ function normalizeGeneration(parsed, { scope, preset, allowIncident }) {
         [...scope.dynamics.active, ...scope.dynamics.archived].filter(event => event.type === type).map(event => event.id),
     )]));
     const enabledByType = {
-        incident: allowIncident,
+        incident: scope.dynamicsSettings.incident.enabled === true
+            && (allowIncident === true || allowHistoricalIncidentRecord === true),
         rumor: scope.dynamicsSettings.rumor.enabled,
         underground: scope.dynamicsSettings.underground.enabled,
     };
@@ -228,7 +254,7 @@ function normalizeInitialization(parsed, context, now, presetId = `${context.sto
         createdAt: timestamp, updatedAt: timestamp, source: context.source,
     };
     const scope = {
-        ...parsed.scope, factions: withoutDirectParentChildLinks(parsed.scope?.factions), storageId: context.storageId, characterId: context.characterId,
+        ...parsed.scope, factions: sanitizeFactionRelations(parsed.scope?.factions), storageId: context.storageId, characterId: context.characterId,
         characterName: context.characterName, presetId,
         operation: { enabled: false, mode: 'manual', intervalFloors: 1, lastSuccessfulAssistantCount: 0, lastSuccessfulRunAt: 0 },
         injection: { enabled: false },
@@ -284,22 +310,57 @@ export function createTodayTrendGenerationController({
         try {
             if (!input.scope || !input.preset) throw new TypeError('今日风向生成缺少当前预设或角色资料');
             if (!validTarget(input.target)) throw new TypeError('今日风向生成目标无效');
+            if (input.summaryOnly === true && input.target) throw new TypeError('summary-only 不得与定向刷新同时使用');
+            const requireHistory = Object.hasOwn(input, 'storyDate');
             assertActive(input.signal);
-            const context = await gather({ ...input, getCtx, worldBookNames: input.preset.source?.worldBookNames,
+            const context = await gather({ ...input, getCtx, historyBatch: input.historyBatch,
+                worldBookNames: input.preset.source?.worldBookNames,
                 includeExistingChat: input.preset.source?.includeExistingChat, userRequirements: input.preset.source?.userRequirements });
             assertActive(input.signal);
-            const prompts = buildGeneration({ context, preset: input.preset, scope: input.scope,
-                assistantCount: input.assistantCount, allowIncident: input.allowIncident === true, target: input.target });
+            // Request-only permissions: historical recording never authorizes proactive generation.
+            const historical = Array.isArray(input.historyBatch);
+            const allowIncident = !historical && input.scope.dynamicsSettings?.incident?.enabled === true && input.allowIncident === true;
+            const allowHistoricalIncidentRecord = historical && input.scope.dynamicsSettings?.incident?.enabled === true
+                && input.allowHistoricalIncidentRecord === true;
+            const prompts = buildGeneration({ context, preset: input.preset, scope: input.scope, promptScope: input.promptScope,
+                assistantCount: input.assistantCount, allowIncident, allowHistoricalIncidentRecord, target: input.target,
+                storyDate: input.storyDate ?? null, summaryOnly: input.summaryOnly === true, historyBatch: input.historyBatch });
             input.onPhase?.('generating');
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: input.signal });
             assertActive(input.signal);
             input.onPhase?.('parsing');
-            const parsed = parseUpdate(raw);
+            let delta = null;
+            if (Array.isArray(input.historyBatch)) {
+                delta = materializeTodayTrendBatchDelta(parseFirstJsonObject(raw, '历史批增量 JSON 无效'), input.scope, now());
+                // Reuse the established module validators, without changing ordinary generation.
+                delta.parsed = parseGeneration(JSON.stringify(delta.parsed), { requireHistory: true });
+            }
+            const parsed = delta ? delta.parsed : parseUpdate(raw, { requireHistory });
+            if (delta) {
+                const candidate = structuredClone(parsed);
+                for (const operation of delta.archives) {
+                    const index = candidate.dynamics.active.findIndex(event => event.id === operation.eventId);
+                    const [event] = candidate.dynamics.active.splice(index, 1);
+                    candidate.dynamics.archived.push({ ...event, lifecycle: 'archived',
+                        outcome: operation.outcome, finalResult: operation.finalResult });
+                }
+                normalizeUpdate(candidate, { scope: input.scope, preset: input.preset,
+                    allowIncident, allowHistoricalIncidentRecord, now });
+                return { context, scope: normalizeUpdate(parsed, { scope: input.scope, preset: input.preset,
+                    allowIncident, allowHistoricalIncidentRecord, now }), history: parsed.history,
+                    archives: delta.archives, raw };
+            }
+            if (input.summaryOnly === true
+                && ['world', 'reputation', 'factions', 'dynamics'].some(key => parsed[key] !== null)) {
+                throw new Error('summary-only 不得返回结构模块变更');
+            }
             assertTargetedGeneration(parsed, input.scope, input.target);
             return { context, scope: normalizeUpdate(parsed, { scope: input.scope, preset: input.preset,
-                allowIncident: input.allowIncident === true, now }), raw };
+                allowIncident, now }), history: parsed.history ?? null, raw };
         } catch (error) {
             if (error?.name === 'AbortError') throw error;
+            if (typeof error?.code === 'string'
+                && (error.code === 'TT_BATCH_VALIDATION' || error.code === 'TT_WORLD_CAPACITY' || error.code.startsWith('TT_HISTORY_') || error.code.startsWith('TT_DATE_'))) throw error;
             throw new Error(`今日风向生成失败：${generationErrorMessage(error)}`, { cause: error });
         }
     };

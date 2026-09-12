@@ -37,14 +37,18 @@ export function trendInlineActions({ visible = false, actions = [] } = {}) {
     return `<span class="pm-today-trend-inline-actions">${actions.map(action => trendIconButton({ ...action, className: `pm-today-trend-inline-action${action.className ? ` ${action.className}` : ''}` })).join('')}</span>`;
 }
 
-export function trendFloorStatus({ currentFloor, syncedFloor = 0, phase = 'idle', lastError = null, busy = false, targetFloor = null, targeted = false } = {}) {
+export function trendFloorStatus({ currentFloor, syncedFloor = 0, completedBatchFloor = null, phase = 'idle', lastError = null, busy = false, targetFloor = null, batchIndex = null, batchCount = null, targeted = false } = {}) {
     const synced = Number.isInteger(syncedFloor) && syncedFloor >= 0 ? syncedFloor : 0;
     const currentFloorProvided = currentFloor !== undefined;
-    const floor = Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced;
+    const completedBatch = Number.isInteger(completedBatchFloor) && completedBatchFloor >= 0 ? completedBatchFloor : null;
+    const floor = completedBatch ?? (Number.isInteger(currentFloor) && currentFloor >= 0 ? currentFloor : currentFloorProvided ? null : synced);
     const target = Number.isInteger(targetFloor) && targetFloor >= 0 ? targetFloor : null;
     const terminalState = phase === 'failed' ? 'failed' : phase === 'canceled' ? 'canceled' : null;
     const state = busy ? 'updating' : terminalState || (floor === null ? 'unavailable' : floor > 0 && synced === floor ? 'synced' : 'unsynced');
-    const status = busy ? targeted ? '正在更新模块' : target === null ? '正在同步' : `同步任务 #${target}`
+    const batchStatus = Number.isSafeInteger(batchIndex) && batchIndex >= 0 && Number.isSafeInteger(batchCount) && batchCount > 0
+        ? `第 ${batchIndex + 1}/${batchCount} 批`
+        : Number.isSafeInteger(batchCount) && batchCount > 0 ? `准备批处理（共 ${batchCount} 批）` : '';
+    const status = busy ? targeted ? '正在更新模块' : batchStatus || (target === null ? '正在同步' : `同步任务 #${target}`)
         : terminalState === 'failed' ? '同步失败' : terminalState === 'canceled' ? '已终止'
         : floor === null ? '楼层不可用' : floor > 0 && synced === floor ? '已同步' : floor > 0 ? '待同步' : '尚未同步';
     const reading = floor === null ? '#--' : `#${floor}`;

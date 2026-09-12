@@ -152,6 +152,13 @@
     ],
     "allowedWrites": [
       {
+        "file": "src/today-trend-phone-controller.js",
+        "properties": [
+          "--pm-today-trend-head-progress"
+        ],
+        "reason": "滚动进度写入内容层 CSS 变量，驱动今日风向模块头吸顶压缩插值"
+      },
+      {
         "file": "src/emoji-ui.js",
         "properties": [
           "--pm-r-bg",

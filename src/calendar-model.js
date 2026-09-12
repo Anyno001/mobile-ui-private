@@ -172,6 +172,7 @@ export function normalizeCalendarEvent(value, expectedDate = '', now = Date.now(
 export function calendarReferenceDate(scope, fallback = new Date()) {
     const configured = parseCalendarDate(scope?.baseDate);
     if (configured) return configured;
+    if (fallback === null) return null;
     const source = fallback instanceof Date && Number.isFinite(fallback.getTime()) ? fallback : new Date();
     return createCalendarDate(source.getFullYear(), source.getMonth() + 1, source.getDate()) || createCalendarDate(2000, 1, 1);
 }

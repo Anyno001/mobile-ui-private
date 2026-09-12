@@ -42,7 +42,7 @@ function readEvent(form, existing = null) {
 }
 
 export function createTodayTrendActionDispatcher({
-    container, getStorageId, getStore, committer, render, onGenerate, onRefresh, onSaveRule, onRegenerateRule, onRuleEditorStateChange = () => {}, confirmImpl = globalThis.confirm, onError = () => {}, onStatus = () => {},
+    container, getStorageId, getStore, committer, render, onGenerate, onRefresh, onLoadDetail, onSaveRule, onRegenerateRule, onRuleEditorStateChange = () => {}, confirmImpl = globalThis.confirm, onError = () => {}, onStatus = () => {},
 } = {}) {
     if (!container?.addEventListener || typeof getStorageId !== 'function' || typeof getStore !== 'function' || typeof committer?.commitScope !== 'function' || typeof render !== 'function') {
         throw new TypeError('今日风向动作分发依赖无效');
@@ -113,6 +113,7 @@ export function createTodayTrendActionDispatcher({
         }
         if (action === 'today-trend-close-menu') { closeMenu(); return run(rerender()); }
         closeMenu();
+        if (action === 'today-trend-load-detail') return run(onLoadDetail?.(button.dataset.eventId || '', button.dataset.detailId || '') ?? Promise.reject(new Error('今日风向详情加载能力尚未接入')));
         if (action === 'today-trend-cancel-rule-editor') { const returnName = view.ruleReturnName; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; view.mode = 'content'; onRuleEditorStateChange(false, returnName); return run(rerender()); }
         if (action === 'today-trend-add-detail') {
             const list = button.closest('fieldset')?.querySelector('[data-today-trend-details]');

@@ -39,7 +39,7 @@ export function createBackupController({
             calendarStore: snapshot.calendarStore, calendarOccasions: snapshot.calendarOccasions,
             calendarHolidays: snapshot.calendarHolidays, calendarWeather: snapshot.calendarWeather,
             calendarCycles: snapshot.calendarCycles, calendarRecipes: snapshot.calendarRecipes,
-            calendarOutfits: snapshot.calendarOutfits, todayTrend: snapshot.todayTrend,
+            calendarOutfits: snapshot.calendarOutfits, todayTrend: snapshot.todayTrend, todayTrendV2: snapshot.todayTrendV2,
             branchLineage: snapshot.branchLineage, userGeneration: snapshot.userGeneration, desktopIcons: snapshot.desktopIcons,
         };
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));

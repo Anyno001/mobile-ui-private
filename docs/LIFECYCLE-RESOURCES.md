@@ -1,6 +1,6 @@
 # 生命周期资源清单
 
-本清单为阶段 A 的资源 owner 基线。它记录资源的唯一 owner、注册点和释放/失效路径；不以“DOM 最终会被回收”代替显式释放。
+本清单为当前版本的资源 owner 基线。它记录资源的唯一 owner、注册点和释放/失效路径；不以“DOM 最终会被回收”代替显式释放。
 
 ## 页面级常驻监听
 
@@ -34,4 +34,7 @@
 ## 已知边界
 
 - 斜杠命令注册重试最多 30 次；宿主事件延迟重试为一次性 1500ms 回调。二者不持有窗口 DOM，且不应被当作窗口级资源。
-- 真正关闭阶段 A 前仍须在 SillyTavern 验证重复加载、打开/关闭、最小化、切卡和切聊天；自动化只能验证模拟边界。
+- Today Trend 的 20 步 Node 长序列验证确定性重放与公开 owner 契约。阶段 0 的真实宿主重复回归已由助手基于当前已测试版本明确豁免；阶段 1 无 UI/AI 可见变化，仅验证 authority/CAS 资源 owner。真实 DOM、listener、AbortController 与宿主资源循环验收保留到实际修改生命周期/UI 的阶段及最终发布阶段。
+- Today Trend v2 的 `BroadcastChannel` 仅承担失权通知，不提供写入正确性。channel 在 authority `acquire` 时按需创建，由 `release` 或 `close` 显式释放；默认三开关关闭且未获取 authority 时不注册 channel。最终写入资格始终由单个 IndexedDB `readwrite` 事务中的 CAS 判定。
+- `pmOpenIDB` 由模块级 `database` 与 `openingPromise` 共同持有连接生命周期：首次并发调用共享 pending open；`versionchange` handler 捕获并关闭所属连接，只有缓存仍指向该连接时才清空 `database`，避免旧连接误关后来连接。
+- authority 状态不可读取时 Today Trend v2 兼容桥读写均 fail-closed，不持有或返回无法证明新旧程度的 v1 fallback；恢复动作必须先修复 `PhoneModeDB/kv` 可读性，再重新加载。

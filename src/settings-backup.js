@@ -18,7 +18,9 @@ import { loadDesktopIcons, normalizeDesktopIconBackupPayload, replaceDesktopIcon
 import { normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState } from './interactive-scene-model.js';
 import { materializeLocalBackgrounds, saveBgGlobal, saveBgLocal, saveDesktopBg } from './storage-background.js';
 import { normalizeTodayTrendStore } from './today-trend-model.js';
-import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.js';
+import {
+    captureTodayTrendV2Backup, loadTodayTrendStore, restoreTodayTrendV2Backup, saveTodayTrendStore,
+} from './today-trend-storage.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveBidirectional, saveInjectionConfig,
@@ -113,6 +115,7 @@ export async function runBackupTransaction({
         await afterPersist('apply', nextState);
         await complete(nextState, applied);
     } catch (error) {
+        if (error?.partialApplied) applied = { ...(applied || {}), ...error.partialApplied };
         let rollbackState;
         try {
             await beforeApply('rollback');
@@ -157,6 +160,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarHolidays: loadCalendarHolidays(), calendarWeather: loadCalendarWeather(),
             calendarCycles: loadCalendarCycles(), calendarRecipes: loadCalendarRecipes(), calendarOutfits: loadCalendarOutfits(),
             todayTrend: normalizeTodayTrendStore(await loadTodayTrendStore()),
+            todayTrendV2: await (deps.captureTodayTrendV2Backup || captureTodayTrendV2Backup)(),
             branchLineage: clone(branchLineage),
             userGeneration: normalizeUserGenerationStore(userGenerationWriteState.store),
             desktopIcons,
@@ -191,7 +195,7 @@ export function createBackupStateHandlers(deps = {}) {
             calendarCycles: normalizeCycleStore(state.calendarCycles),
             calendarRecipes: normalizeRecipeStore(state.calendarRecipes),
             calendarOutfits: normalizeOutfitStore(state.calendarOutfits),
-            todayTrend: normalizeTodayTrendStore(state.todayTrend),
+            todayTrend: normalizeTodayTrendStore(state.todayTrend), todayTrendV2: clone(state.todayTrendV2 ?? null),
             branchLineage: clone(state.branchLineage || {}),
             userGeneration: normalizeUserGenerationStore(state.userGeneration),
             desktopIcons: normalizeDesktopIconBackupPayload(state.desktopIcons || {}),
@@ -218,23 +222,50 @@ export function createBackupStateHandlers(deps = {}) {
             || !saveCalendarCycles(state.calendarCycles) || !saveCalendarRecipes(state.calendarRecipes) || !saveCalendarOutfits(state.calendarOutfits)) {
             throw new Error('日历与菜谱数据保存失败：浏览器存储不可用');
         }
-        await saveTodayTrendStore(state.todayTrend);
-        const userGeneration = normalizeUserGenerationStore(state.userGeneration);
-        if (!userGenerationWriteState) userGenerationWriteState = await loadUserGenerationStore();
-        if (!userGenerationWriteState.writable) throw new Error(`User 库保存失败：${userGenerationWriteState.readOnlyReason || '当前为只读保护状态'}`);
-        await saveUserGenerationStore(userGeneration, {
-            readOnlyReason: userGenerationWriteState.readOnlyReason,
-            writeHandle: userGenerationWriteState.writeHandle,
-        });
-        await replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}));
+        let todayTrendReceipt;
+        try {
+            const expectedStoreRevision = phase === 'rollback' && Number.isSafeInteger(applied?.todayTrendReceipt?.storeRevision)
+                ? applied.todayTrendReceipt.storeRevision : null;
+            if (state.todayTrendV2) {
+                todayTrendReceipt = await (deps.restoreTodayTrendV2Backup || restoreTodayTrendV2Backup)(state.todayTrendV2, { expectedStoreRevision });
+            } else {
+                todayTrendReceipt = await (deps.saveTodayTrendStore || saveTodayTrendStore)(state.todayTrend, {
+                    allowAuthorityAcquire: true, returnReceipt: true, expectedStoreRevision,
+                });
+            }
+        } catch (error) {
+            if (error?.committedReceipt) {
+                error.partialApplied = { ...(error.partialApplied || {}), todayTrendReceipt: error.committedReceipt };
+            }
+            throw error;
+        }
+        try {
+            const userGeneration = normalizeUserGenerationStore(state.userGeneration);
+            if (!userGenerationWriteState) userGenerationWriteState = await loadUserGenerationStore();
+            if (!userGenerationWriteState.writable) throw new Error(`User 库保存失败：${userGenerationWriteState.readOnlyReason || '当前为只读保护状态'}`);
+            await saveUserGenerationStore(userGeneration, {
+                readOnlyReason: userGenerationWriteState.readOnlyReason,
+                writeHandle: userGenerationWriteState.writeHandle,
+            });
+            await replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}));
+        } catch (error) {
+            error.partialApplied = { ...(error.partialApplied || {}), todayTrendReceipt };
+            throw error;
+        }
         if (phase === 'rollback') {
             if (applied?.branchLineageInserted) await rollbackBranchLineageBackup(applied.branchLineageInserted);
             else await saveBranchLineage(state.branchLineage || {});
         } else {
-            const branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
+            let branchLineageInserted;
+            try {
+                branchLineageInserted = await saveBranchLineageForBackup(state.branchLineage || {});
+            } catch (error) {
+                error.partialApplied = { ...(error.partialApplied || {}), todayTrendReceipt };
+                throw error;
+            }
             deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
             deps.reloadTodayTrendStore?.();
-            return { branchLineageInserted };
+            return { branchLineageInserted, todayTrendReceipt };
         }
         deps.invalidateInteractiveStore?.(); deps.reloadCalendarStore?.();
         deps.reloadTodayTrendStore?.();
