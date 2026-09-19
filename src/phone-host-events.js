@@ -61,7 +61,7 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
         for (const eventName of resolveCommunityMessageEvents(eventTypes)) {
             results.push(registerOnce(`community:${eventName}`, eventName, () => {
                 const currentContext = getCtx();
-                try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch (error) {}
+                try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch { /* 观察失败不得阻断宿主消息事件 */ }
                 Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
                 observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId);
             }));
@@ -100,6 +100,8 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
                 const result = await inheritBranch(currentContext, {
                     getStorageId, invalidateInteractiveStore: deps.invalidateInteractiveStore,
                     reloadCalendarStore: deps.reloadCalendarStore, reloadTodayTrendStore: deps.reloadTodayTrendStore,
+                    commitTodayTrendStore: deps.commitTodayTrendStore,
+                    commitTodayTrendScope: deps.commitTodayTrendScope,
                 });
                 runtime.lastBranchInheritance = { status: result?.status || 'unknown', reason: result?.reason || null, sourceId: result?.sourceId || null, targetId: result?.targetId || null, sourcePresence: result?.sourcePresence || null, targetPresence: result?.targetPresence || null };
                 runtime.lastBranchInheritanceError = null;

@@ -1,8 +1,13 @@
 import { createTodayTrendCommitter } from './today-trend-commit.js';
 import { createTodayTrendGenerationController } from './today-trend-generation.js';
-import { createTodayTrendScheduler } from './today-trend-scheduler.js';
+import { countTodayTrendAssistantMessages, createTodayTrendScheduler } from './today-trend-scheduler.js';
 import { loadTodayTrendStore, saveTodayTrendStore } from './today-trend-storage.js';
 import { createEmptyTodayTrendScope } from './today-trend-model.js';
+import {
+    buildReadOnlyShadow, normalizeTodayTrendV2Candidate, resolveTodayTrendV2DetailForTarget,
+    resolveTodayTrendV2RetentionSettingsState, resolveTodayTrendV2UiScope, saveTodayTrendRetentionSettingsToV2,
+    serializeTodayTrendV2ScopeForGeneration, replaceTodayTrendV2ScopeWithInitialization,
+} from './today-trend-v2-model.js';
 
 export function installTodayTrend(_state, deps = {}) {
     const { runtime, callAI, getCtx, getLastMessageId, getStorageId } = deps;
@@ -12,13 +17,37 @@ export function installTodayTrend(_state, deps = {}) {
     const localRuntime = runtime.todayTrend || (runtime.todayTrend = {});
     const load = deps.loadTodayTrendStore || loadTodayTrendStore;
     const save = deps.saveTodayTrendStore || saveTodayTrendStore;
+    const committer = (deps.createTodayTrendCommitter || createTodayTrendCommitter)({
+        runtime: localRuntime,
+        load,
+        save,
+        refreshInjection: deps.applyBidirectionalInjection,
+        prepareInjection: deps.prepareBidirectionalInjection,
+    });
+    const ensureReady = async () => {
+        try {
+            if (typeof committer.ready === 'function') await committer.ready();
+            if (committer.isBlocked?.()) {
+                const error = new Error('Today Trend 存在 blocked 恢复事务，拒绝读取或生成');
+                error.code = 'TT_TRANSACTION_BLOCKED';
+                throw error;
+            }
+            delete localRuntime.recoveryError;
+        } catch (error) {
+            localRuntime.recoveryError = error;
+            throw error;
+        }
+    };
     const loadStore = async ({ force = false } = {}) => {
+        await ensureReady();
         if (!force && localRuntime.store) return localRuntime.store;
         const loaded = await load();
         localRuntime.store = loaded;
         return loaded;
     };
-    const committer = createTodayTrendCommitter({ runtime: localRuntime, load, save, refreshInjection: deps.applyBidirectionalInjection });
+    if (typeof committer.ready === 'function') {
+        ensureReady().catch(() => {});
+    }
     const controller = (deps.createTodayTrendGenerationController || createTodayTrendGenerationController)({ callAI, getCtx });
     const getHostFloor = () => {
         try {
@@ -31,7 +60,11 @@ export function installTodayTrend(_state, deps = {}) {
         }
     };
     const scheduler = createTodayTrendScheduler({ controller, committer, getStore: loadStore, getStorageId,
-        getChat: () => getCtx()?.chat || [], getFloor: getHostFloor });
+        getChat: () => getCtx()?.chat || [], getFloor: getHostFloor, getCalendarStore: deps.getCalendarStore,
+        getPromptScope: typeof committer.loadCanonical === 'function' ? async (storageId, canonicalOverride = null) =>
+            serializeTodayTrendV2ScopeForGeneration(
+                canonicalOverride || await committer.loadCanonical(), storageId,
+            ) : null });
     const reloadStore = () => loadStore({ force: true });
     const nextPresetId = (store, storageId) => {
         let id = '';
@@ -49,9 +82,29 @@ export function installTodayTrend(_state, deps = {}) {
         if (!storageId || storageId !== getStorageId() || !character?.name) throw new Error('请先打开有效的角色聊天');
         return { storageId, characterId: String(character.avatar || context.characterId || '').trim(), characterName: character.name.trim() };
     };
-    const initialize = async ({ worldBookNames, includeExistingChat = true, userRequirements = '', presetName = '', presetId = '', signal } = {}) => {
+    const initialize = async ({ worldBookNames, includeExistingChat = true, backfillExistingChat = false,
+        recentAssistantCount, mergeAssistantCount, runBackfill = false, userRequirements = '', presetName = '', presetId = '', signal } = {}) => {
         const identity = currentIdentity(getStorageId());
         const existing = await loadStore();
+        const assistantCount = countTodayTrendAssistantMessages(getCtx()?.chat);
+        const fallbackMergeAssistantCount = Math.min(5, assistantCount);
+        const normalizedRecentAssistantCount = backfillExistingChat === true && assistantCount > 0
+            ? (recentAssistantCount === undefined ? assistantCount : recentAssistantCount) : null;
+        const normalizedMergeAssistantCount = backfillExistingChat === true && assistantCount > 0
+            ? (mergeAssistantCount === undefined ? fallbackMergeAssistantCount : mergeAssistantCount) : null;
+        if (backfillExistingChat === true && assistantCount > 0
+            && (!Number.isSafeInteger(normalizedRecentAssistantCount) || normalizedRecentAssistantCount < 1
+                || normalizedRecentAssistantCount > assistantCount)) {
+            throw Object.assign(new Error('初始化历史回填 recentAssistantCount 越界'), { code: 'TT_HISTORY_WINDOW_INVALID' });
+        }
+        if (backfillExistingChat === true && assistantCount > 0
+            && (!Number.isSafeInteger(normalizedMergeAssistantCount) || normalizedMergeAssistantCount < 1
+                || normalizedMergeAssistantCount > normalizedRecentAssistantCount)) {
+            throw Object.assign(new Error('初始化历史回填 mergeAssistantCount 越界'), { code: 'TT_HISTORY_WINDOW_INVALID' });
+        }
+        const initializationBatchDraft = normalizedRecentAssistantCount === null ? null : {
+            enabled: true, recentAssistantCount: normalizedRecentAssistantCount, mergeAssistantCount: normalizedMergeAssistantCount,
+        };
         const requestedPresetId = String(presetId || '').trim();
         if (requestedPresetId && !existing.presets[requestedPresetId]) throw new Error('要重新初始化的世界预设不存在');
         const resolvedPresetId = requestedPresetId || nextPresetId(existing, identity.storageId);
@@ -63,34 +116,67 @@ export function installTodayTrend(_state, deps = {}) {
         if (signal) signal.addEventListener('abort', () => task.abortController.abort(signal.reason), { once: true });
         initialization = task;
         const active = () => initialization === task && !task.abortController.signal.aborted && getStorageId() === identity.storageId;
-        const result = await controller.initialize({ ...identity, worldBookNames, includeExistingChat, userRequirements, presetId: resolvedPresetId, signal: task.abortController.signal });
+        const canonicalAtStart = committer.supportsCanonical === true && typeof committer.loadCanonical === 'function'
+            ? await committer.loadCanonical() : null;
+        const expectedCanonicalScopeRevision = canonicalAtStart?.globalEnvelope?.payload?.scopes?.[identity.storageId]?.revision;
+        const result = await controller.initialize({ ...identity, worldBookNames, includeExistingChat, userRequirements,
+            presetId: resolvedPresetId, signal: task.abortController.signal });
         if (!active()) throw Object.assign(new Error('今日风向初始化已取消'), { name: 'AbortError' });
-        const initialized = await committer.commitStore(store => {
-            const presetId = result.store.scopes[identity.storageId].presetId;
-            const previousPreset = store.presets[presetId];
-            const currentScope = store.scopes[identity.storageId];
-            if ((expectedScopePresetId && currentScope?.presetId !== expectedScopePresetId)
-                || JSON.stringify(currentScope || null) !== JSON.stringify(expectedScope)
-                || (expectedPresetRevision && previousPreset?.revision !== expectedPresetRevision)
-                || (!expectedPresetRevision && previousPreset)) {
-                throw new Error('今日风向预设已变化，初始化结果已丢弃');
-            }
-            const next = structuredClone(store);
-            next.presets[presetId] = { ...structuredClone(result.store.presets[presetId]),
-                createdAt: previousPreset?.createdAt || result.store.presets[presetId].createdAt,
-                revision: previousPreset ? previousPreset.revision + 1 : 1,
-                updatedAt: Date.now() };
-            next.scopes[identity.storageId] = structuredClone(result.store.scopes[identity.storageId]);
-            if (presetName.trim()) next.presets[presetId].name = presetName.trim();
-            next.scopes[identity.storageId].operation.enabled = true;
-            return next;
-        }, { active });
+        const initialized = canonicalAtStart
+            ? await committer.commitStore(store => {
+                const currentFacade = buildReadOnlyShadow(store);
+                const currentScope = currentFacade.scopes[identity.storageId];
+                const previousPreset = currentFacade.presets[resolvedPresetId];
+                if ((expectedScopePresetId && currentScope?.presetId !== expectedScopePresetId)
+                    || JSON.stringify(currentScope || null) !== JSON.stringify(expectedScope)
+                    || (expectedPresetRevision && previousPreset?.revision !== expectedPresetRevision)
+                    || (!expectedPresetRevision && previousPreset)) throw new Error('今日风向预设已变化，初始化结果已丢弃');
+                const initializationStore = structuredClone(result.store);
+                const nextPreset = initializationStore.presets[resolvedPresetId];
+                nextPreset.createdAt = previousPreset?.createdAt || nextPreset.createdAt;
+                nextPreset.revision = previousPreset ? previousPreset.revision + 1 : 1;
+                nextPreset.updatedAt = Date.now();
+                if (presetName.trim()) nextPreset.name = presetName.trim();
+                initializationStore.scopes[identity.storageId].operation = {
+                    ...initializationStore.scopes[identity.storageId].operation,
+                    enabled: true,
+                    ...(initializationBatchDraft ? { batchDraft: initializationBatchDraft } : {}),
+                };
+                return replaceTodayTrendV2ScopeWithInitialization(store, initializationStore, identity.storageId, Date.now());
+            }, { active }, {
+                canonical: true,
+                scopeId: identity.storageId,
+                expectedStoreRevision: canonicalAtStart.globalEnvelope.revision,
+                ...(expectedCanonicalScopeRevision === undefined ? {} : { expectedScopeRevision: expectedCanonicalScopeRevision }),
+            })
+            : await committer.commitStore(store => {
+                const previousPreset = store.presets[resolvedPresetId];
+                const currentScope = store.scopes[identity.storageId];
+                if ((expectedScopePresetId && currentScope?.presetId !== expectedScopePresetId)
+                    || JSON.stringify(currentScope || null) !== JSON.stringify(expectedScope)
+                    || (expectedPresetRevision && previousPreset?.revision !== expectedPresetRevision)
+                    || (!expectedPresetRevision && previousPreset)) throw new Error('今日风向预设已变化，初始化结果已丢弃');
+                const next = structuredClone(store);
+                next.presets[resolvedPresetId] = { ...structuredClone(result.store.presets[resolvedPresetId]),
+                    createdAt: previousPreset?.createdAt || result.store.presets[resolvedPresetId].createdAt,
+                    revision: previousPreset ? previousPreset.revision + 1 : 1, updatedAt: Date.now() };
+                next.scopes[identity.storageId] = structuredClone(result.store.scopes[identity.storageId]);
+                if (presetName.trim()) next.presets[resolvedPresetId].name = presetName.trim();
+                next.scopes[identity.storageId].operation = {
+                    ...next.scopes[identity.storageId].operation,
+                    enabled: true,
+                    ...(initializationBatchDraft ? { batchDraft: initializationBatchDraft } : {}),
+                };
+                return next;
+            }, { active });
         if (!initialized) throw new Error('今日风向初始化已取消');
         if (!active()) throw Object.assign(new Error('今日风向初始化已取消'), { name: 'AbortError' });
         scheduler.arm(identity.storageId);
+        if (runBackfill === true && initializationBatchDraft) await scheduler.manual({ batchEnabled: true, ...initializationBatchDraft });
         if (initialization === task) initialization = null;
         return initialized;
     };
+
     const cancelInitialization = reason => {
         initialization?.abortController.abort(reason || 'today-trend-initialization-cancelled');
         initialization = null;
@@ -167,21 +253,68 @@ export function installTodayTrend(_state, deps = {}) {
     const saveSettings = async ({ presetId, operation, injection } = {}) => {
         const identity = currentIdentity(getStorageId());
         const selected = String(presetId || '').trim();
+        if (typeof committer.loadCanonical !== 'function') throw Object.assign(new Error('今日风向设置需要 canonical 存储能力'), { code: 'TT_V2_CANONICAL_REQUIRED' });
+        const canonical = await committer.loadCanonical();
+        const currentEnvelope = canonical?.globalEnvelope?.payload?.scopes?.[identity.storageId];
+        if (!currentEnvelope?.payload) throw Object.assign(new Error('当前聊天尚未初始化今日风向'), { code: 'TT_V2_SCHEMA_INVALID' });
+        if (selected && selected !== currentEnvelope.payload.presetId) {
+            const committed = await committer.commitStore(store => {
+                const facade = buildReadOnlyShadow(store);
+                const current = facade.scopes[identity.storageId];
+                if (!current) throw new Error('当前聊天尚未初始化今日风向');
+                if (!facade.presets[selected]) throw new Error('选择的世界预设不存在');
+                const next = Object.assign(createEmptyTodayTrendScope(), identity, { presetId: selected });
+                next.operation = { ...next.operation, ...operation };
+                next.injection = { ...next.injection, ...injection };
+                facade.scopes[identity.storageId] = next;
+                return normalizeTodayTrendV2Candidate(facade, store);
+            }, null, { canonical: true, scopeId: identity.storageId, expectedScopeRevision: currentEnvelope.revision });
+            if (!committed) throw new Error('今日风向设置保存已取消');
+            if (operation?.enabled) scheduler.arm(identity.storageId); else scheduler.cancel('today-trend-stopped');
+            return committed;
+        }
         const committed = await committer.commitStore(store => {
-            const current = store.scopes[identity.storageId];
-            if (!current) throw new Error('当前聊天尚未初始化今日风向');
-            const next = selected && selected !== current.presetId ? (() => {
-                if (!store.presets[selected]) throw new Error('选择的世界预设不存在');
-                return Object.assign(createEmptyTodayTrendScope(), identity, { presetId: selected });
-            })() : current;
-            next.operation = { ...next.operation, ...operation };
-            next.injection = { ...next.injection, ...injection };
-            store.scopes[identity.storageId] = next;
+            const scopes = store.globalEnvelope.payload.scopes;
+            const envelope = scopes[identity.storageId];
+            if (!envelope?.payload) throw Object.assign(new Error('当前聊天尚未初始化今日风向'), { code: 'TT_V2_SCHEMA_INVALID' });
+            const current = envelope.payload;
+            scopes[identity.storageId] = { ...envelope, payload: {
+                ...current,
+                operation: { ...current.operation, ...operation },
+                injection: { ...current.injection, ...injection },
+            } };
             return store;
-        });
+        }, null, { canonical: true, scopeId: identity.storageId, expectedScopeRevision: currentEnvelope.revision });
         if (!committed) throw new Error('今日风向设置保存已取消');
         if (operation?.enabled) scheduler.arm(identity.storageId); else scheduler.cancel('today-trend-stopped');
         return committed;
+    };
+    const retentionSettingsState = async storageId => {
+        if (typeof committer.loadCanonical !== 'function') return null;
+        return resolveTodayTrendV2RetentionSettingsState(await committer.loadCanonical(), storageId);
+    };
+    const saveRetentionSettings = async ({
+        storageId, archivedDetailLatestEventCount, archivedDetailRetentionFloors,
+        expectedScopeRevision, expectedSettingsRevision,
+    } = {}) => {
+        const identity = currentIdentity(String(storageId || ''));
+        if (typeof committer.loadCanonical !== 'function') {
+            throw Object.assign(new Error('归档保留设置需要 canonical 存储能力'), { code: 'TT_V2_CANONICAL_REQUIRED' });
+        }
+        const committed = await committer.commitStore(current => saveTodayTrendRetentionSettingsToV2(
+            current,
+            identity.storageId,
+            { archivedDetailLatestEventCount, archivedDetailRetentionFloors },
+            { expectedScopeRevision, expectedSettingsRevision },
+        ), null, { canonical: true, scopeId: identity.storageId });
+        if (!committed) throw Object.assign(new Error('归档保留设置保存已取消'), { name: 'AbortError' });
+        const canonical = await committer.loadCanonical();
+        const scope = resolveTodayTrendV2UiScope(canonical, identity.storageId);
+        const revisions = resolveTodayTrendV2RetentionSettingsState(canonical, identity.storageId);
+        if (!scope || !revisions) {
+            throw Object.assign(new Error('归档保留设置保存后无法重新读取 committed scope'), { code: 'TT_V2_SCHEMA_INVALID' });
+        }
+        return { scope, revisions };
     };
     const renamePreset = async (presetId, name) => {
         const selected = String(presetId || '').trim(), nextName = String(name || '').trim();
@@ -210,7 +343,18 @@ export function installTodayTrend(_state, deps = {}) {
     };
     Object.assign(deps, {
         getTodayTrendStore: loadStore,
+        getTodayTrendUiScope: async storageId => {
+            if (typeof committer.loadCanonical !== 'function') return (await loadStore()).scopes?.[storageId] || null;
+            return resolveTodayTrendV2UiScope(await committer.loadCanonical(), storageId);
+        },
+        getTodayTrendRetentionSettingsState: retentionSettingsState,
         reloadTodayTrendStore: reloadStore,
+        resolveTodayTrendDetail: async (eventId, detailId, targetAssistantCount = getHostFloor()) => {
+            if (typeof committer.loadCanonical !== 'function' || targetAssistantCount === null) return null;
+            return resolveTodayTrendV2DetailForTarget(
+                await committer.loadCanonical(), getStorageId(), eventId, detailId, targetAssistantCount,
+            );
+        },
         observeTodayTrendTurn: (chat, options) => scheduler.observe(chat, options),
         armTodayTrendGeneration: (storageId, chat) => scheduler.arm(storageId, chat),
         cancelTodayTrendGeneration: (reason, reset) => scheduler.cancel(reason, reset),
@@ -227,6 +371,7 @@ export function installTodayTrend(_state, deps = {}) {
         saveTodayTrendRule: saveRule,
         bindTodayTrendPreset: bindPreset,
         saveTodayTrendSettings: saveSettings,
+        saveTodayTrendRetentionSettings: saveRetentionSettings,
         renameTodayTrendPreset: renamePreset,
         deleteTodayTrendPreset: deletePreset,
         commitTodayTrendScope: (storageId, mutate, task, options) => committer.commitScope(storageId, mutate, task, options),

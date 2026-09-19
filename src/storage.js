@@ -1,7 +1,8 @@
 import {
     CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY,
     CALENDAR_OUTFIT_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_STORAGE_KEY, CALENDAR_WEATHER_STORAGE_KEY, CHARACTER_BEHAVIOR_KEY,
-    GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, TODAY_TREND_FALLBACK_KEY, TODAY_TREND_STORAGE_KEY, WORLD_BOOK_CONFIG_KEY,
+    GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, TODAY_TREND_FALLBACK_KEY, TODAY_TREND_STORAGE_KEY,
+    TODAY_TREND_V1_MIGRATION_BACKUP_KEY, TODAY_TREND_V2_AUTHORITY_KEY, TODAY_TREND_V2_FALLBACK_KEY, TODAY_TREND_V2_STORAGE_KEY, WORLD_BOOK_CONFIG_KEY,
 } from './constants.js';
 import { BUDGET_CONFIG_KEY, normalizeBudgetConfig } from './budget.js';
 import {
@@ -49,15 +50,26 @@ export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     INTERACTIVE_STORE_KEY, INTERACTIVE_FALLBACK_KEY, PHONE_UI_STATE_KEY, 'ST_SMS_PHONE_QR_INITIALIZED',
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY,
-    TODAY_TREND_FALLBACK_KEY, STORY_ORACLE_FALLBACK_KEY, USER_GENERATION_FALLBACK_KEY,
+    TODAY_TREND_FALLBACK_KEY, TODAY_TREND_V2_FALLBACK_KEY,
+    STORY_ORACLE_FALLBACK_KEY, USER_GENERATION_FALLBACK_KEY,
 ]);
 export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, BRANCH_LINEAGE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY, DESKTOP_ICON_STORAGE_KEY,
-    TODAY_TREND_STORAGE_KEY, STORY_ORACLE_STORE_KEY, USER_GENERATION_STORE_KEY,
+    TODAY_TREND_STORAGE_KEY, TODAY_TREND_V1_MIGRATION_BACKUP_KEY, TODAY_TREND_V2_STORAGE_KEY, TODAY_TREND_V2_AUTHORITY_KEY,
+    STORY_ORACLE_STORE_KEY, USER_GENERATION_STORE_KEY,
 ]);
 export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX]);
 
 export async function loadEmojis() {
+    const primary = await pmIDBReadEntry(EMOJI_STORE_KEY);
+    if (primary.ok && Array.isArray(primary.value)) {
+        window.__pmEmojis = primary.value;
+        try { localStorage.removeItem(EMOJI_FALLBACK_KEY); }
+        catch (error) {
+            console.warn('[phone-mode] 表情包后备数据清理失败', error);
+        }
+        return;
+    }
     try {
         const fallback = localStorage.getItem(EMOJI_FALLBACK_KEY);
         if (fallback) {
@@ -66,16 +78,22 @@ export async function loadEmojis() {
             return;
         }
     } catch (error) {
-        try { localStorage.removeItem(EMOJI_FALLBACK_KEY); } catch (removeError) {}
+        console.warn('[phone-mode] 表情包后备数据读取失败', error);
+        try { localStorage.removeItem(EMOJI_FALLBACK_KEY); }
+        catch (removeError) {
+            console.warn('[phone-mode] 表情包损坏后备数据清理失败', removeError);
+        }
     }
-    const value = await pmIDBGet(EMOJI_STORE_KEY);
-    window.__pmEmojis = Array.isArray(value) ? value : [];
+    window.__pmEmojis = [];
 }
 
 export async function saveEmojis() {
     const saved = await pmIDBSet(EMOJI_STORE_KEY, window.__pmEmojis);
     if (saved) {
-        try { localStorage.removeItem(EMOJI_FALLBACK_KEY); } catch (error) {}
+        try { localStorage.removeItem(EMOJI_FALLBACK_KEY); }
+        catch (error) {
+            console.warn('[phone-mode] 表情包后备数据清理失败', error);
+        }
         return;
     }
     try {
@@ -203,7 +221,10 @@ export async function loadInteractiveScenes() {
         if (fallback) return JSON.parse(fallback);
     } catch (error) {
         console.warn('[phone-mode] 互动场景后备数据读取失败', error);
-        try { localStorage.removeItem(INTERACTIVE_FALLBACK_KEY); } catch (removeError) {}
+        try { localStorage.removeItem(INTERACTIVE_FALLBACK_KEY); }
+        catch (removeError) {
+            console.warn('[phone-mode] 互动场景损坏后备数据清理失败', removeError);
+        }
     }
     try {
         return await pmIDBGet(INTERACTIVE_STORE_KEY);

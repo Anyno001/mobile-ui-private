@@ -222,7 +222,20 @@ function normalizeTodayTrendScopeInternal(value, presetIds, normalizeSnapshots) 
     scope.presetId = normalizeId(value.presetId, 'TT_SCOPE', '世界预设 ID');
     if (presetIds && !presetIds.has(scope.presetId)) fail('TT_SCOPE_PRESET', '角色资料引用的世界预设不存在');
     const operation = plainRecord(value.operation) ? value.operation : fail('TT_SCOPE', '运行设置无效');
-    scope.operation = { enabled: requiredBoolean(operation.enabled, 'TT_SCOPE', '运行开关'), mode: assertEnum(operation.mode, TODAY_TREND_OPERATION_MODES, 'TT_SCOPE', '运行模式'), intervalFloors: Number.isInteger(operation.intervalFloors) && operation.intervalFloors >= 1 && operation.intervalFloors <= TODAY_TREND_LIMITS.intervalFloors ? operation.intervalFloors : fail('TT_SCOPE', '自动调用楼层无效'), lastSuccessfulAssistantCount: timestamp(operation.lastSuccessfulAssistantCount), lastSuccessfulRunAt: timestamp(operation.lastSuccessfulRunAt) };
+    const normalizedOperation = { enabled: requiredBoolean(operation.enabled, 'TT_SCOPE', '运行开关'), mode: assertEnum(operation.mode, TODAY_TREND_OPERATION_MODES, 'TT_SCOPE', '运行模式'), intervalFloors: Number.isInteger(operation.intervalFloors) && operation.intervalFloors >= 1 && operation.intervalFloors <= TODAY_TREND_LIMITS.intervalFloors ? operation.intervalFloors : fail('TT_SCOPE', '自动调用楼层无效'), lastSuccessfulAssistantCount: timestamp(operation.lastSuccessfulAssistantCount), lastSuccessfulRunAt: timestamp(operation.lastSuccessfulRunAt) };
+    if (operation.batchDraft !== undefined) {
+        const rawBatchDraft = operation.batchDraft;
+        if (!plainRecord(rawBatchDraft)) fail('TT_SCOPE', '批处理参数无效');
+        const batchDraft = {
+            enabled: rawBatchDraft.enabled === undefined ? false : requiredBoolean(rawBatchDraft.enabled, 'TT_SCOPE', '批处理开关'),
+            recentAssistantCount: timestamp(rawBatchDraft.recentAssistantCount, 1),
+            mergeAssistantCount: timestamp(rawBatchDraft.mergeAssistantCount, 1),
+        };
+        if (batchDraft.recentAssistantCount < 1 || batchDraft.mergeAssistantCount < 1
+            || batchDraft.mergeAssistantCount > batchDraft.recentAssistantCount) fail('TT_SCOPE', '批处理参数无效');
+        normalizedOperation.batchDraft = batchDraft;
+    }
+    scope.operation = normalizedOperation;
     const injection = plainRecord(value.injection) ? value.injection : fail('TT_SCOPE', '正文注入设置无效'); scope.injection = { enabled: requiredBoolean(injection.enabled, 'TT_SCOPE', '正文注入开关'), minimalUi: injection.minimalUi === true };
     const world = plainRecord(value.world) ? value.world : fail('TT_SCOPE', '世界态势无效'); if (!Array.isArray(world.items) || world.items.length > TODAY_TREND_LIMITS.worldItems) fail('TT_SCOPE', '世界态势项目无效'); scope.world.items = world.items.map(normalizeWorldItem); assertUnique(scope.world.items, '世界态势项目');
     const reputation = plainRecord(value.reputation) ? value.reputation : fail('TT_SCOPE', '个人风评无效'); if (!Array.isArray(reputation.circles) || reputation.circles.length > TODAY_TREND_LIMITS.circles) fail('TT_SCOPE', '个人风评圈层无效'); scope.reputation.circles = reputation.circles.map(normalizeCircle); assertUnique(scope.reputation.circles, '个人风评圈层');

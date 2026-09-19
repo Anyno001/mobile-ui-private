@@ -1366,8 +1366,27 @@ assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.story, {
 localData.set(PHONE_UI_STORAGE_KEY, '{broken-json');
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore), createEmptyPhoneUiState());
 
-localData.set(INTERACTIVE_STORAGE_KEYS.fallback, '{broken-json');
-assert.equal(await loadInteractiveScenes(), null);
+const previousInteractiveStorageWarn = console.warn;
+const interactiveStorageWarnings = [];
+let interactiveFallbackRemoveCalls = 0;
+globalThis.localStorage = {
+    getItem: key => key === INTERACTIVE_STORAGE_KEYS.fallback ? '{broken-json' : null,
+    setItem: (key, value) => { localData.set(key, String(value)); },
+    removeItem: key => {
+        assert.equal(key, INTERACTIVE_STORAGE_KEYS.fallback);
+        interactiveFallbackRemoveCalls += 1;
+        throw new Error('fallback delete denied');
+    },
+};
+console.warn = (...args) => interactiveStorageWarnings.push(args);
+try {
+    assert.equal(await loadInteractiveScenes(), null);
+} finally {
+    console.warn = previousInteractiveStorageWarn;
+}
+assert.equal(interactiveFallbackRemoveCalls, 1, '损坏互动 fallback 必须尝试清理一次');
+assert.ok(interactiveStorageWarnings.some(args => String(args[0]).includes('互动场景损坏后备数据清理失败')),
+    '损坏互动 fallback 清理失败必须留下可观测日志');
 
 globalThis.localStorage = {
     getItem: () => null,

@@ -13,7 +13,9 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
                     detail = data?.error?.message || data?.message || data?.error || '';
                 } catch (error) { detail = raw; }
             }
-        } catch (error) {}
+        } catch (error) {
+            // 错误响应体可能不可读；保留仅包含 HTTP 状态码的回退消息。
+        }
         return `HTTP ${response.status}${detail ? `：${String(detail).trim().slice(0, 160)}` : ''}`;
     };
     const runAction = async (button, pendingLabel, operation) => {
