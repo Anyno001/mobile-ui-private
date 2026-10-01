@@ -9,7 +9,7 @@
 .pm-emoji-thumbnail.is-50x50{width:50px;height:50px;}
 .pm-emoji-thumbnail.is-52x52{width:52px;height:52px;}
 @media(max-width:320px){#pm-iphone{--pm-phone-border-width:6px;--pm-phone-inner-radius:30px;--pm-phone-outer-radius:36px;border-width:6px!important;}.pm-desktop-page{padding:var(--pm-space-4) var(--pm-space-3);}.pm-desktop-grid{gap:var(--pm-space-1-5);}.pm-desktop-app{padding-inline:var(--pm-space-0);}.pm-desktop-app-icon{width:42px;height:42px;border-radius:var(--pm-radius-card);}.pm-desktop-app svg{width:21px;height:21px;}.pm-desktop-app-label{font-size:var(--pm-font-size-micro);}}
-@media(pointer:coarse) and (max-height:500px){.pm-island{height:20px;margin-top:var(--pm-space-1);}.pm-status-bar{display:none;}.pm-input-bar{padding-top:var(--pm-space-px-5);padding-bottom:var(--pm-space-px-5);}#pm-iphone .pm-scene-launcher,#pm-iphone .pm-scene-feed,#pm-iphone .pm-live-room,#pm-iphone .pm-scene-prompt{padding-bottom:var(--pm-space-1-5);}}
+@media(pointer:coarse) and (max-height:500px){.pm-island{height:20px;margin-top:var(--pm-space-1);}.pm-status-bar{display:none;}.pm-input-bar{padding-top:var(--pm-space-1-5);padding-bottom:var(--pm-space-1-5);}#pm-iphone .pm-scene-launcher,#pm-iphone .pm-scene-feed,#pm-iphone .pm-live-room,#pm-iphone .pm-scene-prompt{padding-bottom:var(--pm-space-1-5);}}
 .pm-today-trend-reputation::before{display:none;}
 /*社区模板与桌面入口：场景身份色必须随场景/模板快照传递，不继承全局手机强调色。*/
 .pm-scene-template-action{color:var(--pm-color-label-3);}
