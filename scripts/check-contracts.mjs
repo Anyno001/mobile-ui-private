@@ -3629,11 +3629,11 @@ for (const expected of [
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
-  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-label)',
-  '.pm-global-setting{border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card);color:var(--pm-color-label)',
+  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill);color:var(--pm-color-label)',
+  '.pm-global-setting{border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill);color:var(--pm-color-label)',
   '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-label-3)}',
   '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-label-3)}',
-  '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-surface-card);border-bottom:0}',
+  '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-px-10);background:var(--pm-color-fill);border-bottom:0}',
   '.pm-scene-comments{margin-top:var(--pm-space-px-9);background:var(--pm-color-fill)',
   '.pm-scene-comment-composer input{flex:1;min-width:0;border:0;border-radius:10px;padding:var(--pm-space-2);background:var(--pm-color-fill);color:var(--pm-color-label)}',
   '.pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
@@ -3746,11 +3746,11 @@ for (const expected of [
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
   '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
-  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface-card)',
+  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-px-10);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill)',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0)}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
-  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-surface-card))}',
+  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-fill))}',
   '.pm-calendar-status-card{--pm-calendar-status-value-size:28px;--pm-calendar-status-value-offset:9.35px;position:relative;isolation:isolate;min-height:126px;padding:var(--pm-space-3) var(--pm-space-px-14);overflow:hidden}',
   '.pm-calendar-status-content{position:relative;z-index:var(--pm-z-content);display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:var(--pm-space-1-5)}',
   '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:var(--pm-space-2);min-width:0}',
@@ -3811,7 +3811,7 @@ for (const expected of [
 ]) requireText('style.css', css, expected);
 for (const expected of [
   '--pm-size-icon-sm:14px', '--pm-size-icon-md:18px', '--pm-size-icon-lg:24px', '--pm-z-base:0',
-  '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-surface-page)}',
+  '.pm-today-trend-page{overflow:hidden;background:var(--pm-color-bg-plain)}',
   '.pm-today-trend-header{position:sticky;top:0;z-index:var(--pm-z-base)',
   '.pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)',
   '.pm-today-trend-retention-settings{display:flex;min-width:0;flex-direction:column;gap:var(--pm-space-2)',
@@ -4028,7 +4028,7 @@ if (!relationNodeTokenRule) {
 const relationStatusTokens = {
   hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: '#e8566c', expectedForeground: '#fff' },
   dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: '#cc7a42', expectedForeground: '#fff' },
-  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: 'var(--pm-color-surface-control)', expectedForeground: 'var(--pm-color-label)' },
+  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: 'var(--pm-color-fill)', expectedForeground: 'var(--pm-color-label)' },
   like: { surface: '--pm-today-trend-relation-like', foreground: '--pm-today-trend-relation-like-foreground', expectedSurface: 'var(--pm-color-accent)', expectedForeground: 'var(--pm-color-on-accent)' },
   trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: '#2d9e84', expectedForeground: '#fff' },
 };
@@ -4284,7 +4284,7 @@ if (css.includes('.pm-phone-resize-handle::after')) {
 requireCssDeclarations(cssRules, '.pm-control-menu', { background: 'var(--pm-color-surface-raised)' });
 requireCssDeclarations(cssRules, '.pm-control-menu.pm-scene-menu', { background: 'var(--pm-color-surface-raised)' });
 for (const selector of ['.pm-story-oracle-menu', '.pm-story-oracle-mode-menu']) {
-  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-surface-page)', 'box-shadow': 'var(--pm-shadow-floating)' });
+  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-bg-plain)', 'box-shadow': 'var(--pm-shadow-floating)' });
 }
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { padding: 'var(--pm-space-1) var(--pm-space-0) var(--pm-space-1) var(--pm-space-1)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle>b', { 'font-size': 'var(--pm-font-size-compact)' });
@@ -4609,7 +4609,7 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls', { displa
 requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls button', { width: '100%', 'min-height': 'var(--pm-size-control-compact)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-user-list', { background: 'var(--pm-color-bg-grouped)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-user-card.is-pending', { margin: 'var(--pm-space-3)', width: 'auto' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-user-copy', { 'min-width': 'var(--pm-size-control-compact)', 'min-height': 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-surface-control)', color: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-user-copy', { 'min-width': 'var(--pm-size-control-compact)', 'min-height': 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-fill)', color: 'var(--pm-color-accent)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-user-content', { 'overflow-wrap': 'anywhere', 'white-space': 'normal', color: 'var(--pm-color-label)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-user-save', { 'align-self': 'stretch', 'min-height': 'var(--pm-size-control-default)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-library-hint', { background: 'transparent', color: 'var(--pm-color-label-2)' });
@@ -4621,16 +4621,16 @@ requireCssDeclarations(cssRules, '.pm-story-oracle-world-book-modal .pm-cfg-tip'
 requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-settings-field', { gap: 'var(--pm-space-2)' });
 requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
 for (const [selector, declarations] of [
-  ['.pm-global-setting', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
-  ['.pm-settings-home button', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
-  ['.pm-session-behavior-section', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
-  ['.pm-member-behavior-list button', { 'border-radius': 'var(--pm-radius-panel)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-global-setting', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-settings-home button', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-session-behavior-section', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-member-behavior-list button', { 'border-radius': 'var(--pm-radius-panel)', background: 'var(--pm-color-fill)' }],
   ['.pm-conversation-injection-group', { 'border-radius': 'var(--pm-radius-panel)' }],
-  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
-  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
-  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
   ['.pm-quick-reply-settings section', { 'border-radius': 'var(--pm-radius-card)' }],
-  ['.pm-worldbook-column', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface-card)' }],
+  ['.pm-worldbook-column', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
 ]) {
   requireCssDeclarations(cssRules, selector, { border: '0', ...declarations });
 }
@@ -4657,7 +4657,7 @@ if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\
 if (!/pm-contact-switcher-current[\s\S]*?pm-contact-switcher-main[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
   failures.push('phone-directory.js: current-conversation checkmark must stay before the name and action buttons');
 }
-requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': 'var(--pm-radius-control) var(--pm-radius-control) var(--pm-radius-none) var(--pm-radius-none)', 'background': 'var(--pm-color-surface-card)' });
+requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': 'var(--pm-radius-control) var(--pm-radius-control) var(--pm-radius-none) var(--pm-radius-none)', 'background': 'var(--pm-color-fill)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', {
   'border-top-left-radius': 'var(--pm-radius-none)', 'border-top-right-radius': 'var(--pm-radius-none)',
   'border-bottom-left-radius': 'var(--pm-radius-card)', 'border-bottom-right-radius': 'var(--pm-radius-card)',
