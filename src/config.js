@@ -1,8 +1,8 @@
 // Presets define color palettes and their default bubble colors. Custom bubble
 // colors deliberately override only message bubbles; toggle controls use the preset auxiliary color.
 export const THEME_PRESETS = {
-    default: { right: '#1677d2', left: '#e9e9eb', rightText: '#fff', leftText: '#000', label: '默认蓝', accent: '#1677d2', auxiliary: '#005CBF' },
-    dark: { right: '#5856d6', left: '#E6EDF3', leftDark: '#2c2c2e', rightText: '#fff', leftText: '#33404C', leftTextDark: '#e0e0e0', label: '暗夜紫', accent: '#5856d6', auxiliary: '#64D2FF' },
+    default: { right: '#1677d2', left: '#e8f1fb', rightText: '#fff', leftText: '#000', label: '默认蓝', accent: '#1677d2', auxiliary: '#005CBF' },
+    dark: { right: '#5856d6', left: '#E6EDF3', leftDark: '#2b2a3d', rightText: '#fff', leftText: '#33404C', leftTextDark: '#e0e0e0', label: '暗夜紫', accent: '#5856d6', auxiliary: '#64D2FF' },
     pink: {
         right: '#E7A9B9', rightDark: '#FFC4D4', left: '#E8EEF3', leftDark: '#343B43', rightText: '#fff', leftText: '#4E3840', leftTextDark: '#E6EDF3', label: '柔粉', accent: '#FFC4D4', auxiliary: '#E07A93',
         uiDark: {

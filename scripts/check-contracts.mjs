@@ -3662,7 +3662,7 @@ for (const expected of [
   '.pm-cfg-label.pm-ambient-setting,.pm-cfg-label.pm-check-setting{flex-direction:row;gap:var(--pm-space-3);}',
   '.pm-contact-settings-save{flex:0 1 210px;min-height:var(--pm-size-control-default);',
   '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-fill)!important;',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))!important;',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-emoji-action{border:0;border-radius:var(--pm-radius-control);background:color-mix(in srgb,var(--pm-color-accent) 12%,transparent);color:var(--pm-color-accent);',
   '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
@@ -3746,11 +3746,11 @@ for (const expected of [
   '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
   '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
   '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
-  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-2);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill)',
+  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-2);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))',
   '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0)}',
   '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
-  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent) 8%,var(--pm-color-fill))}',
+  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 14%,var(--pm-color-bg-plain))}',
   '.pm-calendar-status-card{--pm-calendar-status-value-size:28px;--pm-calendar-status-value-offset:9.35px;position:relative;isolation:isolate;min-height:126px;padding:var(--pm-space-3) var(--pm-space-3);overflow:hidden}',
   '.pm-calendar-status-content{position:relative;z-index:var(--pm-z-content);display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:var(--pm-space-1-5)}',
   '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:var(--pm-space-2);min-width:0}',
@@ -3795,7 +3795,7 @@ for (const expected of [
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
-  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-fill)!important;color:var(--pm-color-label)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
+  '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))!important;color:var(--pm-color-label)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{border-color:var(--pm-color-accent)!important;outline:var(--pm-space-0-5) solid var(--pm-color-accent)!important;outline-offset:var(--pm-space-0-5)!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
   '.pm-calendar-view-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 14%,transparent);color:var(--pm-calendar-accent);box-shadow:none',
@@ -3890,7 +3890,7 @@ requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-toda
   'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
 });
 for (const selector of ['.pm-today-trend-content.is-world', '.pm-today-trend-content.is-reputation', '.pm-today-trend-content.is-faction', '.pm-today-trend-content.is-dynamics']) {
-  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-bg-grouped)' });
+  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-accent)' });
 }
 // 视觉 v2：组件规则禁止可见描边与渐变；毛玻璃只允许三处。功能性边框（手机外壳、裁剪框、勾选笔画）与桌面壁纸压暗层为精确例外。
 {
@@ -3957,40 +3957,40 @@ for (const selector of [
   '.pm-today-trend-factions>.pm-today-trend-module-head',
   '.pm-today-trend-dynamics>.pm-today-trend-module-head',
 ]) requireCssDeclarations(todayTrendModuleHeadAccentRules, selector, {
-  color: 'var(--pm-color-label)',
+  color: 'var(--pm-color-on-accent)',
   'border-radius': 'var(--pm-radius-none)',
 });
 for (const selector of ['.pm-today-trend-world>.pm-today-trend-module-head','.pm-today-trend-reputation>.pm-today-trend-module-head','.pm-today-trend-factions>.pm-today-trend-module-head','.pm-today-trend-dynamics>.pm-today-trend-module-head']) {
-  const rule = todayTrendModuleHeadAccentRules.find(r => r.selectors.includes(selector)); if (!rule || rule.declarations.get('background') !== 'var(--pm-color-bg-grouped)') failures.push(`style.css: ${selector} background must be var(--pm-color-bg-grouped) without decorative image layers`);
+  const rule = todayTrendModuleHeadAccentRules.find(r => r.selectors.includes(selector)); if (!rule || !rule.declarations.get('background')?.includes('var(--pm-color-accent)')) failures.push(`style.css: ${selector} background must include var(--pm-color-accent) as base layer`);
 }
 for (const selector of [
   '.pm-today-trend-world>.pm-today-trend-module-head h2',
   '.pm-today-trend-reputation>.pm-today-trend-module-head h2',
   '.pm-today-trend-factions>.pm-today-trend-module-head h2',
   '.pm-today-trend-dynamics>.pm-today-trend-module-head h2',
-]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-label)' });
+]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-on-accent)' });
 for (const selector of ['.pm-today-trend-module-head .pm-today-trend-meter', '.pm-today-trend-module-head .pm-today-trend-floor']) {
-  requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-label-3)' });
+  requireCssDeclarations(cssRules, selector, { color: 'color-mix(in srgb,var(--pm-color-on-accent) 70%,transparent)' });
 }
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head :is(.pm-today-trend-meter-v,.pm-today-trend-floor-value)', {
-  color: 'var(--pm-color-label-2)',
+  color: 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:not(.is-danger) svg', {
-  color: 'var(--pm-color-label-2)',
+  color: 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-menu-close', {
-  color: 'var(--pm-color-label-2)',
+  color: 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:focus-visible', {
-  'outline-color': 'var(--pm-color-focus-ring)',
+  'outline-color': 'var(--pm-color-on-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="today-trend"])', {
   'border-radius': 'var(--pm-phone-inner-radius)',
-  background: 'var(--pm-color-bg-grouped)',
+  background: 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
   background: 'var(--pm-color-bg-grouped)',
-  'border-radius': 'var(--pm-radius-none)',
+  'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
   padding: 'calc(var(--pm-space-5) + var(--pm-size-control-compact) / 2) var(--pm-space-5) calc(var(--pm-space-5) + var(--pm-space-6))',
   display: 'flex',
   'flex-direction': 'column',
@@ -4028,7 +4028,7 @@ if (!relationNodeTokenRule) {
 const relationStatusTokens = {
   hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: '#e8566c', expectedForeground: '#fff' },
   dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: '#cc7a42', expectedForeground: '#fff' },
-  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: 'var(--pm-color-fill)', expectedForeground: 'var(--pm-color-label)' },
+  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: '#e8eef8', expectedForeground: 'var(--pm-color-label)' },
   like: { surface: '--pm-today-trend-relation-like', foreground: '--pm-today-trend-relation-like-foreground', expectedSurface: 'var(--pm-color-accent)', expectedForeground: 'var(--pm-color-on-accent)' },
   trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: '#2d9e84', expectedForeground: '#fff' },
 };
@@ -4040,7 +4040,7 @@ for (const [status, relation] of Object.entries(relationStatusTokens)) {
     failures.push(`style.css: ${status} relation foreground must remain ${relation.expectedForeground}`);
   }
 }
-requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-label-3) !important' });
+requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-on-accent) !important' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button', { color: 'var(--pm-color-label-3)' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button[aria-pressed="true"] svg', { color: 'var(--pm-color-accent)' });
 for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-tabs') && selector.includes('svg'))) {
@@ -4626,9 +4626,9 @@ for (const [selector, declarations] of [
   ['.pm-session-behavior-section', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
   ['.pm-member-behavior-list button', { 'border-radius': 'var(--pm-radius-panel)', background: 'var(--pm-color-fill)' }],
   ['.pm-conversation-injection-group', { 'border-radius': 'var(--pm-radius-panel)' }],
-  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
-  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
-  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))' }],
+  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))' }],
+  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 8%,var(--pm-color-bg-plain))' }],
   ['.pm-quick-reply-settings section', { 'border-radius': 'var(--pm-radius-card)' }],
   ['.pm-worldbook-column', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
 ]) {
@@ -5367,7 +5367,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.6.0') failures.push('version: expected release version 1.6.0');
+if (packageJson.version !== '1.6.1') failures.push('version: expected release version 1.6.1');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
