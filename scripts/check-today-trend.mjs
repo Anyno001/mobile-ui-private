@@ -289,7 +289,7 @@ const resolveTodayTrendToken = (token, depth = 0) => {
 const todayTrendRelationTokens = {
     hostile: ['--pm-today-trend-relation-hostile', '--pm-today-trend-relation-hostile-foreground', '#e8566c', '#fff'],
     dislike: ['--pm-today-trend-relation-dislike', '--pm-today-trend-relation-dislike-foreground', '#cc7a42', '#fff'],
-    neutral: ['--pm-today-trend-relation-neutral', '--pm-today-trend-relation-neutral-foreground', '--pm-color-surface-control', '--pm-color-text-primary'],
+    neutral: ['--pm-today-trend-relation-neutral', '--pm-today-trend-relation-neutral-foreground', '--pm-color-surface-control', '--pm-color-label'],
     like: ['--pm-today-trend-relation-like', '--pm-today-trend-relation-like-foreground', '--pm-color-accent', '--pm-color-on-accent'],
     trust: ['--pm-today-trend-relation-trust', '--pm-today-trend-relation-trust-foreground', '#2d9e84', '#fff'],
 };
@@ -312,8 +312,8 @@ for (const [status, [surfaceToken, foregroundToken, expectedSurface, expectedFor
     assert.match(foreground, /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/, `今日风向 ${status} 关系前景必须能解析为实际 hex 颜色`);
     assert.ok(contrastRatio(surface, foreground) >= 3, `今日风向 ${status} 关系表面与图标前景的对比度必须达到 3:1`);
 }
-assert.match(todayTrendStyle, /\.pm-today-trend-home\{[^}]*color:var\(--pm-color-on-accent\)!important/, '返回桌面图标默认态必须在主题色顶栏上使用高对比 on-accent 色');
-assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\{[^}]*color:var\(--pm-color-text-tertiary\)/, '底部导航未点亮图标必须使用辅助灰 text-tertiary 色');
+assert.match(todayTrendStyle, /\.pm-today-trend-home\{[^}]*color:var\(--pm-color-label-3\)!important/, '返回桌面图标默认态必须在分组底顶栏上使用三级文字色');
+assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\{[^}]*color:var\(--pm-color-label-3\)/, '底部导航未点亮图标必须使用辅助灰 text-tertiary 色');
 assert.match(todayTrendStyle, /\.pm-today-trend-tabs button\[aria-pressed="true"\] svg\{[^}]*color:var\(--pm-color-accent\)/, '底部导航激活态必须使用主题 accent 色');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-tabs button svg\{[^}]*stroke-width:/, '底部导航 SVG 不得覆盖返回桌面所用的通用 2px 线宽');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-tabs[^{}]*svg\{[^}]*transform:/, '底部导航 SVG 不得使用独立 transform 覆盖返回桌面图标几何');
@@ -324,7 +324,7 @@ for (const variable of ['--pm-today-trend-report-rule']) {
 assert.match(todayTrendStyle, /--pm-today-trend-event-facts-start-offset:calc\(0px - var\(--pm-space-1\)\)/, '事件事实区上偏移 token 必须保持 -4px 等值计算链');
 assert.match(todayTrendStyle, /--pm-today-trend-event-facts-end-offset:var\(--pm-space-0\)/, '事件事实区下偏移 token 必须保持合法零值');
 assert.match(todayTrendStyle, /--pm-line-height-today-trend-meter:var\(--pm-space-4\)/, '统计仪表行高 token 必须保持 16px 等值计算链');
-assert.match(todayTrendStyle, /--pm-today-trend-switch-width:var\(--pm-size-control-compact\);--pm-today-trend-switch-height:20px;--pm-today-trend-switch-knob:16px/, '今日风向开关尺寸 token 必须保持 36px、20px、16px 计算链');
+assert.match(todayTrendStyle, /--pm-today-trend-switch-width:var\(--pm-size-switch-width\);--pm-today-trend-switch-height:var\(--pm-size-switch-height\);--pm-today-trend-switch-knob:var\(--pm-size-switch-knob\)/, '今日风向开关尺寸 token 必须引用统一开关尺寸');
 assert.doesNotMatch(todayTrendStyle, /--pm-today-trend-(?:node-size|display-size)(?::|\))/, '世界态势新版不得保留已被局部 token 取代的通用尺寸变量或消费者');
 assert.doesNotMatch(todayTrendStyle, /assets\/today-trend\/(?:world|reputation|faction|dynamics)\/(?:top|bottom|top-glow|starlight[^/]*)\.svg/, '今日风向不得继续引用头尾或星光 SVG');
 assert.doesNotMatch(todayTrendStyle, /assets\/today-trend\/world\/middle-repeat\.svg|pm-today-trend-world-grid/, '世界态势卡片化后不得继续消费重复网格背景');
@@ -350,13 +350,13 @@ assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world \.pm-today-tre
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded>div\{[^}]*align-items:center[^}]*text-align:center/, '固定模块头中的元数据与标题必须保持居中');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-head\.is-expanded \.pm-today-trend-head-tools\{position:absolute[^}]*top:var\(--pm-space-2\)[^}]*right:var\(--pm-space-4\)/, '固定模块头的楼层状态必须固定在右上角，不能挤压居中标题');
 assert.match(todayTrendStyle, /\.pm-today-trend-module-actions\{[^}]*display:flex[^}]*align-items:center[^}]*justify-content:center[^}]*gap:var\(--pm-space-2\)[^}]*transform:translateY\(50%\)/, '模块操作必须组成居中圆形图标行，并跨在主题色与内容层接缝');
-assert.match(todayTrendStyle, /\.pm-today-trend-module-actions \.pm-today-trend-icon-button\{[^}]*background:var\(--pm-color-surface-page\)[^}]*color:var\(--pm-color-accent\)/, '模块操作圆必须使用页面色底与主题色 SVG 前景');
-assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world\{[^}]*background:var\(--pm-color-accent\)/, '世界态势标题层外侧必须延续主题色，覆盖与返回顶栏相切的内容容器圆角接缝');
-assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-reputation,\.pm-today-trend-content\.is-faction,\.pm-today-trend-content\.is-dynamics\{[^}]*background:var\(--pm-color-accent\)/, '其余四字模块标题层外侧必须同样延续主题色，不能只修复世界态势');
+assert.match(todayTrendStyle, /\.pm-today-trend-module-actions \.pm-today-trend-icon-button\{[^}]*background:var\(--pm-color-surface\)[^}]*color:var\(--pm-color-accent\)/, '模块操作圆必须使用内容面底色与主题色 SVG');
+assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-world\{[^}]*background:var\(--pm-color-bg-grouped\)/, '世界态势内容容器必须使用分组底色，不再整屏铺主题色');
+assert.match(todayTrendStyle, /\.pm-today-trend-content\.is-reputation,\.pm-today-trend-content\.is-faction,\.pm-today-trend-content\.is-dynamics\{[^}]*background:var\(--pm-color-bg-grouped\)/, '其余四字模块内容容器必须使用分组底色，不再整屏铺主题色');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-floor[^{}]*\{[^}]*position:absolute/, '四个模块楼层不得使用绝对定位');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-(?:world|reputation|factions|dynamics)[^{}]*\.pm-today-trend-menu-wrap\.is-open\{[^}]*position:absolute/, '四个模块菜单展开态不得使用绝对定位脱离文档流');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor\{[^}]*min-width:max-content[^}]*flex:0 0 auto/, '#楼层仪表必须按完整内容保留宽度，不能截断多位楼层');
-assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-text-secondary\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
+assert.match(todayTrendStyle, /\.pm-today-trend-floor-value\{[^}]*color:var\(--pm-color-label-2\)/, '楼层数值必须使用界面稍深的次级灰色而非纯黑');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*cursor:pointer/, '同步状态必须提供明确可点击的终止控件');
 assert.match(todayTrendStyle, /\.pm-today-trend-floor-status\{[^}]*font-size:var\(--pm-font-size-micro\)/, '同步状态文字必须与待同步和已同步使用相同的超小字号');
 assert.doesNotMatch(todayTrendStyle, /\.pm-today-trend-floor-cancel\{[^}]*font:inherit/, '同步终止按钮不得用 font shorthand 覆盖状态文字字号');
@@ -378,10 +378,10 @@ assert.doesNotMatch(compactTodayTrendMedia, /pm-today-trend-(?:world|reputation|
 assert.match(todayTrendStyle, /\.pm-today-trend-menu-action,\.pm-today-trend-menu-close\{flex-basis:var\(--pm-size-control-compact\);width:var\(--pm-size-control-compact\);min-height:var\(--pm-size-control-compact\)/, '320px 菜单按钮不得缩回 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-icon-button\[data-action\^="today-trend-(?:refresh|generate)"\]\{width:28px/, '今日风向真实操作按钮不得使用 28px 命中区');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-content\.is-(?:reputation|faction|dynamics)::/, '旧内容容器背景伪元素必须清理');
-assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '世界态势卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
-assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '个人风评卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
-assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '事件追踪卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
-assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface-page\)[^}]*box-shadow:none/, '势力图谱卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-world-hero,\.pm-today-trend-world-brief\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface\)[^}]*box-shadow:none/, '世界态势卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-reputation-entry\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface\)[^}]*box-shadow:none/, '个人风评卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-event-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface\)[^}]*box-shadow:none/, '事件追踪卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
+assert.match(todayTrendStyle, /pm-today-trend-faction-card\{[^}]*padding:var\(--pm-space-4\)[^}]*border:0[^}]*border-radius:var\(--pm-radius-card\)[^}]*background:var\(--pm-color-surface\)[^}]*box-shadow:none/, '势力图谱卡片必须零描边并比内容区背景更白（顶栏主题色实底改造）');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor\{[^}]*width:100%[^}]*min-width:0[^}]*gap:var\(--pm-space-3\)[^}]*border:0[^}]*background:transparent[^}]*box-shadow:none/, '条目编辑器必须占满可用宽度并保持无装饰性描边');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor \.pm-today-trend-field\{[^}]*gap:var\(--pm-space-2\)/, '条目编辑器字段之间必须使用宽松的标签—控件间距');
 assert.match(todayTrendStyle, /\.pm-today-trend-item-editor fieldset\{[^}]*border:0[^}]*padding:var\(--pm-space-0\)/, '条目编辑器分组不得恢复旧描边和内层卡片');
@@ -911,11 +911,11 @@ assert.match(reinitializeHtml, /today-trend-cancel-initialize/, '重新初始化
 assert.doesNotMatch(reinitializeHtml, /data-today-trend-form="bind-preset"/, '重新初始化不得混入快捷绑定表单');
 assert.doesNotMatch(reinitializeHtml, /pm-today-trend-mode-switch/, '重新初始化不得暴露模式切换控件');
 assert.match(reinitializeHtml, /class="pm-today-trend-secondary-action" type="button" data-action="today-trend-cancel-initialize">取消<\/button>/, '重新初始化取消必须保持次操作语义');
-assert.match(todayTrendStyle, /pm-today-trend-mode-switch\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*background:var\(--pm-color-surface-control\)/, '预设模式切换必须保持双列分段布局和控件表面语义');
-assert.match(todayTrendStyle, /pm-today-trend-mode-switch button\[aria-pressed="true"\]\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '预设模式选中项必须使用 accent 与 on-accent 语义色');
+assert.match(todayTrendStyle, /pm-today-trend-mode-switch\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)[^}]*background:var\(--pm-color-fill\)/, '预设模式切换必须保持双列分段布局和填充底槽语义');
+assert.match(todayTrendStyle, /pm-today-trend-mode-switch button\[aria-pressed="true"\]\{[^}]*background:var\(--pm-color-segment-selected\)[^}]*color:var\(--pm-color-label\)/, '预设模式选中项必须使用分段选中表面与主文字色');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions button,\.pm-today-trend-first-use \.pm-today-trend-bind-form>button\{[^}]*width:100%[^}]*min-height:var\(--pm-size-control-default\)[^}]*place-items:center[^}]*text-align:center/, '初始化页主按钮必须全宽、使用默认控件高度并居中文本');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-primary-action\{[^}]*background:var\(--pm-color-accent\)[^}]*color:var\(--pm-color-on-accent\)/, '初始化页主按钮必须使用 accent 与 on-accent 语义色');
-assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-secondary-action\{[^}]*background:var\(--pm-color-surface-control\)[^}]*color:var\(--pm-color-text-primary\)/, '重新初始化取消按钮不得获得主操作视觉权重');
+assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-secondary-action\{[^}]*background:var\(--pm-color-fill\)[^}]*color:var\(--pm-color-label\)/, '重新初始化取消按钮不得获得主操作视觉权重');
 assert.match(todayTrendStyle, /pm-today-trend-first-use \.pm-today-trend-init-actions\{flex-direction:column;flex-wrap:nowrap;?\}/, '初始化操作区必须上下排列按钮');
 const initializationActionRule = todayTrendStyle.match(/\.pm-today-trend-first-use \.pm-today-trend-init-actions\{[^}]*\}/)?.[0] || '';
 assert.doesNotMatch(initializationActionRule, /position:(?:absolute|fixed)|bottom:/, '初始化操作区必须保持正常文档流');
@@ -930,11 +930,11 @@ assert.ok(appSettingsHtml.indexOf('name="injectionEnabled"') < appSettingsHtml.i
 assert.match(appSettingsHtml, /name="minimalUi" type="checkbox" role="switch" aria-checked="false"/, '极简 UI 开关必须暴露关闭状态语义');
 assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch b,\.pm-today-trend-minimal-ui-switch b,\.pm-today-trend-batch-switch b\{font-size:var\(--pm-font-size-label\)/, '极简 UI 标题必须与正文注入标题使用相同标签字号');
 assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch>span,\.pm-today-trend-minimal-ui-switch>span,\.pm-today-trend-batch-switch>span\{display:flex;min-width:0;flex-direction:column;gap:var\(--pm-space-0-5\)/, '极简 UI 标题与说明必须和正文注入一样纵向排列');
-assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch small,\.pm-today-trend-minimal-ui-switch small,\.pm-today-trend-batch-switch small\{color:var\(--pm-color-text-tertiary\);font-size:var\(--pm-font-size-helper\);line-height:var\(--pm-line-height-body\)/, '极简 UI 说明文字必须与正文注入使用相同字号、行高和颜色');
+assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch small,\.pm-today-trend-minimal-ui-switch small,\.pm-today-trend-batch-switch small\{color:var\(--pm-color-label-3\);font-size:var\(--pm-font-size-helper\);line-height:var\(--pm-line-height-body\)/, '极简 UI 说明文字必须与正文注入使用相同字号、行高和颜色');
 assert.match(todayTrendStyle, /\.pm-today-trend-injection-switch,\.pm-today-trend-minimal-ui-switch,\.pm-today-trend-batch-switch\{padding:var\(--pm-space-px-7\) var\(--pm-space-0-5\);border:0;background:transparent;text-align:left\}/, '极简 UI 条目必须与正文注入使用相同内边距和容器样式');
 assert.match(todayTrendStyle, /\.pm-today-trend-minimal-ui-switch>i\{width:var\(--pm-today-trend-switch-width\);height:var\(--pm-today-trend-switch-height\);flex:0 0 var\(--pm-today-trend-switch-width\);/, '极简 UI 开关轨道必须使用与正文注入等值的尺寸 token');
-assert.match(todayTrendStyle, /\.pm-today-trend-minimal-ui-switch>i::after\{top:calc\(\(var\(--pm-today-trend-switch-height\) - var\(--pm-today-trend-switch-knob\)\) \/ 2\);left:calc\(\(var\(--pm-today-trend-switch-height\) - var\(--pm-today-trend-switch-knob\)\) \/ 2\);width:var\(--pm-today-trend-switch-knob\);height:var\(--pm-today-trend-switch-knob\);/, '极简 UI 开关滑块必须使用与正文注入等值的尺寸和初始位置 token');
-assert.match(todayTrendStyle, /\.pm-today-trend-minimal-ui-switch input:checked\+i::after\{transform:translateX\(calc\(var\(--pm-today-trend-switch-width\) - var\(--pm-today-trend-switch-height\)\)\)/, '极简 UI 开关启用位移必须使用与正文注入等值的尺寸 token');
+assert.match(todayTrendStyle, /\.pm-today-trend-minimal-ui-switch>i::after\{top:var\(--pm-size-switch-inset\);left:var\(--pm-size-switch-inset\);width:var\(--pm-today-trend-switch-knob\);height:var\(--pm-today-trend-switch-knob\)/, '极简 UI 开关滑块必须使用统一开关 token 定位');
+assert.match(todayTrendStyle, /\.pm-today-trend-minimal-ui-switch input:checked\+i::after\{transform:translateX\(var\(--pm-size-switch-travel\)\)/, '极简 UI 开关启用位移必须使用统一开关行程 token');
 for (const action of ['today-trend-new-preset', 'today-trend-reinitialize', 'today-trend-delete-preset']) assert.match(appSettingsHtml, new RegExp(action), `APP 总设置必须提供 ${action}`);
 for (const [menuOpenId, action] of [['app-rule:world', 'today-trend-edit-world-rule'], ['app-rule:underground', 'today-trend-edit-underground-rule']]) {
     assert.match(renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets), menuOpenId }), new RegExp(action), `APP 总设置展开对应动作条后必须提供 ${action}`);
@@ -1212,8 +1212,8 @@ assert.match(factionHeadHtml, /<h2>[\s\S]*?<\/h2>[\s\S]*?data-today-trend-floor/
 assert.match(factionHtml, /队长/, '势力卡片必须直接展示关键资料');
 assert.match(factionHtml, /pm-today-trend-faction-tree" data-depth="0"/, '势力图谱必须标识根层级');
 assert.match(factionHtml, /pm-today-trend-faction-card"[^>]*data-depth="1"/, '势力图谱必须标识子层级');
-assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\)\{[^}]*border-top:1px solid/, '势力子层级内嵌时必须用分隔线区分层级');
-assert.match(todayTrendStyle, /pm-today-trend-faction-card .pm-today-trend-faction-card\{[^}]*background:var\(--pm-color-surface-elevated\)/, '内嵌子势力卡片必须使用更浅背景');
+assert.match(todayTrendStyle, /pm-today-trend-faction-tree\[data-depth\]:not\(\[data-depth="0"\]\)\{[^}]*padding:var\(--pm-space-2\) var\(--pm-space-0\) var\(--pm-space-0\)/, '势力子层级内嵌时必须用留白区分层级，不画分隔线');
+assert.match(todayTrendStyle, /pm-today-trend-faction-card .pm-today-trend-faction-card\{[^}]*background:var\(--pm-color-fill\)/, '内嵌子势力卡片必须使用填充色区分层级');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head \.pm-today-trend-relation-slot>\.pm-today-trend-faction-node\{[^}]*width:var\(--pm-today-trend-relation-node-size\)[^}]*height:var\(--pm-today-trend-relation-node-size\)/, '势力图谱普通模式节点必须与世界态势节点共享可见尺寸');
 assert.match(todayTrendStyle, /pm-today-trend-faction-entry-head>b\{[^}]*flex:1[^}]*overflow-wrap:anywhere[^}]*font-size:var\(--pm-font-size-subtitle\)[^}]*line-height:var\(--pm-line-height-control\)/, '势力图谱标题行必须为图标、标题和操作保留稳定布局并允许长标题断行');
 assert.doesNotMatch(todayTrendStyle, /pm-today-trend-faction-detail\{[^}]*border-left|pm-today-trend-faction-detail-row::before/, '势力详情不得恢复轨道线或菱形连接器');
@@ -1349,7 +1349,7 @@ assert.match(factionEditorHtml, /name="status"/, '势力编辑页必须提供固
 assert.match(factionEditorHtml, /class="pm-today-trend-detail-row"/, '势力资料行必须提供稳定语义 class');
 assert.match(factionEditorHtml, /class="pm-today-trend-detail-add"[^>]*data-action="today-trend-add-detail"/, '添加资料必须提供独立语义 class 并保留动作契约');
 assert.match(factionEditorHtml, /class="pm-today-trend-detail-remove"[^>]*data-action="today-trend-remove-detail"/, '删除资料必须提供次级危险语义 class 并保留动作契约');
-assert.match(todayTrendStyle, /\.pm-today-trend-detail-add,\.pm-today-trend-detail-remove\{[^}]*min-height:var\(--pm-size-control-default\)[^}]*background:var\(--pm-color-surface-control\)[^}]*color:var\(--pm-color-text-primary\)/, '资料操作必须共享标准触控高度和 control 表面配方');
+assert.match(todayTrendStyle, /\.pm-today-trend-detail-add,\.pm-today-trend-detail-remove\{[^}]*min-height:var\(--pm-size-control\)[^}]*background:var\(--pm-color-fill\)[^}]*color:var\(--pm-color-label\)/, '资料操作必须共享标准控件高度和填充表面配方');
 assert.match(todayTrendStyle, /\.pm-today-trend-detail-remove\{[^}]*color:var\(--pm-color-danger\)/, '删除资料必须使用次级危险文字而非大面积危险实底');
 assert.match(todayTrendStyle, /\.pm-today-trend-detail-add:focus-visible,\.pm-today-trend-detail-remove:focus-visible\{[^}]*outline:var\(--pm-today-trend-focus-offset\) solid var\(--pm-color-focus-ring\)/, '资料操作必须提供统一 focus-visible 状态');
 assert.match(todayTrendStyle, /\.pm-today-trend-content button:disabled\{opacity:var\(--pm-opacity-disabled\);cursor:not-allowed/, '资料达到上限时必须使用统一 disabled 视觉与交互状态');

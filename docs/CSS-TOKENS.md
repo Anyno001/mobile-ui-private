@@ -15,10 +15,24 @@
 1. 组件规则 MUST 使用已落地的语义 token，不得硬编码主题颜色、字号、间距、圆角、阴影、层级和动效值。
 2. token 保持少而稳定。新全局 token 必须服务基础主题或至少两个组件族；单组件差异使用局部私有 token。语义相同不得重复命名。
 3. 同类组件 MUST 使用同一配方，不复制旧组件的不一致值。
-4. 视觉层级最多依靠：表面色、一道描边、字号/字重、必要阴影。不得同时堆叠渐变、粗边框、重阴影和高饱和色。
+4. 视觉层级只依靠表面色、留白和字号/字重；菜单与模态可用对应的轻阴影。组件规则不得声明可见描边或分隔线，不得使用渐变；键盘焦点环不属于描边，必须保留。
 5. 一个操作区域只应有一个明确主操作；其余操作使用普通或文字按钮。成功、警告、危险色只表达状态，不作普通装饰。
 6. 亮色、暗色、键盘焦点、禁用态和移动端 MUST 同时验证。
 7. 文档声明但尚未写入 `style.css` 的 token 属于待落地标准；必须在同一变更中先定义、再使用、再补契约检查。
+
+### 2.1 视觉 v2 表面层级
+
+| token | 浅色 | 深色 | 用途 |
+| --- | --- | --- | --- |
+| `--pm-color-bg-grouped` | `#f2f2f7` | `#000000` | 分组列表页、信息流、今日风向的页面底 |
+| `--pm-color-bg-plain` | `#ffffff` | `#1c1c1e` | 平铺页面、聊天列表、模态底 |
+| `--pm-color-surface` | `#ffffff` | `#1c1c1e` | grouped 底上的卡片与分组 |
+| `--pm-color-surface-raised` | `#ffffff` | `#2c2c2e` | 菜单、下拉、浮层 |
+| `--pm-color-fill` / `--pm-color-fill-strong` | `#eeeef0` / `#e3e3e8` | `#333336` / `#424246` | 输入、普通按钮、分段底槽 / 按下态与开关关闭态 |
+| `--pm-color-label` / `-2` / `-3` / `-4` | `#1c1c1e` / `#48484d` / `#6c6c72` / `#b8b8bf` | `#f2f2f7` / `#c7c7cc` / `#98989f` / `#5a5a5f` | 主 / 次 / 辅助 / 禁用文字 |
+| `--pm-color-segment-selected` | `#ffffff` | `#5a5a5f` | 分段控件选中段 |
+
+区分元素时先用 bg → surface → fill 三层，不加线。`border-*` 与 `surface-card/elevated/control/input`、`text-*` 为迁移期旧名，新规则不得使用。毛玻璃只允许三处：聊天磨砂气泡、桌面置顶条、今日风向底部标签栏。功能性边框只保留手机外壳、裁剪框与勾选框笔画；渐变只保留桌面壁纸压暗层。以上由 `scripts/check-contracts.mjs` 机器校验。
 
 `0`、`auto`、`none`、`inherit`、`currentColor`、`100%`、布局函数、媒体查询条件、SVG path 和数据驱动坐标不视为视觉硬编码。运行时内联样式只允许承载数据值；稳定视觉必须回到 class 与 token。
 
@@ -141,11 +155,11 @@ MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺�
 | 类别 | 标准 |
 | --- | --- |
 | 间距 | 基础尺度：`--pm-space-0:0`、`--pm-space-0-5:2px`（极小间隙）、`--pm-space-1:4px`、`--pm-space-1-5:6px`（半档）、`--pm-space-2:8px`、`--pm-space-3:12px`、`--pm-space-4:16px`、`--pm-space-5:24px`；布局关键字：`--pm-space-auto:auto`、`--pm-space-full:100%`；遗留像素级对齐：`--pm-space-px-*` 与 `--pm-space-neg-4`，仅用于迁移中已存在的非标准值，不得为新组件扩张。 |
-| 控件高度 | `--pm-size-control-compact:36px`、`--pm-size-control-default:44px` |
+| 控件高度 | `--pm-size-control-sm:28px`（分段与行内小操作）、`--pm-size-control:36px`（默认）、`--pm-size-control-lg:44px`（整宽主按钮与列表行）；开关统一使用 `--pm-size-switch-*`（40×24，滑块 20） |
 | 图标 | `--pm-size-icon-sm:14px`、`--pm-size-icon-md:18px`、`--pm-size-icon-lg:24px` |
 | 圆角 | 容器尺度：`--pm-radius-compact:8px`、`--pm-radius-panel:12px`、`--pm-radius-card:14px`、`--pm-radius-large:16px`、`--pm-radius-round` / `--pm-radius-modal:20px`；控件使用 `--pm-radius-control:10px`；结构性零值、圆形、胶囊使用 `--pm-radius-none:0`、`--pm-radius-circle:50%`、`--pm-radius-pill:999px`。气泡/语音卡仅使用 `--pm-radius-bubble:18px` 与 `--pm-radius-bubble-tail:4px`；宿主手机外壳仅使用随断点覆盖的兼容 token `--pm-phone-outer-radius`。 |
 
-组件内部默认 gap 为 8px，内容区内边距优先 12px 或 16px。MUST 保留留白，不得靠缩小字体、行高或控件高度塞入更多内容。普通按钮、输入和主要触控目标使用 44px；仅顶部工具栏、图标操作组等明确紧凑区域 MAY 使用 36px。圆角只表达容器层级，不得每个子元素都套卡片和描边。
+组件内部默认 gap 为 8px，内容区内边距优先 12px 或 16px。MUST 保留留白，不得靠缩小字体或行高塞入更多内容。普通按钮与输入使用 36px，整宽主按钮与列表行使用 44px。圆角只表达容器层级，不得每个子元素都套卡片。
 
 ## 7. 阴影、层级与动效
 
@@ -159,13 +173,13 @@ MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺�
 
 | 组件 | 标准 |
 | --- | --- |
-| 普通按钮 | `--pm-color-surface-control`、`--pm-color-text-primary`、`--pm-color-border-default`、`--pm-radius-control`、`--pm-size-control-default` |
-| 主按钮 | `--pm-color-accent` 背景、`--pm-color-on-accent` 前景、同色描边；同一操作区域默认只出现一个 |
+| 普通按钮 | `--pm-color-fill`、`--pm-color-label`、无描边、`--pm-radius-control`、`--pm-size-control` |
+| 主按钮 | `--pm-color-accent` 背景、`--pm-color-on-accent` 前景、无描边；同一操作区域默认只出现一个 |
 | 状态按钮 | 默认使用 `--pm-color-surface-control` 和 primary 标签文字，以对应的 `success/warning/danger` 作为达到 3:1 的图标与描边；语义色文字仅在实测达到 4.5:1 时使用。只有不可逆操作的最终确认才使用语义色实底与对应 `--pm-color-on-*` 前景 |
-| 文本输入 | `--pm-color-surface-control`、`--pm-color-text-primary`、`--pm-color-border-default`、`--pm-radius-control`、`--pm-size-control-default` |
-| 卡片 | `--pm-color-surface-card`；普通分组使用 `--pm-color-border-subtle`，可交互或需强调边界时使用 `--pm-color-border-default`，只保留一道描边；`--pm-radius-card`、space-3 或 space-4 内边距、无阴影 |
+| 文本输入 | `--pm-color-fill`、`--pm-color-label`、无描边、`--pm-radius-control`、`--pm-size-control`；校验失败用 danger 色 outline |
+| 卡片 | grouped 底上用 `--pm-color-surface`，plain 底上用 `--pm-color-fill`；无描边、无阴影；`--pm-radius-card`、space-3 或 space-4 内边距 |
 | 模态 | `--pm-color-surface-page`、`--pm-radius-modal`、`--pm-shadow-modal`、`--pm-z-modal`；遮罩使用 `--pm-color-overlay`。MUST 具备对话框语义、可访问标题、焦点进入与约束、关闭后焦点恢复，并提供明确关闭操作 |
-| 菜单/下拉 | `--pm-color-surface-card`、`--pm-color-border-default`、`--pm-shadow-floating`；菜单项至少 compact 高度 |
+| 菜单/下拉 | `--pm-color-surface-raised`、`--pm-shadow-floating`、无描边；菜单项至少 `--pm-size-control` 高度 |
 | 图标按钮 | 独立操作使用 control 表面与 default 正方形点击区；只有工具栏或图标操作组等明确紧凑区域可使用透明表面与 compact 点击区；图标使用 `--pm-size-icon-md` |
 
 同类组件不得自行创造第二套视觉。组件嵌套时避免“卡片套卡片”；优先用留白和分隔线组织内容。

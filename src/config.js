@@ -9,6 +9,8 @@ export const THEME_PRESETS = {
             '--pm-color-surface-page': '#2B2B2B', '--pm-color-surface-card': '#1F1F1F', '--pm-color-surface-elevated': '#242424', '--pm-color-surface-input': '#1F1F1F', '--pm-color-surface-inverse': '#1F1F1F',
             '--pm-color-text-primary': '#FFFFFF', '--pm-color-text-secondary': 'rgba(255, 255, 255, 0.70)', '--pm-color-text-tertiary': 'rgba(255, 255, 255, 0.50)', '--pm-color-text-placeholder': 'rgba(255, 255, 255, 0.50)',
             '--pm-color-border-subtle': 'transparent', '--pm-color-border-default': 'transparent', '--pm-color-border-strong': 'transparent', '--pm-color-control-off': '#3A3A3A', '--pm-color-focus-ring': '#FFD9E4', '--pm-color-success': '#E5A0B5', '--pm-color-warning': '#FFB38B', '--pm-color-danger': '#D96C6C', '--pm-color-on-success': '#2B2B2B', '--pm-color-on-warning': '#2B2B2B', '--pm-color-on-danger': '#FFFFFF',
+            '--pm-color-bg-grouped': '#1F1F1F', '--pm-color-bg-plain': '#2B2B2B', '--pm-color-surface': '#2B2B2B', '--pm-color-surface-raised': '#333333', '--pm-color-fill': '#3A3A3A', '--pm-color-fill-strong': '#474747', '--pm-color-label': '#FFFFFF', '--pm-color-label-2': 'rgba(255, 255, 255, 0.70)', '--pm-color-label-3': 'rgba(255, 255, 255, 0.55)', '--pm-color-label-4': 'rgba(255, 255, 255, 0.32)',
+
         },
     },
     mint: { right: '#9FBE8C', rightDark: '#B6D39D', left: '#F3EBDD', leftDark: '#3B443B', rightText: '#fff', leftText: '#4D4034', leftTextDark: '#E8EEE5', label: '薄荷', accent: '#9FBE8C', auxiliary: '#739E59' },
