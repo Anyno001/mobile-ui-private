@@ -3,14 +3,14 @@ import { loadCalendarOutfits } from './calendar-storage.js';
 
 export const loadOutfitStore = () => normalizeOutfitStore(loadCalendarOutfits());
 
-export function outfitSubjectOptions(state, store, storageId) {
+export function outfitSubjectOptions(state, store, storageId, userName = '') {
     const names = state.isGroupChat ? state.groupMembers : [state.currentPersona];
     const ids = [OUTFIT_SELF_SUBJECT, ...names.filter(Boolean).map(name => `role:${name}`), ...outfitSubjectKeys(store, storageId)];
     const seen = new Set();
     return ids.flatMap(value => {
         if (!value || seen.has(value)) return [];
         seen.add(value);
-        const label = outfitSubjectLabel(value);
+        const label = outfitSubjectLabel(value, userName);
         return label ? [{ value, label }] : [];
     });
 }

@@ -111,7 +111,7 @@ export function installCalendar(state, deps) {
             {
                 ...currentView,
                 cycleSubjects: cycleSubjectOptions(storageId),
-                outfitSubjects: outfitSubjectOptions(state, runtime.outfitStore, storageId),
+                outfitSubjects: outfitSubjectOptions(state, runtime.outfitStore, storageId, deps.getUserPersona?.()?.name || ''),
             },
             recipeScopeFor(runtime.recipeStore, storageId),
             outfitScopeFor(runtime.outfitStore, storageId, currentView.outfitSubject),

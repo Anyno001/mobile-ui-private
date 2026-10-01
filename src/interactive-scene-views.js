@@ -146,15 +146,39 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
     </div>`;
 }
 
+function communityMode(scene) {
+    return getInteractivePresets()[scene?.preset]?.mode || 'forum';
+}
+
+// 小组/论坛形态：首行短句作为帖子标题，其余为正文；不满足条件时整体按正文展示。
+function splitForumTitle(content) {
+    const [first = '', ...rest] = String(content || '').split('\n');
+    const body = rest.join('\n').trim();
+    return first.trim() && body && first.trim().length <= 40 ? { title: first.trim(), body } : { title: '', body: String(content || '') };
+}
+
+function renderRating(rating) {
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return '';
+    return `<span class="pm-scene-rating" role="img" aria-label="评分 ${rating} 星，满分 5 星"><span class="pm-scene-rating-stars" aria-hidden="true">${'★'.repeat(rating)}<span class="pm-scene-rating-empty">${'★'.repeat(5 - rating)}</span></span><b aria-hidden="true">${rating}.0</b></span>`;
+}
+
+function renderReviewHead(post) {
+    if (!post.work && !post.rating) return '';
+    return `<div class="pm-scene-review-head">${post.work ? `<b class="pm-scene-review-work">${escapeHtml(post.work)}</b>` : '<span></span>'}${renderRating(post.rating)}</div>`;
+}
+
 function renderPosts(scene, now) {
+    const mode = communityMode(scene);
     if (!scene.posts.length) return '<div class="pm-scene-empty"><b>这里还很安静</b><span>发第一篇帖子，或者拍一拍让社区动起来。</span></div>';
     return scene.posts.slice().reverse().map(post => {
         const likes = stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
         const shares = stablePostMetric(post, 'shares', 1, 48) + post.shareCount;
-        return `<article class="pm-scene-post">
+        const forum = mode === 'forum' ? splitForumTitle(post.content) : { title: '', body: post.content };
+        const reviewHead = mode === 'review' ? renderReviewHead(post) : '';
+        return `<article class="pm-scene-post is-${mode}">
         <header><div class="pm-scene-avatar">${escapeHtml(post.authorNameSnapshot.slice(0, 1))}</div><div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b>${renderPostTime(post.createdAt, now)}</div><div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="帖子操作" title="帖子操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="拍一拍本帖，只生成本帖评论" title="拍一拍本帖">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="编辑帖子" title="编辑帖子">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="删除帖子" title="删除帖子">${TRASH_ICON_SVG}</button></span></div></header>
-        <p>${escapeHtml(post.content).replace(/\n/g, '<br>')}</p>
-        ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map(tag => `<span>#${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+        ${reviewHead}${forum.title ? `<h4 class="pm-scene-post-title">${escapeHtml(forum.title)}</h4>` : ''}<p>${escapeHtml(forum.body).replace(/\n/g, '<br>')}</p>
+        ${post.tags.length ? `<div class="pm-scene-tags">${post.tags.map(tag => `<span>#${escapeHtml(tag)}${mode === 'social' ? '#' : ''}</span>`).join('')}</div>` : ''}
         <footer><button type="button" class="pm-scene-like ${post.liked ? 'is-liked' : ''}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${post.liked ? '取消喜欢' : '喜欢'}">${renderPostMetric(HEART_ICON_SVG, likes, '喜欢', 'is-like')}</button><button type="button" class="pm-scene-share ${post.shared ? 'is-shared' : ''}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? '已分享本帖' : '分享本帖'}">${renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')}</button><button type="button" class="pm-scene-reply-toggle" data-action="toggle-reply" data-post-id="${escapeAttr(post.id)}" aria-label="回复本帖" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="false">${renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')}</button></footer>
         ${post.comments.length ? `<div class="pm-scene-comments">${post.comments.map(comment => `<div class="pm-scene-comment"><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> <span class="pm-scene-comment-content">${escapeHtml(comment.content)}</span></span><span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="编辑评论" title="编辑评论">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="删除评论" title="删除评论">${TRASH_ICON_SVG}</button></span></div>`).join('')}</div>` : ''}
         <div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="发表你的想法吧"><button type="button" data-action="post-comment" data-post-id="${escapeAttr(post.id)}" aria-label="发送回复" title="发送回复">${SEND_ICON_SVG}</button></div>
@@ -206,6 +230,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const autoActive = state.autoActive === true;
     const renderedAt = typeof state.now === 'number' && Number.isFinite(state.now) ? state.now : Date.now();
     const accent = sceneAccent(scene);
+    const mode = communityMode(scene);
     const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle';
     const warmupStarted = liveState === 'active' && scene.live.warmupStarted === true;
     const liveStarting = liveState === 'starting';
@@ -219,7 +244,8 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const playControl = !warmupStarted && !liveStarting
         ? `<button type="button" class="pm-live-play-btn" data-action="start-warmup" aria-label="${liveFailed ? '重新开始热场' : '开始热场'}" title="${liveFailed ? '重新开始热场' : '开始热场'}">${PLAY_ICON_SVG}</button>` : '';
     const stageNote = liveStarting ? '<p class="pm-live-state-note">正在准备热场…</p>' : liveFailed ? '<p class="pm-live-state-note is-error">热场未能启动，请重试。</p>' : '';
-    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
+    const liveTitle = `<div class="pm-live-title"><span class="pm-live-badge">${warmupStarted ? '直播中' : '未开播'}</span><b>${escapeHtml(scene.live.title || `${scene.title} 直播间`)}</b></div>`;
+    const liveContent = `<div class="pm-live-stage ${hasDanmaku ? 'has-danmaku' : ''}" data-live-state="${stageState}">${liveTitle}${playControl}<div class="pm-danmaku-float">${floatingDanmaku}</div>${stageNote}</div><section class="pm-live-details" aria-label="热场内容"><div class="pm-danmaku-list">${renderDanmaku(scene)}</div></section>`;
     const composer = tab === 'feed' ? `<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="分享此刻……"></textarea><button type="button" class="pm-scene-primary" data-action="publish" aria-label="发布" title="发布">${SEND_ICON_SVG}</button></div>` : tab === 'live' ? `<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea><button type="button" class="pm-scene-primary" data-action="send-danmaku" aria-label="发送弹幕" title="发送弹幕">${SEND_ICON_SVG}</button></div>` : '';
     const content = tab === 'feed' ? `<div class="pm-scene-feed"><div class="pm-scene-posts">${renderPosts(scene, renderedAt)}</div></div>`
         : tab === 'live' ? `<div class="pm-live-room">${liveContent}</div>`
@@ -231,7 +257,7 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const leadingAction = isSubpage
         ? `data-action="tab" data-tab="${returnTab}" aria-label="返回子社区" title="返回子社区"`
         : 'data-action="desktop" aria-label="返回桌面" title="返回桌面"';
-    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" style="--scene-accent:${escapeAttr(accent)}">
+    return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" data-community-mode="${escapeAttr(mode)}" style="--scene-accent:${escapeAttr(accent)}">
         <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><nav class="pm-scene-title" aria-label="子社区视图"><button type="button" class="pm-scene-title-tab ${tab === 'feed' ? 'is-active' : ''}" data-action="tab" data-tab="feed" aria-current="${tab === 'feed' ? 'page' : 'false'}"><span>${escapeHtml(scene.title)}</span></button><button type="button" class="pm-scene-title-tab ${tab === 'live' ? 'is-active' : ''}" data-action="tab" data-tab="live" aria-current="${tab === 'live' ? 'page' : 'false'}"><span>直播</span></button></nav><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button><button type="button" class="pm-header-icon-button pm-scene-exit" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
         ${content}${isSubpage || tab === 'context-inject' ? '' : `<div class="pm-scene-bottom-bar">${renderSceneMenu(scene, uiScope, autoActive, tab)}${composer}</div>`}
     </div>`;

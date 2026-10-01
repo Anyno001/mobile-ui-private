@@ -272,3 +272,24 @@
 .pm-scene-injection-post-toggle:focus-visible{outline:2px solid var(--pm-color-auxiliary);outline-offset:2px;}
 .pm-scene-injection-post-toggle svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
 @media(max-width:320px){.pm-scene-view-actions{gap:0;}.pm-scene-view-actions button{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);padding:var(--pm-space-1-5);}}
+
+/*社区形态差异：social=微博、forum=小组论坛、review=书评、romance=树洞；由 .pm-scene-shell[data-community-mode] 驱动*/
+.pm-scene-post-title{margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-review-head{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);margin-top:var(--pm-space-3);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-control);background:var(--pm-color-surface-card);}
+.pm-scene-review-work{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-control);}
+.pm-scene-rating{display:inline-flex;align-items:center;gap:var(--pm-space-1-5);flex:0 0 auto;}
+.pm-scene-rating-stars{color:var(--scene-accent);font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-tight);}
+.pm-scene-rating-empty{color:var(--pm-color-text-placeholder);}
+.pm-scene-rating b{font-size:var(--pm-font-size-compact);color:var(--pm-color-text-primary);}
+.pm-scene-shell[data-community-mode="social"] .pm-scene-avatar{border-radius:var(--pm-radius-circle);}
+.pm-scene-shell[data-community-mode="forum"] .pm-scene-avatar{border-radius:var(--pm-radius-compact);}
+.pm-scene-shell[data-community-mode="forum"] .pm-scene-post{border-radius:var(--pm-radius-panel);}
+.pm-scene-shell[data-community-mode="forum"] .pm-scene-comments{counter-reset:pm-scene-floor;background:transparent;border-left:1px solid var(--pm-color-border-default);border-radius:var(--pm-radius-none);}
+.pm-scene-shell[data-community-mode="forum"] .pm-scene-comment>span:first-child::before{counter-increment:pm-scene-floor;content:counter(pm-scene-floor) "楼 ";color:var(--pm-color-text-tertiary);font-size:var(--pm-font-size-helper);}
+.pm-scene-shell[data-community-mode="review"] .pm-scene-post p{font-weight:var(--pm-font-weight-regular);}
+.pm-scene-shell[data-community-mode="romance"] .pm-scene-post{border:1px solid var(--pm-color-border-subtle);}
+.pm-scene-shell[data-community-mode="romance"] .pm-scene-avatar{border-radius:var(--pm-radius-circle);background:var(--pm-color-surface-control);color:var(--pm-color-text-tertiary);}
+.pm-live-title{position:absolute;left:var(--pm-space-4);right:var(--pm-space-4);top:var(--pm-space-4);display:flex;align-items:center;gap:var(--pm-space-2);min-width:0;}
+.pm-live-badge{flex:0 0 auto;padding:var(--pm-space-0-5) var(--pm-space-1-5);border-radius:var(--pm-radius-compact);background:var(--pm-color-surface-control);color:var(--pm-color-text-primary);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}
+.pm-live-stage[data-live-state="active"] .pm-live-badge{background:var(--pm-color-danger);color:var(--pm-color-on-danger);}
+.pm-live-title b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-tight);}

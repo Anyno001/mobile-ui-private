@@ -1056,7 +1056,8 @@ const selfOutfitPrompts = selfOutfitPlan.prompts.filter(prompt => prompt.source 
 const selfOutfitPrompt = selfOutfitPrompts.find(prompt => prompt.key === 'PHONE_SMS_MEMORY:outfit:story-a%3A%3A__self__');
 assert.equal(selfOutfitPrompts.length, 2, '单聊必须同时注入 <user> 与当前角色的窗口内 OOTD');
 assert.ok(selfOutfitPrompt, '<user> 有窗口内 OOTD 时必须生成独立穿搭 prompt');
-assert.match(selfOutfitPrompt.content, /\[角色穿搭\][\s\S]*角色：<user>[\s\S]*昨日用户外套[\s\S]*今日用户衬衫[\s\S]*明日用户风衣/);
+assert.match(selfOutfitPrompt.content, /\[角色穿搭\][\s\S]*角色：用户[\s\S]*昨日用户外套[\s\S]*今日用户衬衫[\s\S]*明日用户风衣/);
+assert.doesNotMatch(selfOutfitPrompt.content, /<user>|__self__/, '用户穿搭注入不得暴露占位符或内部主体键');
 assert.equal(selfOutfitPrompt.position, 2, '<user> 穿搭必须沿用日历注入位置');
 assert.equal(selfOutfitPrompt.depth, 4, '<user> 穿搭必须沿用日历注入深度');
 assert.equal(new Set(selfOutfitPrompts.map(prompt => prompt.key)).size, 2, '<user> 与当前角色的穿搭 prompt key 不得冲突');
@@ -1129,7 +1130,7 @@ assert.deepEqual(groupSelfOutfitPrompts.map(prompt => prompt.key), [
     'PHONE_SMS_MEMORY:outfit:story-a%3A%3Arole%3AAlice',
     'PHONE_SMS_MEMORY:outfit:story-a%3A%3Arole%3ABob',
 ], '群聊必须注入 <user> 与去重后的每个成员穿搭');
-assert.match(groupSelfOutfitPrompts[0].content, /角色：<user>[\s\S]*今日用户衬衫/);
+assert.match(groupSelfOutfitPrompts[0].content, /角色：用户[\s\S]*今日用户衬衫/);
 assert.equal(groupSelfOutfitPrompts.some(prompt => /宿主角色/.test(prompt.content)), false,
     '群聊加入 <user> 穿搭后不得回退注入宿主角色穿搭');
 const invalidGroupOutfitPlan = buildContextInjectionPrompts({

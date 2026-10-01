@@ -85,13 +85,23 @@ const outfitEnvelope = (dates = recipeDates) => JSON.stringify({
 });
 assert.deepEqual(createEmptyOutfitStore(), { version: 1, scopes: {} });
 assert.equal(OUTFIT_SELF_SUBJECT, '__self__');
-assert.equal(outfitSubjectLabel(OUTFIT_SELF_SUBJECT), '<user>');
+assert.equal(outfitSubjectLabel(OUTFIT_SELF_SUBJECT), '我', '读不到人设名时用户主体显示为“我”，不得暴露 <user> 占位符');
+assert.equal(outfitSubjectLabel(OUTFIT_SELF_SUBJECT, '用户甲'), '用户甲（我）', '用户主体必须显示真实人设名');
 assert.equal(outfitSubjectLabel('role:Alice'), 'Alice');
 assert.equal(outfitRoleName('role:Alice'), 'Alice');
 assert.equal(outfitRoleName('__self__'), '');
 assert.deepEqual(outfitSubjectOptions({ isGroupChat: false, currentPersona: 'Alice' }, createEmptyOutfitStore(), 'storyA'), [
-    { value: '__self__', label: '<user>' }, { value: 'role:Alice', label: 'Alice' },
-], '穿搭主体列表必须以 <user> 开头并保留当前角色');
+    { value: '__self__', label: '我' }, { value: 'role:Alice', label: 'Alice' },
+], '穿搭主体列表必须以用户本人开头并保留当前角色');
+assert.deepEqual(outfitSubjectOptions({ isGroupChat: false, currentPersona: 'Alice' }, createEmptyOutfitStore(), 'storyA', '用户甲')[0],
+    { value: '__self__', label: '用户甲（我）' }, '穿搭主体列表必须使用传入的人设名');
+{
+    const selfPrompt = buildOutfitPrompts({ outfitTarget: { kind: 'user', name: '用户甲' }, userName: '用户甲', cardDesc: '' }, {}, recipeStart, { subject: OUTFIT_SELF_SUBJECT });
+    assert.match(selfPrompt.userPrompt, /记录对象是用户本人「用户甲」/, '用户主体生成提示必须声明记录对象是用户本人');
+    assert.match(selfPrompt.userPrompt, /不得套用角色卡人物的服饰设定/, '用户人设为空时必须禁止套用角色卡服饰');
+    const rolePrompt = buildOutfitPrompts({ outfitTarget: { kind: 'role', name: 'Alice' }, userName: '用户甲' }, {}, recipeStart, { subject: 'role:Alice' });
+    assert.doesNotMatch(rolePrompt.userPrompt, /记录对象是用户本人/, '角色主体不得出现用户本人声明');
+}
 const selfPreferenceStore = updateOutfitProfile(createEmptyOutfitStore(), 'storyA', OUTFIT_SELF_SUBJECT, profile => ({
     ...profile, colorPreference: '蓝色', preference: '不穿高跟鞋', generationRule: '用户规则',
 }));

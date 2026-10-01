@@ -186,7 +186,7 @@ export function renderCalendarManagement({
 }) {
     const open = (managementOpen ?? ['recipe', 'cycle', 'outfit'].includes(viewMode)) ? ' open' : '';
     if (viewMode === 'outfit') {
-        const subjects = outfitSubjects.length ? outfitSubjects : [{ value: '__self__', label: '<user>' }];
+        const subjects = outfitSubjects.length ? outfitSubjects : [{ value: '__self__', label: '我' }];
         const colorPreference = outfitProfile?.colorPreference || '';
         const preference = outfitProfile?.preference || '';
         const generationRule = outfitProfile?.generationRule || DEFAULT_OUTFIT_GENERATION_RULE;

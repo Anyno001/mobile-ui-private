@@ -33,6 +33,13 @@ function cleanFeedComments(value) {
     return comments.slice(0, 5);
 }
 
+// 书评形态的可选字段：非法值直接丢弃，不让整条帖子失效。
+function cleanReviewFields(item) {
+    const work = clean(item.work, 40);
+    const rating = Number(item.rating);
+    return { ...(work ? { work } : {}), ...(Number.isInteger(rating) && rating >= 1 && rating <= 5 ? { rating } : {}) };
+}
+
 export function parseInteractiveResponse(raw, kind) {
     const maxItems = kind === 'style_prompt' ? 1 : kind === 'feed_batch' ? 8 : kind === 'comment_batch' ? 12 : kind === 'danmaku_batch' ? 20 : 20;
     const items = parseEnvelope(raw, kind).slice(0, maxItems).flatMap(item => {
@@ -42,7 +49,7 @@ export function parseInteractiveResponse(raw, kind) {
             const prompt = clean(item.prompt, 6000);
             return prompt ? [{ title: clean(item.title, 80) || '我的社区', prompt }] : [];
         }
-        const allowed = kind === 'feed_batch' ? ['author', 'content', 'tags', 'comments'] : ['author', 'content'];
+        const allowed = kind === 'feed_batch' ? ['author', 'content', 'tags', 'comments', 'work', 'rating'] : ['author', 'content'];
         if (Object.keys(item).some(key => !allowed.includes(key))) return [];
         const content = clean(item.content, kind === 'feed_batch' ? 4000 : kind === 'comment_batch' ? 1000 : 200);
         if (!content) return [];
@@ -51,6 +58,7 @@ export function parseInteractiveResponse(raw, kind) {
             content,
             tags: Array.isArray(item.tags) ? item.tags.map(tag => clean(tag, 30)).filter(Boolean).slice(0, 5) : [],
             ...(kind === 'feed_batch' ? { comments: cleanFeedComments(item.comments) } : {}),
+            ...(kind === 'feed_batch' ? cleanReviewFields(item) : {}),
         }];
     });
     if (!items.length) throw new Error('AI 未返回有效内容');

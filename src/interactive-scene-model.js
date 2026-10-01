@@ -454,10 +454,21 @@ function normalizeComment(raw, context) {
     };
 }
 
+// 书评形态的可选字段：旧数据不含这两项，只有存在时才校验与输出，保持既有存储与 fixture 等价。
+function normalizeReviewFields(raw) {
+    const work = text(raw?.work, 40);
+    const rating = Number.isInteger(raw?.rating) && raw.rating >= 1 && raw.rating <= 5 ? raw.rating : null;
+    return { ...(work ? { work } : {}), ...(rating ? { rating } : {}) };
+}
+
 function normalizePost(raw, context) {
     if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared'], 'post');
+        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared', 'work', 'rating'], 'post');
         assertV2Text(raw.id, 80, 'post.id'); assertV2AuthorFields(raw, 'post'); assertV2Text(raw.content, 4000, 'post.content'); assertV2Timestamp(raw.createdAt, 'post.createdAt');
+        if (Object.hasOwn(raw, 'work')) assertV2Text(raw.work, 40, 'post.work');
+        if (Object.hasOwn(raw, 'rating') && (!Number.isInteger(raw.rating) || raw.rating < 1 || raw.rating > 5)) {
+            throw new Error('互动场景 v2 post.rating 必须是 1-5 的整数');
+        }
         assertV2List(raw.tags, 'post.tags');
         if (raw.tags.length > 5) throw new Error('互动场景 v2 post.tags 不能超过 5 项');
         raw.tags.forEach((tag, index) => assertV2Text(tag, 30, `post.tags.${index}`));
@@ -488,6 +499,7 @@ function normalizePost(raw, context) {
         shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0,
         shared: typeof raw?.shared === 'boolean' ? raw.shared
             : Number.isSafeInteger(raw?.shareCount) && raw.shareCount > 0,
+        ...normalizeReviewFields(raw),
     };
 }
 
@@ -596,6 +608,7 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) 
         return [{
             author: item?.author, authorSeed: item?.authorSeed || null, content,
             tags: list(item?.tags).map(tag => text(tag, 30)).filter(Boolean).slice(0, 5), comments,
+            review: normalizeReviewFields(item),
         }];
     });
     if (!prepared.length) return [];
@@ -612,7 +625,7 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) 
                 id: id('comment'), ...resolveInteractiveAuthor(scope, scopeId, comment.author),
                 content: comment.content, createdAt,
             })),
-            liked: false, shareCount: 0, shared: false, createdAt,
+            liked: false, shareCount: 0, shared: false, createdAt, ...item.review,
         }));
     } catch (error) {
         scope.actors = actorsSnapshot;

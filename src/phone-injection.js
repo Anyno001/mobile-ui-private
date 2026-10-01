@@ -342,7 +342,7 @@ export function buildContextInjectionPrompts({
         ];
         for (const { key: subject, label } of subjects) {
             const body = renderOutfitInjection(outfitScopeFor(calendarOutfits, currentStorageId, subject), {
-                start: calendarReferenceDate(calendarScope), subject: label,
+                start: calendarReferenceDate(calendarScope), subject: label, userName: subject === OUTFIT_SELF_SUBJECT ? userName : '',
             });
             if (!body) continue;
             const [subjectLine, ...days] = body.split('\n');

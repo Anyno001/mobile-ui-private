@@ -2954,7 +2954,7 @@ for (const expected of [
 for (const expected of ['ST_SMS_PHONE_UI_STATE', 'loadPhoneUiState', 'savePhoneUiState', 'savePhoneUiScope', 'const current = loadPhoneUiState(interactiveStore)']) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 if ((source.match(/ST_SMS_PHONE_UI_STATE/g) || []).length !== 1) failures.push('source: phone UI state must retain exactly one storage-key definition');
 for (const expected of [
-  "['author', 'content', 'tags', 'comments']", 'cleanFeedComments',
+  "['author', 'content', 'tags', 'comments', 'work', 'rating']", 'cleanFeedComments', 'cleanReviewFields', 'INTERACTIVE_FEED_GUIDES', 'INTERACTIVE_LIVE_GUIDES',
   '不得返回 actorId、authorId 或任何内部标识', 'known_actor_names_data',
 ]) requireText('interactive scene AI', `${interactiveAiCode}\n${interactivePromptCode}`, expected);
 for (const expected of [

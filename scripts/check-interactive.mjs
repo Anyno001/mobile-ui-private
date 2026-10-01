@@ -80,6 +80,41 @@ assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</titl
 assert.deepEqual(parseInteractiveResponse('{"version":1,"kind":"comment_batch","items":[{"author":"甲","content":"评论"}]}', 'comment_batch'), [{ author: '甲', content: '评论', tags: [] }]);
 const danmakuRequest = buildInteractiveRequest({ kind: 'danmaku_batch', presetKey: 'weibo', context: '直播上下文', actorRoster: ['甲', '乙'] });
 assert.match(danmakuRequest.userPrompt, /8-14 条短弹幕|不得生成帖子/);
+assert.match(danmakuRequest.userPrompt, /直播形态：像微博直播现场/, '直播弹幕必须按所属社区形态给出语气指引');
+{
+    const twoComments = [{ author: '乙', content: '一' }, { author: '丙', content: '二' }];
+    const reviewItems = parseInteractiveResponse(JSON.stringify({ version: 1, kind: 'feed_batch', items: [
+        { author: '甲', content: '书评正文', tags: [], comments: twoComments, work: '某书', rating: 4 },
+        { author: '丁', content: '无效评分', tags: [], comments: twoComments, rating: 9 },
+    ] }), 'feed_batch');
+    assert.equal(reviewItems.length, 2, '书评可选字段不得让帖子被整条丢弃');
+    assert.equal(reviewItems[0].rating, 4);
+    assert.equal(reviewItems[0].work, '某书');
+    assert.equal(Object.hasOwn(reviewItems[1], 'rating'), false, '越界评分必须丢弃而不是保留');
+    assert.match(buildInteractiveRequest({ kind: 'feed_batch', presetKey: 'book', context: '' }).userPrompt, /rating（整数）/, '书评社区必须要求评分');
+    assert.doesNotMatch(buildInteractiveRequest({ kind: 'feed_batch', presetKey: 'weibo', context: '' }).userPrompt, /rating（整数）/, '非书评社区不得要求评分');
+    const normalizedReview = normalizeScene({ id: 'review-scene', preset: 'book', posts: [{ content: '有分', work: '某书', rating: 5 }, { content: '无分', rating: 0 }] });
+    assert.equal(normalizedReview.posts[0].rating, 5);
+    assert.equal(normalizedReview.posts[0].work, '某书');
+    assert.equal(Object.hasOwn(normalizedReview.posts[1], 'rating'), false, '非法存储评分必须在归一化时丢弃');
+    const { renderCommunityWorkspace } = await import('../src/interactive-scene-views.js');
+    const basePost = { id: 'p1', authorNameSnapshot: '甲', content: '正文', tags: ['悬疑'], comments: [], liked: false, shareCount: 0, shared: false, createdAt: Date.UTC(2030, 0, 1) };
+    const reviewScene = { id: 's', title: '书评', preset: 'book', generatedPrompt: '', themeAccent: '', posts: [{ ...basePost, work: '某书', rating: 3 }], live: { title: '', status: 'idle', warmupStarted: false, danmaku: [] } };
+    const reviewHtml = renderCommunityWorkspace(reviewScene, 'feed', { pinnedSceneIds: [] }, {});
+    assert.match(reviewHtml, /data-community-mode="review"/);
+    assert.match(reviewHtml, /评分 3 星，满分 5 星/, '书评必须渲染可访问的星级评分');
+    assert.match(reviewHtml, /pm-scene-review-work">某书</);
+    const forumHtml = renderCommunityWorkspace({ ...reviewScene, preset: 'douban', posts: [{ ...basePost, content: '标题行\n正文内容' }] }, 'feed', { pinnedSceneIds: [] }, {});
+    assert.match(forumHtml, /<h4 class="pm-scene-post-title">标题行<\/h4>/, '小组帖子首行必须渲染为标题');
+    assert.doesNotMatch(forumHtml, /pm-scene-rating/, '非书评社区不得渲染评分');
+    const weiboHtml = renderCommunityWorkspace({ ...reviewScene, preset: 'weibo', posts: [basePost] }, 'feed', { pinnedSceneIds: [] }, {});
+    assert.match(weiboHtml, /#悬疑#/, '微博话题必须使用双井号');
+    assert.doesNotMatch(weiboHtml, /pm-scene-post-title/, '微博短动态不得拆出标题');
+    const liveHtml = renderCommunityWorkspace(reviewScene, 'live', { pinnedSceneIds: [] }, {});
+    assert.match(liveHtml, /书评 直播间/, '直播间必须显示直播标题或兜底标题');
+    assert.match(liveHtml, /pm-live-badge">未开播</);
+}
+
 assert.deepEqual(parseInteractiveResponse(
     '{"version":1,"kind":"danmaku_batch","items":[{"author":"甲","content":"来了来了"},{"author":"乙","content":"前排"}]}',
     'danmaku_batch',
