@@ -20,9 +20,9 @@ const REQUIRED_METHODS = [
 ];
 
 function requireApi(api = globalThis.quickReplyApi) {
-    if (!api || typeof api !== 'object') throw new Error('当前宿主未提供 Quick Reply API');
+    if (!api || typeof api !== 'object') throw new Error('当前版本不支持快捷回复');
     const missing = REQUIRED_METHODS.filter(name => typeof api[name] !== 'function');
-    if (missing.length) throw new Error(`当前宿主的 Quick Reply API 缺少：${missing.join('、')}`);
+    if (missing.length) throw new Error(`当前版本的快捷回复功能不完整，缺少：${missing.join('、')}`);
     return api;
 }
 
@@ -141,7 +141,8 @@ export async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
     }
 }
 
-const isUnavailableApiError = error => /未提供 Quick Reply API|Quick Reply API 缺少/.test(error?.message || '');
+// 必须与 requireApi 的两条报错文案保持一致：接口尚未就绪时允许重试，其余错误直接抛出。
+const isUnavailableApiError = error => /不支持快捷回复|快捷回复功能不完整/.test(error?.message || '');
 
 export async function ensureInitialPhoneQuickReplyWithRetry({
     getApi = () => globalThis.quickReplyApi,

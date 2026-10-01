@@ -95,7 +95,7 @@ export function installPhoneChat(state, deps) {
                 } else {
                     console.warn('[phone-mode] ⚠️ 群聊格式解析失败！AI 原始返回内容：', raw);
                     const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
-                    const fallbackText = `（格式解析失败。AI原话: ${snippet}，请按F12查看控制台或检查是否触发了安全审查）`;
+                    const fallbackText = `（回复格式无法识别：${snippet}）`;
                     targetHistory.push(createMessageEntry({
                         role: 'assistant',
                         content: '（格式无法解析或AI拒答）',

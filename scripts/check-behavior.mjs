@@ -182,7 +182,7 @@ assert.equal(getConfiguredPhoneQuickReplyLabel({ qrLabel: '  快捷入口  ' }),
 assert.equal(getConfiguredPhoneQuickReplyLabel({ qrLabel: '🎵天音入口测试' }), '🎵天音入口测');
 
 assert.equal(getPhoneQuickReplyStatus(null).state, 'unavailable');
-await assert.rejects(() => ensurePhoneQuickReply(null), /未提供 Quick Reply API/);
+await assert.rejects(() => ensurePhoneQuickReply(null), /不支持快捷回复/);
 const createdQrApi = createQuickReplyApiFixture();
 assert.equal((await ensurePhoneQuickReply(createdQrApi)).state, 'ready');
 const createdQrSet = createdQrApi.getSetByName(PHONE_QR_SET_NAME);
@@ -324,7 +324,7 @@ await assert.rejects(
         attempts: 3,
         setTimeoutImpl: resolve => resolve(),
     }),
-    /未提供 Quick Reply API/,
+    /不支持快捷回复/,
 );
 assert.equal(exhaustedReads, 3, '重试次数必须受 attempts 限制');
 

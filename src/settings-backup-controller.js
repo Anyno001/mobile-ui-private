@@ -98,7 +98,7 @@ export function createBackupController({
 
 
     const clearAllData = async () => {
-        if (!confirm('将删除天音小笺的聊天、社区、设置、背景与恢复状态。此操作不会删除宿主或其他扩展数据。是否继续？')) return false;
+        if (!confirm('将删除天音小笺的聊天、社区、设置、背景与恢复状态。不影响酒馆中的其他数据。是否继续？')) return false;
         if (!confirm('最后确认：清理后只能通过之前导出的备份恢复。确定删除全部天音小笺数据？')) return false;
         const previous = await capture();
         cancelCommunityGeneration?.('plugin-data-clear');

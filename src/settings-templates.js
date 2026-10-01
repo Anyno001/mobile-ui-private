@@ -67,7 +67,7 @@ export function renderQuickReplySettings(status, label = '天音') {
         repairable: '检测到手机开关入口，但配置或启用状态需要修复。',
         conflict: '存在同名集合，但无法证明属于天音小笺。为保护用户数据，禁止覆盖。',
         absent: '尚未创建手机开关入口。',
-        unavailable: status.error || '当前宿主未提供可用的 Quick Reply API。',
+        unavailable: status.error || '当前版本不支持快捷回复。',
     };
     return `<div class="pm-settings-page pm-quick-reply-settings">
       <section><b>手机开关</b><p>入口会执行 <code>/phone</code>。名称最多 6 个字，留空时使用“天音”。</p>
