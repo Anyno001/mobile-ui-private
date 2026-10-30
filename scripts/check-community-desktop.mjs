@@ -23,7 +23,9 @@ check('没有「发布一条」浮条，社区与直播是普通图标', () => {
 check('网格顺序：会话、联系人、日历、今日风向、社区、直播、剧情助手、设置', () => {
     const order = [...render().matchAll(/class="pm-desktop-app" data-app="([\w-]+)"/g)].map(match => match[1]);
     assert.deepEqual(order.slice(0, 8), ['chat', 'directory', 'calendar', 'today-trend', 'community', 'live', 'story-oracle', 'settings']);
-    assert.deepEqual(order.slice(8), ['gallery'], '相册规格未列出，保留在末尾');
+    assert.equal(order[8], 'gallery', '相册规格未列出，排在规格列出的八个之后');
+    assert.deepEqual(order.slice(9), order.slice(9).filter(app => ['shop'].includes(app)), '之后只追加新的独立 App（桃宝）');
+    assert.equal(new Set(order).size, order.length, '桌面图标不重复');
 });
 check('桌面图标统一纯线条：直播图标不填色', () => {
     assert.doesNotMatch(LIVE_APP_ICON_SVG, /fill="currentColor"/);

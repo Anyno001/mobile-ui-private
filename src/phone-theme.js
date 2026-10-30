@@ -1,6 +1,7 @@
-import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
+import { FONT_CHOICES, normalizeFontChoice, resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { ACCENT_TONE_TOKENS, accentToneTokens } from './theme-tones.js';
 import { contrastText } from './ui.js';
+import { applyImageGenVisibility } from './phone-image-settings.js';
 
 export function createPhoneThemeController(state) {
     function applyTheme() {
@@ -19,6 +20,7 @@ export function createPhoneThemeController(state) {
         const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
         const accent = customAccent || preset.accent || preset.right;
         const accentTones = accentToneTokens(accent, interfaceMode);
+        const fontStack = FONT_CHOICES[normalizeFontChoice(theme.fontFamily)].stack;
         const applyProperties = element => {
             if (!element) return;
             element.style.setProperty('--pm-r-bg', rightBackground); element.style.setProperty('--pm-l-bg', leftBackground);
@@ -32,6 +34,8 @@ export function createPhoneThemeController(state) {
             for (const [token, value] of Object.entries(uiTokens)) element.style.setProperty(token, value);
             if (plainWallpaper) { element.style.setProperty('--pm-color-wash', 'transparent'); element.style.setProperty('--pm-color-wash-alt', 'transparent'); }
             element.style.setProperty('--pm-color-auxiliary', auxiliary);
+            if (fontStack) element.style.setProperty('--pm-font-family-system', fontStack);
+            else element.style.removeProperty('--pm-font-family-system');
             element.setAttribute('data-theme', interfaceMode);
             element.removeAttribute('data-skin');
         };
@@ -41,6 +45,7 @@ export function createPhoneThemeController(state) {
         applyProperties(state.phoneWindow);
         state.phoneWindow?.setAttribute('data-icon-style', theme.iconStyle === 'cream' ? 'cream' : 'glass');
         state.phoneWindow?.setAttribute('data-wallpaper', plainWallpaper ? 'plain' : 'soft');
+        applyImageGenVisibility();
         const title = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
         if (title) title.textContent = String(theme.customTitle || '').trim() || '天音小笺';
     }

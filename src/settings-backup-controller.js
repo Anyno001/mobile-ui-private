@@ -41,6 +41,8 @@ export function createBackupController({
             calendarCycles: snapshot.calendarCycles, calendarRecipes: snapshot.calendarRecipes,
             calendarOutfits: snapshot.calendarOutfits, todayTrend: snapshot.todayTrend, todayTrendV2: snapshot.todayTrendV2,
             branchLineage: snapshot.branchLineage, userGeneration: snapshot.userGeneration, desktopIcons: snapshot.desktopIcons,
+            // 桃宝数据读不懂时写 undefined，JSON 里不出现这个字段，导入时保留原数据。
+            shop: snapshot.shopUnreadable ? undefined : snapshot.shop,
         };
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a');

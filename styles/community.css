@@ -1,18 +1,33 @@
 /*互动社区*/
-.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em;--pm-scene-quote-bar-width:3px;--pm-scene-star-size-large:28px;--pm-scene-topbar-side:calc(var(--pm-size-control-compact) * 2 + var(--pm-space-0-5));--pm-scene-sheet-side:calc(var(--pm-size-control-lg) * 2);width:min(720px,94vw)!important;height:min(820px,92dvh);max-height:92dvh!important;border-radius:var(--pm-radius-modal)!important;background:var(--pm-color-bg-grouped)!important;color:var(--pm-color-label);}
+.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-post-body-stroke:.25px currentColor;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em;--pm-scene-quote-bar-width:3px;--pm-scene-star-size-large:28px;--pm-scene-topbar-side:calc(var(--pm-size-control-compact) * 2 + var(--pm-space-0-5));--pm-scene-sheet-side:calc(var(--pm-size-control-lg) * 2);width:min(720px,94vw)!important;height:min(820px,92dvh);max-height:92dvh!important;border-radius:var(--pm-radius-modal)!important;background:var(--pm-color-bg-grouped)!important;color:var(--pm-color-label);}
 /* 社区私有 token：点缀色按平台取值（只用于图标、选中、标签、星级、话题词），社区自选主题色只覆盖 --pm-community-accent。 */
 [data-community-platform="weibo"]{--pm-community-accent:#e0806a;}
 [data-community-platform="douban"]{--pm-community-accent:#5f9a86;}
 [data-community-platform="review"]{--pm-community-accent:#e08e55;}
 [data-community-platform="confess"]{--pm-community-accent:#8f86c6;}
 [data-community-platform="night"]{--pm-community-accent:#6f7fc4;}
+[data-community-platform="tieba"]{--pm-community-accent:#5f93c4;}
+[data-community-platform="hupu"]{--pm-community-accent:#b8706c;}
 #pm-iphone[data-theme="dark"] [data-community-platform="weibo"]{--pm-community-accent:#e8957f;}
 #pm-iphone[data-theme="dark"] [data-community-platform="douban"]{--pm-community-accent:#78b29e;}
 #pm-iphone[data-theme="dark"] [data-community-platform="review"]{--pm-community-accent:#e8a06d;}
 #pm-iphone[data-theme="dark"] [data-community-platform="confess"]{--pm-community-accent:#a59dd6;}
 #pm-iphone[data-theme="dark"] [data-community-platform="night"]{--pm-community-accent:#aeb8ec;}
+#pm-iphone[data-theme="dark"] [data-community-platform="tieba"]{--pm-community-accent:#7eaad6;}
+#pm-iphone[data-theme="dark"] [data-community-platform="hupu"]{--pm-community-accent:#cf8c87;}
 /* 点缀色浅底：混进不透明表面色，得到实色。 */
 [data-community-platform]{--pm-community-accent-soft:color-mix(in srgb,var(--pm-community-accent) 14%,var(--pm-color-surface));}
+/* B2 四个平台（方案稿 B2 定稿）：点缀色与浅底都按稿子取实色，亮暗成对。盆友圈雾蓝、小红薯山茶红、吱乎天青、今日猴条墨蓝。 */
+[data-community-platform="moments"]{--pm-community-accent:#5f88b8;--pm-community-accent-soft:#eaf0f6;}
+[data-community-platform="xhs"]{--pm-community-accent:#d4616c;--pm-community-accent-soft:#f9eaec;}
+[data-community-platform="zhihu"]{--pm-community-accent:#4f8fb8;--pm-community-accent-soft:#e8f0f6;}
+[data-community-platform="news"]{--pm-community-accent:#3f5f8f;--pm-community-accent-soft:#e2eaf6;}
+#pm-iphone[data-theme="dark"] [data-community-platform="moments"]{--pm-community-accent:#8ca9cc;--pm-community-accent-soft:#323841;}
+#pm-iphone[data-theme="dark"] [data-community-platform="xhs"]{--pm-community-accent:#e08d95;--pm-community-accent-soft:#433336;}
+#pm-iphone[data-theme="dark"] [data-community-platform="zhihu"]{--pm-community-accent:#80aecc;--pm-community-accent-soft:#303941;}
+#pm-iphone[data-theme="dark"] [data-community-platform="news"]{--pm-community-accent:#758cae;--pm-community-accent-soft:#2e323b;}
+/* 用户自选主题色时浅底跟着自选色走，不沿用平台的固定浅底。 */
+[data-community-platform][style*="--pm-community-accent"],#pm-iphone[data-theme="dark"] [data-community-platform][style*="--pm-community-accent"]{--pm-community-accent-soft:color-mix(in srgb,var(--pm-community-accent) 14%,var(--pm-color-surface));}
 /* 便签五色（树洞便签、书封共用）与对应书脊色，文字一律用 label。 */
 .pm-scene-shell{--pm-community-note-1:#ecebf7;--pm-community-note-2:#f9e8ee;--pm-community-note-3:#e6f1ed;--pm-community-note-4:#fdf3e2;--pm-community-note-5:#e7eef8;--pm-community-note-edge-1:#d9d6ef;--pm-community-note-edge-2:#efd3dd;--pm-community-note-edge-3:#cfe4dc;--pm-community-note-edge-4:#f3e2c4;--pm-community-note-edge-5:#d2dfee;}
 #pm-iphone[data-theme="dark"] .pm-scene-shell{--pm-community-note-1:#2a2838;--pm-community-note-2:#33262c;--pm-community-note-3:#22302b;--pm-community-note-4:#332d22;--pm-community-note-5:#232c38;--pm-community-note-edge-1:#3a3750;--pm-community-note-edge-2:#4a343d;--pm-community-note-edge-3:#2f433c;--pm-community-note-edge-4:#473f2e;--pm-community-note-edge-5:#313d4f;}
@@ -55,7 +70,7 @@
 .pm-scene-primary{border:0!important;background:var(--pm-color-ink)!important;color:var(--pm-color-on-ink)!important;border-radius:var(--pm-radius-panel)!important;padding:var(--pm-space-3) var(--pm-space-4)!important;font-weight:var(--pm-font-weight-semibold);cursor:pointer;}
 /* 风格补充与成人内容同放一张白卡；输入框保留 fill 底，开关行在卡内不再叠灰底。 */
 .pm-scene-form-card{display:flex;flex-direction:column;gap:var(--pm-space-3);padding:var(--pm-space-3);border-radius:var(--pm-radius-card);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);}
-.pm-scene-form-card .pm-scene-switch-row{margin-top:var(--pm-space-0);padding:var(--pm-space-0);background:transparent;}
+.pm-scene-form-card .pm-scene-switch-row{margin-top:var(--pm-space-0);padding:var(--pm-space-0);background:transparent;box-shadow:none;}
 .pm-scene-launcher>.pm-scene-primary{width:100%;margin-top:var(--pm-space-4);border-radius:var(--pm-radius-pill)!important;}
 .pm-scene-history{margin-top:var(--pm-space-4);}
 .pm-scene-history h3{font-size:var(--pm-font-size-compact);margin:var(--pm-space-0) var(--pm-space-0) var(--pm-space-2);}
@@ -92,7 +107,7 @@
 .pm-scene-post-author{display:flex;flex-direction:column;gap:var(--pm-space-1);}
 .pm-scene-post header b{font-size:var(--pm-font-size-compact);}
 .pm-scene-post header span{font-size:var(--pm-font-size-micro);color:var(--pm-color-label-3);}
-.pm-scene-post p{font-size:var(--pm-scene-post-body-font-size);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing);margin:var(--pm-space-3) var(--pm-space-0);word-break:break-word;}
+.pm-scene-post p{font-size:var(--pm-scene-post-body-font-size);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing);-webkit-text-stroke:var(--pm-scene-post-body-stroke);margin:var(--pm-space-3) var(--pm-space-0);word-break:break-word;}
 .pm-scene-tags{display:flex;gap:var(--pm-space-1-5);flex-wrap:wrap;}
 .pm-scene-tags span{font-size:var(--pm-font-size-caption);color:var(--pm-community-accent);}
 .pm-scene-post footer{display:flex;gap:var(--pm-space-3);flex-wrap:wrap;margin-top:var(--pm-space-2);padding-top:var(--pm-space-2);}
@@ -440,6 +455,24 @@
 .pm-scene-quote{position:relative;margin:var(--pm-space-2) var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3) var(--pm-space-2) var(--pm-space-4);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);word-break:break-word;}
 .pm-scene-quote::before{content:'';position:absolute;top:var(--pm-space-0);bottom:var(--pm-space-0);left:var(--pm-space-0);width:var(--pm-scene-quote-bar-width);border-radius:var(--pm-radius-pill);background:var(--pm-community-accent);}
 .pm-scene-quote b{display:block;margin-bottom:var(--pm-space-0-5);color:var(--pm-color-label-2);font-weight:var(--pm-font-weight-semibold);}
+/* 贴吧：列表摘要两行，楼中楼挂在楼层下方（浅点缀色实底，不用灰底和竖线）。 */
+.pm-scene-thread-digest{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);color:var(--pm-color-label-2);word-break:break-word;}
+.pm-scene-subfloors{display:flex;flex-direction:column;gap:var(--pm-space-1-5);margin-top:var(--pm-space-2);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);}
+.pm-scene-post .pm-scene-subfloor{margin:var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-body);color:var(--pm-color-label-2);word-break:break-word;}
+.pm-scene-subfloor b{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-subfloors-more{align-self:flex-start;padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-community-accent);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);cursor:pointer;}
+.pm-scene-subfloors-more:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+/* 虎扑：紧凑标题列表、亮了数、「这些回帖亮了」小标题。 */
+.pm-scene-thread-list.is-compact{gap:var(--pm-space-1);}
+.pm-scene-thread-list.is-compact .pm-scene-thread-row{padding:var(--pm-space-2) var(--pm-space-4);}
+.pm-scene-flag.is-hot{background:var(--pm-community-accent-soft);color:var(--pm-community-accent);}
+.pm-scene-post header .pm-scene-lights{flex:0 0 auto;font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);color:var(--pm-community-accent);}
+.pm-scene-floors-title{margin:var(--pm-space-4) var(--pm-space-1) var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);color:var(--pm-color-label-2);}
+/* 从 gal 正文导入、原楼层已变的帖子：作者名旁一个小字标记。 */
+.pm-scene-stale{align-self:flex-start;padding:var(--pm-space-0-5) var(--pm-space-1-5);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);color:var(--pm-color-label-2);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-medium);}
+.pm-scene-injection-source{display:block;margin-bottom:var(--pm-space-0-5);color:var(--pm-community-accent);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-launcher>.pm-scene-import{width:100%;margin-top:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-4);border-radius:var(--pm-radius-pill);cursor:pointer;}
+.pm-scene-launcher>.pm-scene-import:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
 
 /*书评*/
 .pm-scene-cover{position:relative;display:flex;flex:0 0 auto;align-items:flex-end;box-sizing:border-box;width:var(--pm-size-control-lg);height:var(--pm-space-6);padding:var(--pm-space-1);border-radius:var(--pm-radius-sm);background:var(--pm-community-note-1);color:var(--pm-color-label);overflow:hidden;}
@@ -469,6 +502,8 @@
 .pm-scene-post .pm-scene-review-book b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--pm-color-label);font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-control);}
 .pm-scene-post .pm-scene-review-author{font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
 .pm-scene-review-body{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;font-weight:var(--pm-font-weight-regular);}
+.pm-scene-review-body.is-open{display:block;-webkit-line-clamp:unset;overflow:visible;}
+.pm-scene-post.is-review .pm-scene-review-more{align-self:flex-start;}
 .pm-scene-post.is-review footer{justify-content:space-between;}
 .pm-scene-post.is-review footer>*{flex:0 1 auto;}
 .pm-scene-review-by{display:inline-flex;align-items:center;gap:var(--pm-space-2);min-width:0;font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
@@ -490,6 +525,9 @@
 .pm-scene-short{padding:var(--pm-space-3) var(--pm-space-4);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);}
 .pm-scene-short header{display:flex;align-items:center;gap:var(--pm-space-3);}
 .pm-scene-short header b{font-size:var(--pm-font-size-compact);}
+/* 短评：名字独占第一行，星级、短评标签、时间收到第二行，窄屏不挤名字。 */
+.pm-scene-short .pm-scene-post-author>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pm-scene-short-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pm-space-1) var(--pm-space-2);min-width:0;}
 .pm-scene-short p{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);word-break:break-word;}
 .pm-scene-short-tag{flex:0 0 auto;padding:var(--pm-space-0-5) var(--pm-space-1-5);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);color:var(--pm-color-label-2);font-size:var(--pm-font-size-caption);}
 
@@ -505,7 +543,7 @@
 .pm-scene-post.is-confess header{justify-content:space-between;gap:var(--pm-space-2);}
 .pm-scene-post.is-confess header .pm-scene-note-who{min-width:0;font-size:var(--pm-font-size-helper);color:var(--pm-color-label-2);}
 .pm-scene-note-body{display:block;width:var(--pm-space-full);padding:var(--pm-space-0);border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;}
-.pm-scene-note-body>span{display:block;margin:var(--pm-space-2) var(--pm-space-0);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);white-space:pre-wrap;word-break:break-word;}
+.pm-scene-note-body>span{display:block;margin:var(--pm-space-2) var(--pm-space-0);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);white-space:pre-wrap;-webkit-text-stroke:var(--pm-scene-post-body-stroke);word-break:break-word;}
 .pm-scene-post.is-confess footer{justify-content:space-between;margin-top:var(--pm-space-0);padding-top:var(--pm-space-0);}
 .pm-scene-post.is-confess footer>*{flex:0 1 auto;}
 .pm-scene-post.is-confess .pm-scene-like .pm-scene-post-metric{color:var(--pm-community-accent);}
@@ -551,3 +589,185 @@
 .pm-scene-shell .pm-scene-comment[data-entry-id],.pm-scene-shell .pm-scene-floor[data-entry-id]{border-radius:var(--pm-radius-control);}
 .pm-scene-shell .pm-scene-comment[data-entry-id].is-fresh,.pm-scene-shell .pm-scene-floor[data-entry-id].is-fresh{background:var(--pm-community-accent-soft);box-shadow:0 0 0 var(--pm-space-1-5) var(--pm-community-accent-soft);}
 @media(prefers-reduced-motion:no-preference){.pm-scene-shell [data-entry-id]{transition:background var(--pm-motion-normal) var(--pm-motion-ease),box-shadow var(--pm-motion-normal) var(--pm-motion-ease),transform var(--pm-motion-normal) var(--pm-motion-ease);}}
+
+/*B2：盆友圈、小红薯、吱乎、今日猴条（方案稿 B2 定稿）*/
+/* 私有 token：两档展示型标题字号（20 / 18，公共尺度到 16 为止），「突发」红与浅红底（与点缀色分开），亮暗成对。 */
+.pm-scene-shell{--pm-scene-headline-size:20px;--pm-scene-heading-size:18px;--pm-community-breaking:#b8392f;--pm-community-breaking-soft:#fbe4e1;}
+#pm-iphone[data-theme="dark"] .pm-scene-shell{--pm-community-breaking:#ef8b84;--pm-community-breaking-soft:#4a3231;}
+/* 盆友圈、小红薯、吱乎整页白底（plain），今日猴条保留分组底加白面板。 */
+.pm-scene-shell:is([data-community-platform="moments"],[data-community-platform="xhs"],[data-community-platform="zhihu"])[data-scene-id]{--pm-color-bg-grouped:var(--pm-color-bg-plain);}
+.pm-phone-screen:has(.pm-scene-shell:is([data-community-platform="moments"],[data-community-platform="xhs"],[data-community-platform="zhihu"])[data-scene-id]){background-color:var(--pm-color-bg-plain);}
+/* 筛选胶囊：一排横向滚动；选中为点缀色浅底（小红薯、今日猴条共用）。 */
+.pm-scene-chips{display:flex;flex-wrap:nowrap;gap:var(--pm-space-2);margin-bottom:var(--pm-space-3);overflow-x:auto;scrollbar-width:none;}
+.pm-scene-chips::-webkit-scrollbar{display:none;}
+.pm-scene-chip{flex:0 0 auto;display:inline-flex;align-items:center;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-3);border:0;border-radius:var(--pm-radius-pill);background:transparent;color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);white-space:nowrap;cursor:pointer;}
+.pm-scene-chip.is-active{background:var(--pm-community-accent-soft);color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+[data-community-platform="news"] .pm-scene-chip{background:var(--pm-color-surface);color:var(--pm-color-label-2);}
+[data-community-platform="news"] .pm-scene-chip.is-active{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
+.pm-scene-chip:focus-visible,.pm-scene-chip:has(input:focus-visible){outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-chip:active{opacity:var(--pm-opacity-muted);}
+.pm-scene-chip.is-radio input{position:absolute;opacity:0;pointer-events:none;}
+.pm-scene-chip.is-radio{position:relative;background:var(--pm-community-accent-soft);color:var(--pm-color-label-2);}
+.pm-scene-chip.is-radio:has(input:checked){background:var(--pm-color-ink);color:var(--pm-color-on-ink);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-sheet-audience{display:flex;flex-direction:column;gap:var(--pm-space-1);min-width:0;margin:var(--pm-space-0);padding:var(--pm-space-0);border:0;}
+.pm-scene-sheet-audience legend{padding:var(--pm-space-0);margin-bottom:var(--pm-space-1);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);color:var(--pm-color-label-2);}
+.pm-scene-sheet-audience .pm-scene-chips{margin-bottom:var(--pm-space-0);}
+.pm-scene-sheet-input.is-title{font-size:var(--pm-font-size-title);font-weight:var(--pm-font-weight-semibold);}
+/* 知乎写回答页顶部引用问题：点缀色浅底实色块，不用灰底。 */
+.pm-scene-sheet-quote{display:flex;flex-direction:column;gap:var(--pm-space-1);padding:var(--pm-space-3);border-radius:var(--pm-radius-panel);background:var(--pm-community-accent-soft);color:var(--pm-color-label);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-body);}
+.pm-scene-sheet-quote small{font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-regular);color:var(--pm-color-label-3);}
+/* 头像五色：盆友圈方形头像与缩略块共用便签色，文字一律用 label。 */
+.pm-scene-moments-avatar,.pm-scene-xhs-cover,.pm-scene-news-thumb,.pm-scene-moments-banner{background:var(--pm-community-note-1);color:var(--pm-color-label);}
+:is(.pm-scene-moments-avatar,.pm-scene-xhs-cover,.pm-scene-news-thumb,.pm-scene-moments-banner).is-note-2{background:var(--pm-community-note-2);}
+:is(.pm-scene-moments-avatar,.pm-scene-xhs-cover,.pm-scene-news-thumb,.pm-scene-moments-banner).is-note-3{background:var(--pm-community-note-3);}
+:is(.pm-scene-moments-avatar,.pm-scene-xhs-cover,.pm-scene-news-thumb,.pm-scene-moments-banner).is-note-4{background:var(--pm-community-note-4);}
+:is(.pm-scene-moments-avatar,.pm-scene-xhs-cover,.pm-scene-news-thumb,.pm-scene-moments-banner).is-note-5{background:var(--pm-community-note-5);}
+/* 白卡与正文页里的配图描述块：改成点缀色浅底实色，不在白底上再叠白卡与阴影。 */
+:is(.pm-scene-post.is-moments,.pm-scene-post.is-news) .pm-img-card{margin-top:var(--pm-space-2);background:var(--pm-community-accent-soft);box-shadow:none;}
+/*盆友圈*/
+/* 信息流通栏：封面贴边，动态左右留 16px。 */
+.pm-scene-shell[data-community-platform="moments"] .pm-scene-feed,#pm-iphone .pm-scene-shell[data-community-platform="moments"] .pm-scene-feed{padding:var(--pm-space-0) var(--pm-space-0) var(--pm-space-5);}
+.pm-scene-moments-cover{position:relative;margin-bottom:var(--pm-space-6);}
+.pm-scene-moments-banner{position:relative;display:grid;place-items:center;height:calc(var(--pm-size-control-lg) * 4);padding:var(--pm-space-4);text-align:center;}
+.pm-scene-moments-banner>span{max-width:80%;color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-scene-shell .pm-scene-moments-camera{position:absolute;top:var(--pm-space-3);right:var(--pm-space-3);display:grid;place-items:center;width:var(--pm-size-control);height:var(--pm-size-control);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-circle);background:var(--pm-color-surface);color:var(--pm-color-label-2);cursor:pointer;}
+.pm-scene-moments-camera svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-scene-moments-camera:active{opacity:var(--pm-opacity-muted);}
+.pm-scene-moments-camera:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-moments-me{position:absolute;right:var(--pm-space-4);bottom:calc(var(--pm-space-5) * -1);display:flex;align-items:flex-start;gap:var(--pm-space-3);}
+.pm-scene-moments-me b{margin-top:var(--pm-space-2);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-moments-avatar{display:grid;flex:0 0 auto;place-items:center;width:var(--pm-size-control);height:var(--pm-size-control);border-radius:var(--pm-radius-compact);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-moments-avatar.is-large{width:var(--pm-size-control-lg);height:var(--pm-size-control-lg);font-size:var(--pm-font-size-title);}
+.pm-scene-moments-list{display:flex;flex-direction:column;}
+.pm-scene-post.is-moments{display:flex;gap:var(--pm-space-3);margin:var(--pm-space-0);padding:var(--pm-space-3) var(--pm-space-4);border-radius:var(--pm-radius-none);background:transparent;}
+.pm-scene-moments-body{display:flex;flex:1;flex-direction:column;min-width:0;}
+.pm-scene-moments-name{font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);color:var(--pm-community-accent);}
+.pm-scene-post.is-moments .pm-scene-moments-text{margin:var(--pm-space-1) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-body);letter-spacing:normal;-webkit-text-stroke:0;}
+.pm-scene-post.is-moments .pm-scene-moments-place{display:flex;align-items:center;gap:var(--pm-space-1);margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-control);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-community-accent);}
+.pm-scene-moments-place svg{flex:0 0 auto;width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-scene-moments-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);margin-top:var(--pm-space-1);}
+.pm-scene-moments-meta{display:flex;align-items:center;gap:var(--pm-space-2);min-width:0;white-space:nowrap;font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
+.pm-scene-moments-meta .pm-scene-post-time{font-size:var(--pm-font-size-helper);}
+/* 「··」浮层：墨色小条，浮在「··」左侧；按钮为浅色前景。 */
+.pm-scene-moments-menu{position:relative;margin-left:var(--pm-space-auto);}
+.pm-scene-shell .pm-scene-moments-dots{width:var(--pm-size-control);height:var(--pm-size-control-sm);padding:var(--pm-space-0);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);color:var(--pm-color-label-2);}
+.pm-scene-moments-pop{position:absolute;z-index:var(--pm-z-popover);top:calc((var(--pm-size-control-sm) - var(--pm-size-control)) / 2);right:calc(100% + var(--pm-space-2));gap:var(--pm-space-0);margin:var(--pm-space-0);padding:var(--pm-space-0) var(--pm-space-1);border-radius:var(--pm-radius-compact);background:var(--pm-color-ink);white-space:nowrap;}
+.pm-scene-shell .pm-scene-moments-pop button{display:inline-flex;align-items:center;gap:var(--pm-space-1);width:auto;height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-2);border-radius:var(--pm-radius-compact);background:transparent;color:var(--pm-color-on-ink);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-shell .pm-scene-moments-pop button:hover{background:transparent;color:var(--pm-color-on-ink);opacity:var(--pm-opacity-muted);}
+.pm-scene-shell .pm-scene-moments-pop button:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:-2px;}
+.pm-scene-moments-pop svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-scene-moments-pop .pm-scene-like.is-liked svg{fill:currentColor;}
+/* 点赞名单与评论：同一块点缀色浅底实色，不加描边、不用竖引用线。 */
+.pm-scene-moments-social{display:flex;flex-direction:column;gap:var(--pm-space-1);margin-top:var(--pm-space-2);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-scene-post.is-moments .pm-scene-moments-likers{display:flex;align-items:flex-start;gap:var(--pm-space-1);margin:var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-body);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-community-accent);word-break:break-word;}
+.pm-scene-moments-likers svg{flex:0 0 auto;width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);margin-top:var(--pm-space-0-5);}
+.pm-scene-moments-comment{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--pm-space-2);}
+.pm-scene-moments-comment .pm-scene-comment-content{flex:1;min-width:0;color:var(--pm-color-label);word-break:break-word;}
+.pm-scene-moments-comment b{color:var(--pm-community-accent);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-post.is-moments .pm-scene-comment-composer{margin-top:var(--pm-space-2);}
+/*小红薯*/
+/* 无卡瀑布：封面直接落在白底上，信息不套白卡。 */
+.pm-scene-xhs-columns{display:flex;gap:var(--pm-space-2);}
+.pm-scene-xhs-column{display:flex;flex:1;flex-direction:column;gap:var(--pm-space-3);min-width:0;}
+.pm-scene-xhs-card{display:flex;flex-direction:column;min-width:0;}
+.pm-scene-xhs-open{display:flex;flex-direction:column;gap:var(--pm-space-2);width:100%;padding:var(--pm-space-0);border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;}
+.pm-scene-xhs-open:active .pm-scene-xhs-cover{opacity:var(--pm-opacity-muted);}
+.pm-scene-xhs-open:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;border-radius:var(--pm-radius-card);}
+.pm-scene-xhs-cover{display:flex;flex-direction:column;justify-content:flex-end;box-sizing:border-box;width:100%;padding:var(--pm-space-3);border-radius:var(--pm-radius-card);overflow:hidden;}
+.pm-scene-xhs-cover b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;font-size:var(--pm-font-size-title);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-xhs-cover.is-short{height:calc(var(--pm-size-control-lg) * 3);}
+.pm-scene-xhs-cover.is-mid{height:calc(var(--pm-size-control-lg) * 3.5);}
+.pm-scene-xhs-cover.is-tall{height:calc(var(--pm-size-control-lg) * 4.25);}
+.pm-scene-xhs-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;padding:var(--pm-space-0) var(--pm-space-1);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-xhs-by{display:flex;align-items:center;gap:var(--pm-space-1);min-width:0;margin-top:var(--pm-space-1);padding:var(--pm-space-0) var(--pm-space-1);font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
+.pm-scene-xhs-by>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pm-scene-shell .pm-scene-like.is-compact{flex:0 0 auto;display:inline-flex;align-items:center;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-1);border:0;border-radius:var(--pm-radius-compact);background:transparent;cursor:pointer;}
+.pm-scene-like.is-compact .pm-scene-post-metric{gap:var(--pm-space-0-5);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-medium);}
+.pm-scene-like.is-compact svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-scene-like.is-compact.is-liked .pm-scene-post-metric{color:var(--pm-community-accent);}
+.pm-scene-like.is-compact:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+/* 底部正中的悬浮「+」：墨色圆钮，外圈一层点缀色浅底实色光晕。 */
+.pm-scene-shell .pm-scene-fab.is-halo{box-shadow:0 0 0 var(--pm-space-2) var(--pm-community-accent-soft),var(--pm-shadow-floating);}
+/* 笔记页：封面在上，接标题、作者、正文、话题、评论。 */
+.pm-scene-post.is-xhs{margin:var(--pm-space-0);padding:var(--pm-space-0);border-radius:var(--pm-radius-none);background:transparent;}
+.pm-scene-xhs-cover.is-hero{height:calc(var(--pm-size-control-lg) * 5);padding:var(--pm-space-4);border-radius:var(--pm-radius-large);}
+.pm-scene-xhs-cover.is-hero b{font-size:var(--pm-scene-headline-size);line-height:var(--pm-line-height-control);}
+.pm-scene-xhs-heading{margin:var(--pm-space-4) var(--pm-space-0) var(--pm-space-3);font-size:var(--pm-scene-heading-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-post.is-xhs .pm-scene-xhs-body{margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-loose);letter-spacing:normal;-webkit-text-stroke:0;}
+.pm-scene-post.is-xhs .pm-scene-xhs-topics{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-body);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-community-accent);}
+.pm-scene-xhs-comments,.pm-scene-news-comments{display:flex;flex-direction:column;gap:var(--pm-space-1);margin-top:var(--pm-space-2);}
+.pm-scene-xhs-comment,.pm-scene-news-comment{display:flex;align-items:flex-start;gap:var(--pm-space-2);padding:var(--pm-space-2) var(--pm-space-0);font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-body);}
+.pm-scene-xhs-comment .pm-scene-comment-head b,.pm-scene-news-comment .pm-scene-comment-head b{color:var(--pm-color-label-3);font-weight:var(--pm-font-weight-medium);}
+.pm-scene-xhs-comment .pm-scene-comment-content,.pm-scene-news-comment .pm-scene-comment-content{color:var(--pm-color-label);word-break:break-word;}
+.pm-scene-xhs-when{font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
+.pm-scene-post .pm-scene-xhs-quiet{margin:var(--pm-space-4) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-regular);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-color-label-3);text-align:center;}
+/* 详情页底部输入条右侧的赞、收藏、评论数。 */
+.pm-scene-bottom-bar.has-stats{align-items:center;}
+.pm-scene-detail-stats{display:flex;flex:0 0 auto;align-items:center;gap:var(--pm-space-1);}
+.pm-scene-detail-stats>:is(button,span){display:inline-flex;align-items:center;gap:var(--pm-space-1);min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-1);border:0;border-radius:var(--pm-radius-compact);background:transparent;color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);}
+.pm-scene-detail-stats>button{cursor:pointer;}
+.pm-scene-detail-stats svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-scene-detail-stats .is-liked,.pm-scene-detail-stats .is-shared{color:var(--pm-community-accent);}
+.pm-scene-detail-stats :is(.is-liked,.is-shared) svg{fill:currentColor;}
+.pm-scene-detail-stats>button:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-detail-stats>button:active{opacity:var(--pm-opacity-muted);}
+/*吱乎*/
+/* 通栏阅读：白底，问题与回答之间只靠留白分隔，不用灰色或浅色分隔条。 */
+.pm-scene-zhihu-head{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-3);padding:var(--pm-space-1) var(--pm-space-1) var(--pm-space-2);font-size:var(--pm-font-size-label);color:var(--pm-color-label-3);}
+.pm-scene-zhihu-list{display:flex;flex-direction:column;gap:var(--pm-space-5);margin:var(--pm-space-0);padding:var(--pm-space-0);list-style:none;}
+.pm-scene-zhihu-row{display:flex;flex-direction:column;gap:var(--pm-space-2);width:100%;padding:var(--pm-space-1);border:0;border-radius:var(--pm-radius-panel);background:transparent;color:inherit;text-align:left;cursor:pointer;}
+.pm-scene-zhihu-row:active{opacity:var(--pm-opacity-muted);}
+.pm-scene-zhihu-row:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-zhihu-question{font-size:var(--pm-font-size-title);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-zhihu-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);color:var(--pm-color-label-2);word-break:break-word;}
+.pm-scene-zhihu-excerpt b{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-zhihu-meta{display:flex;align-items:center;gap:var(--pm-space-3);font-size:var(--pm-font-size-label);color:var(--pm-color-label-3);}
+/* 问题页：问题头，接回答列表；回答默认折叠 6 行，「阅读全文」展开正文与评论。 */
+.pm-scene-zhihu-hero{display:flex;flex-direction:column;gap:var(--pm-space-2);padding:var(--pm-space-1) var(--pm-space-1) var(--pm-space-3);}
+.pm-scene-zhihu-hero-head{display:flex;align-items:flex-start;gap:var(--pm-space-2);}
+.pm-scene-zhihu-hero h4{flex:1;min-width:0;margin:var(--pm-space-0);font-size:var(--pm-scene-heading-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-zhihu-hero p{margin:var(--pm-space-0);font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-body);color:var(--pm-color-label-2);word-break:break-word;}
+.pm-scene-post.is-zhihu{margin:var(--pm-space-0) var(--pm-space-0) var(--pm-space-5);padding:var(--pm-space-1);border-radius:var(--pm-radius-none);background:transparent;}
+.pm-scene-post.is-zhihu header span.pm-scene-zhihu-bio{overflow:hidden;font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);text-overflow:ellipsis;white-space:nowrap;}
+.pm-scene-post.is-zhihu .pm-scene-zhihu-body{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden;margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-loose);letter-spacing:normal;-webkit-text-stroke:0;word-break:break-word;}
+.pm-scene-post.is-zhihu .pm-scene-zhihu-body.is-open{display:block;-webkit-line-clamp:unset;overflow:visible;}
+.pm-scene-zhihu-more{align-self:flex-start;margin-top:var(--pm-space-1);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-community-accent);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);cursor:pointer;}
+.pm-scene-zhihu-more:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-post.is-zhihu footer{justify-content:flex-start;gap:var(--pm-space-4);margin-top:var(--pm-space-2);padding-top:var(--pm-space-0);}
+.pm-scene-post.is-zhihu footer>*{flex:0 0 auto;}
+.pm-scene-shell .pm-scene-post.is-zhihu .pm-scene-zhihu-agree{min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-3);border-radius:var(--pm-radius-compact);background:var(--pm-community-accent-soft);color:var(--pm-community-accent);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-shell .pm-scene-post.is-zhihu .pm-scene-zhihu-agree.is-liked{background:var(--pm-community-accent);color:var(--pm-color-on-dark);}
+.pm-scene-post.is-zhihu .pm-scene-zhihu-agree:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+.pm-scene-zhihu-comments{display:flex;flex-direction:column;gap:var(--pm-space-2);margin-top:var(--pm-space-3);}
+.pm-scene-zhihu-comment{display:flex;align-items:flex-start;gap:var(--pm-space-2);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);}
+.pm-scene-zhihu-comment .pm-scene-comment-content{flex:1;min-width:0;word-break:break-word;}
+.pm-scene-zhihu-comment .pm-scene-comment-content b{margin-right:var(--pm-space-2);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-dock-button{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-2);}
+.pm-scene-dock-icon{display:grid;}
+.pm-scene-dock-icon svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+/*今日猴条*/
+/* 要闻色块：头条是点缀色浅底文字卡，往下的列表装进一张白面板。「突发」用红色小标签。 */
+.pm-scene-news-tag{display:inline-flex;align-self:flex-start;align-items:center;min-height:var(--pm-space-5);padding:var(--pm-space-0) var(--pm-space-1-5);border-radius:var(--pm-radius-sm);background:var(--pm-community-accent-soft);color:var(--pm-color-label);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-news-tag.is-breaking{background:var(--pm-community-breaking-soft);color:var(--pm-community-breaking);}
+.pm-scene-news-lead{display:flex;flex-direction:column;gap:var(--pm-space-2);margin-bottom:var(--pm-space-3);padding:var(--pm-space-4);border-radius:var(--pm-radius-large);background:var(--pm-community-accent-soft);}
+.pm-scene-news-lead .pm-scene-news-tag{background:var(--pm-color-surface);}
+.pm-scene-news-lead .pm-scene-news-tag.is-breaking{background:var(--pm-community-breaking-soft);}
+.pm-scene-news-open{display:flex;flex-direction:column;gap:var(--pm-space-2);width:100%;padding:var(--pm-space-0);border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;}
+.pm-scene-news-open b{font-size:var(--pm-scene-heading-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-news-dek{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);color:var(--pm-color-label-2);word-break:break-word;}
+.pm-scene-news-meta,.pm-scene-news-row-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pm-space-1) var(--pm-space-2);font-size:var(--pm-font-size-helper);color:var(--pm-color-label-3);}
+.pm-scene-news-meta .pm-scene-post-time,.pm-scene-news-row-meta .pm-scene-post-time{font-size:var(--pm-font-size-helper);}
+.pm-scene-news-sheet{display:flex;flex-direction:column;margin:var(--pm-space-0);padding:var(--pm-space-1) var(--pm-space-4);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);list-style:none;}
+.pm-scene-news-row{display:flex;align-items:stretch;gap:var(--pm-space-3);width:100%;padding:var(--pm-space-3) var(--pm-space-0);border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;}
+.pm-scene-news-row-main{display:flex;flex:1;flex-direction:column;justify-content:space-between;gap:var(--pm-space-2);min-width:0;}
+.pm-scene-news-row-main b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-news-thumb{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;flex:0 0 auto;box-sizing:border-box;width:calc(var(--pm-size-control-lg) * 2);height:calc(var(--pm-size-control-lg) * 1.5);padding:var(--pm-space-2);overflow:hidden;border-radius:var(--pm-radius-compact);color:var(--pm-color-label-2);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-control);text-align:center;}
+.pm-scene-news-open:active,.pm-scene-news-row:active{opacity:var(--pm-opacity-muted);}
+.pm-scene-news-open:focus-visible,.pm-scene-news-row:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;border-radius:var(--pm-radius-compact);}
+/* 正文页：大标题、媒体与时间、粗体导语、正文，再接网友评论。 */
+.pm-scene-post.is-news header{justify-content:space-between;}
+.pm-scene-news-headline{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-scene-headline-size);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);word-break:break-word;}
+.pm-scene-post.is-news .pm-scene-news-source{display:flex;align-items:center;gap:var(--pm-space-2);margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-regular);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-color-label-3);}
+.pm-scene-news-source b{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-scene-post.is-news .pm-scene-news-dek.is-detail{display:block;overflow:visible;margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-loose);letter-spacing:normal;-webkit-text-stroke:0;color:var(--pm-color-label);}
+.pm-scene-post.is-news .pm-scene-news-para{margin:var(--pm-space-3) var(--pm-space-0) var(--pm-space-0);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-regular);line-height:var(--pm-line-height-loose);letter-spacing:normal;-webkit-text-stroke:0;}

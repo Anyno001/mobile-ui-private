@@ -61,8 +61,8 @@ export function buildChatRequest({
         ? buildIndependentGroupUserPrompt({ smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName })
         : buildIndependentSingleUserPrompt({ smsHistoryText, currentQuoteText, directorNote, userMsgClean, userMsg, userName, currentPersona });
     return useIndependent
-        ? { systemPrompt, userPrompt: independentUserPrompt, options: { signal } }
-        : { systemPrompt: '', userPrompt: injectedInstruction, options: { signal } };
+        ? { systemPrompt, userPrompt: independentUserPrompt, options: { signal, module: 'chat' } }
+        : { systemPrompt: '', userPrompt: injectedInstruction, options: { signal, module: 'chat' } };
 }
 
 export function buildPokeRequest({
@@ -89,5 +89,5 @@ export function buildPokeRequest({
                 contactName, userName, userBlock, cardDesc, cardPersonality, cardScenario,
                 cardMesExample, worldBookText, mainChatText, smsHistoryText,
             });
-    return { systemPrompt, userPrompt: userPrompt + preferencePrompt, options: { signal } };
+    return { systemPrompt, userPrompt: userPrompt + preferencePrompt, options: { signal, module: 'chat' } };
 }

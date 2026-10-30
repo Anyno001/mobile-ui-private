@@ -7,12 +7,15 @@ import {
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
 import { getStorageIdFor } from './host-context.js';
+import { B2_POST_KEYS } from './interactive-scene-post-fields.js';
+import { VIDEO_LIMITS } from './video-schema.js';
 import { applyCalendarBackupFields } from './settings-backup.js';
 import { createEmptyTodayTrendStore, normalizeTodayTrendStore } from './today-trend-model.js';
 import { normalizeTodayTrendMigrationBackup } from './today-trend-v2-authority.js';
 import { migrateLegacyTodayTrendV2Store, normalizeTodayTrendV2Store } from './today-trend-v2-model.js';
 import { createEmptyUserGenerationStore, normalizeUserGenerationStore } from './user-generation-model.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
+import { assertShopBackupStore } from './shop-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const objectValue = (value, field) => {
@@ -80,7 +83,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     const authorKeys = isStrictBackupVersion(version) ? ['authorId', 'authorNameSnapshot'] : ['author'];
     const allowedKeys = kind === 'post'
         ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(isStrictBackupVersion(version) ? ['shareCount', 'shared', 'work', 'rating'] : []),
-            ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source'] : [])]
+            ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', ...B2_POST_KEYS] : [])]
         : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind'] : ['quoteId', 'rating']) : [])];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, 'id', field, 80);
@@ -99,6 +102,12 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     if (kind === 'post') {
         if (Object.hasOwn(item, 'liked') && typeof item.liked !== 'boolean') throw new Error(`备份字段 ${field}.liked 必须是布尔值`);
         if (Object.hasOwn(item, 'shared') && typeof item.shared !== 'boolean') throw new Error(`备份字段 ${field}.shared 必须是布尔值`);
+        // 配图只存画面描述，图片本身在生图目录里。
+        if (Object.hasOwn(item, 'image')) {
+            const image = objectValue(item.image, `${field}.image`);
+            assertAllowedKeys(image, `${field}.image`, ['desc']);
+            assertNormalizedText(image.desc, `${field}.image.desc`, 200);
+        }
         if (Object.hasOwn(item, 'shareCount') && (!Number.isSafeInteger(item.shareCount) || item.shareCount < 0)) {
             throw new Error(`备份字段 ${field}.shareCount 必须是非负安全整数`);
         }
@@ -118,6 +127,43 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
         }
     }
 };
+// 视频：完整的字段校验已由 normalizeInteractiveStore 完成；这里补备份层的结构核对（成对出现、顺序与字典一致、条数上限、作者指向有效 actor）。
+const assertVideoBackup = (scope, field, actorIds) => {
+    const hasVideos = Object.hasOwn(scope, 'videos');
+    const hasOrder = Object.hasOwn(scope, 'videoOrder');
+    if (!hasVideos && !hasOrder) return;
+    if (hasVideos !== hasOrder) throw new Error(`备份字段 ${field}.videos 与 videoOrder 必须同时存在`);
+    const videos = objectValue(scope.videos, `${field}.videos`);
+    if (!Array.isArray(scope.videoOrder)) throw new Error(`备份字段 ${field}.videoOrder 必须是数组`);
+    if (scope.videoOrder.length > VIDEO_LIMITS.videos) throw new Error(`备份字段 ${field}.videoOrder 不能超过 ${VIDEO_LIMITS.videos} 项`);
+    const ordered = new Set();
+    for (const videoId of scope.videoOrder) {
+        assertNormalizedDictionaryKey(videoId, `${field}.videoOrder`, 80);
+        if (ordered.has(videoId)) throw new Error(`备份字段 ${field}.videoOrder 包含重复视频 ${videoId}`);
+        ordered.add(videoId);
+        if (!Object.hasOwn(videos, videoId)) throw new Error(`备份字段 ${field}.videoOrder 引用了不存在的视频 ${videoId}`);
+        const videoField = `${field}.videos.${videoId}`;
+        const video = objectValue(videos[videoId], videoField);
+        if (video.id !== videoId) throw new Error(`备份字段 ${videoField}.id 必须与视频键一致`);
+        if (Object.hasOwn(video, 'uploaderActorId') && !actorIds.has(video.uploaderActorId)) throw new Error(`备份字段 ${videoField}.uploaderActorId 未指向有效 actor`);
+        if (Object.hasOwn(video, 'pending') && video.pending !== true) throw new Error(`备份字段 ${videoField}.pending 只能是 true`);
+        if (Object.hasOwn(video, 'draft')) {
+            const draft = objectValue(video.draft, `${videoField}.draft`);
+            assertAllowedKeys(draft, `${videoField}.draft`, ['titleTyped', 'categoryTyped', 'aiScenes']);
+            for (const key of ['titleTyped', 'categoryTyped', 'aiScenes']) {
+                if (typeof draft[key] !== 'boolean') throw new Error(`备份字段 ${videoField}.draft.${key} 必须是布尔值`);
+            }
+        }
+        if (!Array.isArray(video.scenes) || video.scenes.length < 1 || video.scenes.length > VIDEO_LIMITS.scenes) throw new Error(`备份字段 ${videoField}.scenes 必须是 1-${VIDEO_LIMITS.scenes} 项的数组`);
+        if (!Array.isArray(video.danmaku) || video.danmaku.length > VIDEO_LIMITS.danmaku) throw new Error(`备份字段 ${videoField}.danmaku 必须是不超过 ${VIDEO_LIMITS.danmaku} 项的数组`);
+        if (!Array.isArray(video.comments) || video.comments.length > VIDEO_LIMITS.comments) throw new Error(`备份字段 ${videoField}.comments 必须是不超过 ${VIDEO_LIMITS.comments} 项的数组`);
+        const authors = [...video.danmaku, ...video.comments, ...video.comments.flatMap(comment => (Array.isArray(comment?.replies) ? comment.replies : []))];
+        if (authors.some(item => !actorIds.has(item?.authorId))) throw new Error(`备份字段 ${videoField} 含有未指向有效 actor 的作者`);
+    }
+    const orphan = Object.keys(videos).find(videoId => !ordered.has(videoId));
+    if (orphan) throw new Error(`备份字段 ${field}.videos 包含未列入 videoOrder 的视频 ${orphan}`);
+};
+
 const assertInteractiveBackupStore = value => {
     normalizeInteractiveStore(value);
     const store = objectValue(value, 'interactiveScenes');
@@ -139,7 +185,7 @@ const assertInteractiveBackupStore = value => {
         const field = `interactiveScenes.scopes.${scopeId}`;
         const scope = objectValue(scopeValue, field);
         const scopeKeys = isStrictBackupVersion(sourceVersion)
-            ? ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder'] : [])]
+            ? ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder', 'videos', 'videoOrder'] : [])]
             : ['activeSceneId', 'sceneOrder', 'scenes'];
         assertAllowedKeys(scope, field, scopeKeys);
         const actorIds = new Set();
@@ -176,7 +222,7 @@ const assertInteractiveBackupStore = value => {
             orderedIds.add(sceneId);
             const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
             const sceneKeys = isV3
-                ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+                ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
                 : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'];
             if (!isStrictBackupVersion(sourceVersion)) sceneKeys.push('contentRating');
             assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
@@ -194,6 +240,7 @@ const assertInteractiveBackupStore = value => {
                     if (!COMMUNITY_PLATFORMS.includes(scene.platform)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.platform 无效`);
                     if (typeof scene.nsfw !== 'boolean') throw new Error(`备份字段 ${field}.scenes.${sceneId}.nsfw 必须是布尔值`);
                     if (Object.hasOwn(scene, 'autoRespond') && typeof scene.autoRespond !== 'boolean') throw new Error(`备份字段 ${field}.scenes.${sceneId}.autoRespond 必须是布尔值`);
+                    if (Object.hasOwn(scene, 'igsSync') && scene.igsSync !== true) throw new Error(`备份字段 ${field}.scenes.${sceneId}.igsSync 只能是 true`);
                 }
                 assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
                 assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
@@ -263,6 +310,7 @@ const assertInteractiveBackupStore = value => {
             }
             const orphanRoomId = Object.keys(liveRooms).find(roomId => !orderedRoomIds.has(roomId));
             if (orphanRoomId) throw new Error(`备份字段 ${field}.liveRooms 包含未列入 liveOrder 的直播间 ${orphanRoomId}`);
+            assertVideoBackup(scope, field, actorIds);
         }
         if (isStrictBackupVersion(sourceVersion)) {
             const extraSceneIds = [...normalizedScenes.keys()].filter(sceneId => !orderedIds.has(sceneId));
@@ -424,6 +472,11 @@ export function parseBackupData(data, current) {
         result.desktopIcons = normalizeDesktopIconBackupPayload(data.desktopIcons);
     } else {
         result.desktopIcons = {};
+    }
+    // 桃宝：可选字段，旧备份没有时保留现有数据；有时必须是规范格式。
+    if (Object.hasOwn(data, 'shop')) {
+        result.shop = assertShopBackupStore(data.shop);
+        delete result.shopUnreadable;
     }
     return result;
 }

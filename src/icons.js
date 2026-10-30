@@ -92,3 +92,11 @@ export const PHOTO_ICON_SVG = icon('<rect x="3" y="5" width="18" height="14" rx=
 export const CAMERA_ICON_SVG = icon('<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>');
 export const DOWNLOAD_ICON_SVG = icon('<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/>');
 export const STAR_ICON_SVG = icon('<path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/>');
+// 桃宝：桌面图标（购物袋，纯线条不填色）与页面内图标。
+export const SHOP_APP_ICON_SVG = icon('<path d="M5 8h14l-1 12H6z"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/>');
+export const SEARCH_ICON_SVG = icon('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>');
+export const CART_ICON_SVG = icon('<path d="M3 4h2l2.2 11h10.6L20 7H6.2"/><circle cx="9" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/>');
+export const ORDER_ICON_SVG = icon('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>');
+export const STORE_ICON_SVG = icon('<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0"/><path d="M5.5 11.5V20h13v-8.5M10 20v-4.5h4V20"/>');
+export const MINUS_ICON_SVG = icon('<path d="M5 12h14"/>');
+export const BOX_ICON_SVG = icon('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>');

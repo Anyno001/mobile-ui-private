@@ -1,3 +1,5 @@
+import { normalizeFontChoice } from './config.js';
+
 export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, saveTheme, renderLookSettings, renderSettingsModal, makeOverlay, escapeAttr, safeJS, getCurrentPersona, getStorageId, backgroundSettings }) {
     const syncControls = () => {
         const theme = window.__pmTheme;
@@ -17,6 +19,13 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
             const iconStyle = element.dataset.iconVariant;
             if (iconStyle) {
                 const active = iconStyle === (theme.iconStyle === 'cream' ? 'cream' : 'glass');
+                element.classList.toggle('pm-layout-active', active);
+                element.setAttribute('aria-pressed', String(active));
+                return;
+            }
+            const fontChoice = element.dataset.fontChoice;
+            if (fontChoice) {
+                const active = fontChoice === normalizeFontChoice(theme.fontFamily);
                 element.classList.toggle('pm-layout-active', active);
                 element.setAttribute('aria-pressed', String(active));
                 return;
@@ -68,6 +77,9 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
     const setIconStyle = style => mutateTheme(() => {
         window.__pmTheme.iconStyle = style === 'cream' ? 'cream' : 'glass';
     });
+    const setFontFamily = choice => mutateTheme(() => {
+        window.__pmTheme.fontFamily = normalizeFontChoice(choice);
+    });
     const setPreset = preset => mutateTheme(() => {
         if (!Object.hasOwn(THEME_PRESETS, preset)) return;
         window.__pmTheme.preset = preset;
@@ -90,5 +102,5 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
     const clearCustomColor = () => mutateTheme(() => { window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = ''; });
     const setBorderColor = () => mutateTheme(() => { window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a'; });
     const setCustomTitle = () => mutateTheme(() => { window.__pmTheme.customTitle = (document.getElementById('pm-custom-title')?.value || '').trim().slice(0, 20); });
-    return { showPage, setDarkMode, setIconStyle, setWallpaper, setPreset, setCustomAccent, setCustomColor, clearCustomColor, setBorderColor, setCustomTitle, uploadBackground: (input, scope) => backgroundSettings.upload(input, scope), setBackgroundUrl: scope => backgroundSettings.setUrl(scope), clearBackground: scope => backgroundSettings.clear(scope) };
+    return { showPage, setDarkMode, setIconStyle, setFontFamily, setWallpaper, setPreset, setCustomAccent, setCustomColor, clearCustomColor, setBorderColor, setCustomTitle, uploadBackground: (input, scope) => backgroundSettings.upload(input, scope), setBackgroundUrl: scope => backgroundSettings.setUrl(scope), clearBackground: scope => backgroundSettings.clear(scope) };
 }

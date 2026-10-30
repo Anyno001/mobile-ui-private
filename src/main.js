@@ -1,4 +1,5 @@
 import { createAiClient } from './ai.js';
+import { resolveApiConfig } from './api-routes.js';
 import { installCalendar } from './calendar.js';
 import { installContactGenerator } from './contact-generator.js';
 import { installConversation } from './conversation.js';
@@ -75,7 +76,7 @@ import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
     );
     const deps = { runtime, getCtx, getLastMessageId, getStorageId, getUserPersona, gatherContext, saveBudgetConfig, reloadCurrentChat: context => context?.reloadCurrentChat?.() };
     deps.callAI = createAiClient({
-        getConfig: () => window.__pmConfig,
+        getConfig: module => resolveApiConfig(module),
         getContext: getCtx,
     });
 

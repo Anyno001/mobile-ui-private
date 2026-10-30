@@ -32,11 +32,14 @@ import {
     saveBudgetConfig, saveGalBubbleEnabled, saveProfiles, saveTheme, saveWordyLimit,
 } from './storage.js';
 import { reconcileGalBubble } from './gal-bubble.js';
+import { loadImageSettings, saveImageSettings } from './phone-image-settings.js';
+import { installIgsLinkSettings } from './settings-igs-link.js';
 import {
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
 import { createEmptyTodayTrendStore } from './today-trend-model.js';
 import { createEmptyUserGenerationStore } from './user-generation-model.js';
+import { createEmptyShopStore } from './shop-model.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 export { createBackupStateHandlers, runBackupTransaction } from './settings-backup.js';
@@ -48,6 +51,7 @@ export function installSettingsUi(deps) {
     const { capture: captureBackupState, apply: applyBackupState, complete: completeBackupState, persist: persistBackupState } = createBackupStateHandlers(deps);
     const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote, saveTheme });
     const worldBookSettings = installWorldBookSettings({ makeOverlay, addNote, getCtx: deps.getCtx });
+    const igsLinkSettings = installIgsLinkSettings({ makeOverlay, getIgsLink: () => deps.igsLink });
     const apiDraftMode = createApiDraftMode();
     const requireInjectionSuccess = createInjectionResultGuard();
     const wordySettings = createWordyLimitController({ saveWordyLimit });
@@ -99,7 +103,7 @@ export function installSettingsUi(deps) {
             emojis: [], characterBehavior: {}, worldBookConfig: null, wordyLimit: false, galBubbleEnabled: false,
             desktopBg: '', bgGlobal: '', bgLocal: {}, desktopIcons: {},
             interactiveScenes: normalizeInteractiveStore(null), phoneUiState: normalizePhoneUiState(null), ambientStatus: normalizeAmbientStatus(),
-            ...createEmptyCalendarBackupFields(), todayTrend: createEmptyTodayTrendStore(), todayTrendV2: null, userGeneration: createEmptyUserGenerationStore(),
+            ...createEmptyCalendarBackupFields(), todayTrend: createEmptyTodayTrendStore(), todayTrendV2: null, userGeneration: createEmptyUserGenerationStore(), shop: createEmptyShopStore(),
         }),
         afterApplyEmpty: () => { window.__pmBudgetConfig = normalizeBudgetConfig(); },
     });
@@ -118,11 +122,24 @@ export function installSettingsUi(deps) {
     });
     window.__pmDeleteProfile = idx => apiSettings.deleteProfile(idx);
     window.__pmPickProfile = idx => apiSettings.pickProfile(idx);
+    window.__pmNewProfile = () => apiSettings.newProfile();
+    window.__pmSetApiRoute = (module, value) => apiSettings.setRoute(module, value);
     window.__pmSetMode = value => apiSettings.setMode(value);
     window.__pmToggleWordyLimit = () => wordySettings.toggle();
     window.__pmToggleGalBubble = () => galBubbleSettings.toggle();
+    window.__pmToggleImageGen = () => {
+        const current = loadImageSettings();
+        let next;
+        try { next = saveImageSettings({ ...current, enabled: !current.enabled }); }
+        catch (error) { alert('生图开关保存失败：浏览器存储不可用。'); return false; }
+        const check = document.getElementById('pm-image-gen-check');
+        check?.classList.toggle('is-checked', next.enabled);
+        check?.setAttribute('aria-checked', String(next.enabled));
+        return true;
+    };
     window.__pmSetDarkMode = mode => appearanceSettings.setDarkMode(mode);
     window.__pmSetIconStyle = style => appearanceSettings.setIconStyle(style);
+    window.__pmSetFontFamily = choice => appearanceSettings.setFontFamily(choice);
     window.__pmSetWallpaper = style => appearanceSettings.setWallpaper(style);
     window.__pmSetPreset = preset => appearanceSettings.setPreset(preset);
     window.__pmSetCustomAccent = () => appearanceSettings.setCustomAccent();
@@ -187,6 +204,7 @@ export function installSettingsUi(deps) {
             quickReplySettings.showPage();
             return;
         }
+        if (page === 'igs-link' && igsLinkSettings.showPage()) return;
         if (page === 'worldbook') {
             await worldBookSettings.showPage();
             return;

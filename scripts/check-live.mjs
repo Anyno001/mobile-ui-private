@@ -410,8 +410,12 @@ try {
         await waitFor(() => mainUi.dataset.page === 'live' && page()?.html, '打开直播页');
         assert.equal(openedCount, 1);
         assert.equal(page().hidden, false);
+        assert.match(html(), /data-live-view="video-home"/, '噼哩噼哩默认停在「视频」分区');
+        assert.match(html(), /还没有视频/);
+        await act('segment', { segment: 'live' });
         assert.match(html(), /data-live-view="list"/);
         assert.match(html(), /还没有直播间/);
+        assert.match(html(), /data-segment="live" aria-pressed="true"/, '直播分区的分段选中「直播」');
         assert.match(storage.get(PHONE_UI_STORAGE_KEY) || '', /"lastPage":"live"/, '打开直播页必须记住最后页面');
         mainUi.dataset.page = 'desktop';
         await deps.restorePhoneUi();

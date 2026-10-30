@@ -15,6 +15,7 @@ import { loadDesktopIcons } from './desktop-icon-storage.js';
 import { installStoryOracle } from './story-oracle.js';
 import { installPhoneImages } from './phone-image-controller.js';
 import { installPhoneGallery } from './phone-gallery.js';
+import { installShopApp } from './shop-app.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -238,6 +239,7 @@ export function installPhoneLifecycle(state, deps) {
     installStoryOracle(state, deps);
     installPhoneImages(state, deps);
     installPhoneGallery(state, deps);
+    installShopApp(state, deps);
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({

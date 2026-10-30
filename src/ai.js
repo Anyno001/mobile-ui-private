@@ -235,7 +235,7 @@ export function createAiClient({
     }
 
     return async function callAI(systemPrompt, userPrompt, options = {}) {
-        const cfg = getConfig() || {};
+        const cfg = getConfig(options.module) || {};
         const useIndependent = cfg.useIndependent === true;
         const signal = options.signal;
         throwIfAborted(signal);

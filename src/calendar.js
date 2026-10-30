@@ -304,7 +304,7 @@ export function installCalendar(state, deps) {
                 dateFacts,
             });
             const prompts = buildCalendarPrompts(payload, existing, mode, requestedGenerationRule, generationDays);
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal });
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'calendar', signal: task.signal });
             if (!tasks.active(task)) return false;
             const events = parseCalendarAiResponse(raw, { start, days: generationDays });
             const committed = await commitScope(storageId, value => {

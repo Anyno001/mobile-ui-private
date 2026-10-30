@@ -6,6 +6,8 @@ import {
 } from './interactive-scene-model.js';
 import { createLiveGenerationRunner, runLiveWarmup } from './interactive-scene-scheduler.js';
 import { describeLiveRoom, fitLiveFly, renderLiveCompose, renderLiveList, renderLiveRoom } from './live-views.js';
+import { createVideoApp } from './video-app.js';
+import { renderAppTabs } from './video-views.js';
 
 const INVALID_SCOPE = 'sms_unknown__default';
 const CANCELLED = '生成已取消';
@@ -17,7 +19,8 @@ const blankForm = () => ({ title: '', category: '', hostKey: 'user', hostName: '
 // 这里不重写社区逻辑，只在同一把忙碌锁上挂直播间目标。
 export function installLiveApp(deps, bridge) {
     const { runtime, communityTasks } = bridge;
-    const view = { page: 'list', storageId: '', roomId: '', editing: false, editingDanmaku: false, form: null, status: '', welcome: '' };
+    // page 'video' 表示「视频」分区（首页、视频页、投稿页由 video-app 管）；segment 记住当前停在哪个分区，默认视频。
+    const view = { page: 'video', segment: 'video', storageId: '', roomId: '', editing: false, editingDanmaku: false, form: null, status: '', welcome: '' };
     const welcomed = new Set();
     let boundPage = null;
 
@@ -27,12 +30,13 @@ export function installLiveApp(deps, bridge) {
     const roomOf = () => scopeOf()?.liveRooms?.[view.roomId] || null;
     const currentPageName = () => document.querySelector('#pm-iphone .pm-main-ui')?.dataset?.page;
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="live"]') || null;
+    const video = createVideoApp(deps, bridge, { getStorageId: () => view.storageId, scopeOf: () => scopeOf(), getPage: () => getPage() });
     const isBusy = () => {
         const task = communityTasks.state().task;
         return !!task && !!task.roomId && task.roomId === view.roomId && task.storageId === view.storageId;
     };
-    const isTargetActive = task => !!task && !!view.roomId && task.storageId === view.storageId
-        && task.roomId === view.roomId && currentPageName() === 'live';
+    const isTargetActive = task => (view.page === 'video' ? video.isTargetActive(task) : !!task && !!view.roomId && task.storageId === view.storageId
+        && task.roomId === view.roomId && currentPageName() === 'live');
 
     // ---- 选项与表单 ----
     const hostOptions = (scopeId, scope, extraActorId = '') => {
@@ -103,11 +107,12 @@ export function installLiveApp(deps, bridge) {
             });
         }
         const rooms = (scope.liveOrder || []).slice().reverse().map(roomId => scope.liveRooms[roomId]).filter(Boolean).map(room => describeLiveRoom(scope, room));
-        return renderLiveList({ rooms, status: view.status });
+        return renderLiveList({ rooms, status: view.status, segments: renderAppTabs('live') });
     };
 
     // skipSync：表单刚被程序改过（换主播预填设定等），不能再用尚未重绘的旧输入框覆盖。
     const render = ({ forceBottom = false, skipSync = false } = {}) => {
+        if (view.page === 'video') return video.render();
         const page = getPage();
         if (!page) return false;
         if (!skipSync) syncForm(page);
@@ -151,7 +156,7 @@ export function installLiveApp(deps, bridge) {
                 recentDanmaku: room.danmaku.slice(-20).map(item => ({ author: item.authorNameSnapshot, content: item.content, kind: item.kind })),
                 hostIsUser: room.hostIsUser === true,
             });
-            const raw = await deps.callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: controller.signal });
+            const raw = await deps.callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'video', signal: controller.signal });
             if (requestId !== runtime.requestId) throw new Error(CANCELLED);
             return parseCommunityResponse(raw, 'danmaku_batch', undefined, { hostIsUser: room.hostIsUser === true }).items;
         } finally {
@@ -222,7 +227,7 @@ export function installLiveApp(deps, bridge) {
         }
     };
     const toList = () => {
-        view.page = 'list'; view.roomId = ''; view.editing = false; view.editingDanmaku = false; view.form = null; view.welcome = '';
+        view.page = view.segment === 'live' ? 'list' : 'video'; view.roomId = ''; view.editing = false; view.editingDanmaku = false; view.form = null; view.welcome = '';
     };
 
     async function show({ resume = false } = {}) {
@@ -240,7 +245,8 @@ export function installLiveApp(deps, bridge) {
         const keepRoom = resume && sameScope && view.roomId && scope.liveRooms?.[view.roomId];
         if (keepRoom) {
             if (view.page === 'compose') { view.page = 'room'; view.editing = false; view.form = null; }
-        } else toList();
+        } else if (resume && sameScope && view.page === 'video') video.resume(true);
+        else { video.resume(false); toList(); }
         if (!render()) return false;
         if (!bridge.showPhonePage('live')) return false;
         fitLiveFly(page);
@@ -324,7 +330,16 @@ export function installLiveApp(deps, bridge) {
 
     async function handle(action, button, page) {
         if (action !== 'menu') view.status = '';
-        if (action === 'desktop') { await deps.showPhoneDesktopPage?.(); return; }
+        if (action === 'desktop') { video.leave(); await deps.showPhoneDesktopPage?.(); return; }
+        if (action === 'segment') {
+            const next = button.dataset.segment === 'live' ? 'live' : 'video';
+            bridge.invalidate('segment-changed');
+            video.leave();
+            view.segment = next;
+            toList();
+            render();
+            return;
+        }
         if (action === 'list' || action === 'cancel-edit') {
             if (action === 'cancel-edit' && view.roomId) { view.page = 'room'; view.editing = false; view.form = null; render(); return; }
             bridge.invalidate('live-left-room');
@@ -429,18 +444,24 @@ export function installLiveApp(deps, bridge) {
     function onClick(event) {
         const page = boundPage;
         const button = event.target?.closest?.('[data-live-action]');
-        if (!button) { closeMenu(page); return; }
+        if (!button) {
+            if (view.page === 'video') return video.onClick(event, page);
+            closeMenu(page);
+            return;
+        }
         const action = button.dataset.liveAction;
         if (action !== 'menu') closeMenu(page);
         return run(action, button, page);
     }
     function onInput(event) {
+        if (view.page === 'video') { video.onInput(event, boundPage); return; }
         // 自定义分区：输入时取消预设胶囊的选中，分区以输入内容为准。
         if (event.target?.id !== 'pm-live-category-custom' || !view.form) return;
         view.form.category = String(event.target.value || '').trim().slice(0, 12);
         boundPage?.querySelectorAll?.('.pm-live-chip[data-category]').forEach(chipButton => chipButton.setAttribute('aria-pressed', 'false'));
     }
     function onKeyDown(event) {
+        if (view.page === 'video') return video.onKeyDown(event, boundPage);
         if (event.key === 'Escape') { closeMenu(boundPage); return; }
         if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.target?.id !== 'pm-live-input') return;
         event.preventDefault();

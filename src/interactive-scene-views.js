@@ -1,20 +1,27 @@
 import { APP_NAMES, appNameOf } from './app-names.js';
 import { createCommunityTemplate } from './interactive-scene-model.js';
-import { COMMUNITY_PLATFORMS } from './interactive-scene-constants.js';
+import { COMMUNITY_PLATFORMS, IGS_SYNC_PLATFORMS } from './interactive-scene-constants.js';
 import { DESKTOP_ICON_SIZE, isValidDesktopIconRuntimeData } from './desktop-icon-storage.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
-    BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG,
+    BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG, SHOP_APP_ICON_SVG,
     COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, PHOTO_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { renderConfessFeed } from './community-views/view-confess.js';
 import { renderComposeDock, renderComposeFloat, renderComposeSheet } from './community-views/view-compose.js';
 import { renderDoubanFeed } from './community-views/view-douban.js';
+import { renderHupuFeed } from './community-views/view-hupu.js';
+import { renderTiebaFeed } from './community-views/view-tieba.js';
 import { renderNightFeed } from './community-views/view-night.js';
 import { renderReviewFeed } from './community-views/view-review.js';
 import { COMMUNITY_PLATFORM_ACCENTS, formatCommunityPostTime, platformOf } from './community-views/view-shared.js';
 import { renderWeiboFeed } from './community-views/view-weibo.js';
+import { detailBackAction, detailStateOf, renderPostDetailBar } from './community-views/view-detail.js';
+import { renderMomentsFeed } from './community-views/view-moments.js';
+import { renderNewsFeed } from './community-views/view-news.js';
+import { renderXhsFeed } from './community-views/view-xhs.js';
+import { renderZhihuFeed } from './community-views/view-zhihu.js';
 
 export { formatCommunityPostTime };
 
@@ -91,6 +98,7 @@ export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSce
             <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="剧情助手" title="剧情助手"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('storyOracle', SPARKLES_ICON_SVG)}</span><span class="pm-desktop-app-label">剧情助手</span></button>
             <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('settings', SETTINGS_ICON_SVG)}</span><span class="pm-desktop-app-label">设置</span></button>
             <button type="button" class="pm-desktop-app" data-app="gallery" data-action="desktop-gallery" aria-label="相册" title="相册"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('gallery', PHOTO_ICON_SVG)}</span><span class="pm-desktop-app-label">相册</span></button>
+            <button type="button" class="pm-desktop-app" data-app="shop" data-action="desktop-shop" aria-label="${escapeAttr(appNameOf('shop'))}" title="${escapeAttr(appNameOf('shop'))}"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('shop', SHOP_APP_ICON_SVG)}</span><span class="pm-desktop-app-label">${escapeHtml(appNameOf('shop'))}</span></button>
         </div>
         ${renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now)}`;
 }
@@ -127,7 +135,8 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
             ? `<button type="button" class="pm-scene-template-action pm-scene-template-unpublish" data-action="unpublish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="取消发布共享模板" title="取消发布共享模板">${COMMUNITY_TEMPLATE_ICON_SVG}</button>`
             : `<button type="button" class="pm-scene-template-action" data-action="publish-community-template" data-scene-id="${escapeAttr(scene.id)}" aria-label="发布共享模板" title="发布共享模板">${COMMUNITY_TEMPLATE_ICON_SVG}</button>`;
         const accentStyle = scene.themeAccent ? ` style="--pm-community-accent:${escapeAttr(scene.themeAccent)}"` : '';
-        return `<article class="pm-scene-card" data-community-platform="${platform}"${accentStyle}><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(platformLabel(platform))} · ${scene.posts.length} 篇帖子</span></button><div class="pm-scene-card-actions">${templateActions}<button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
+        const synced = uiScope.igsEnabled === true && scene.igsSync === true ? ' · 同步正文' : '';
+        return `<article class="pm-scene-card" data-community-platform="${platform}"${accentStyle}><button type="button" class="pm-scene-card-open" data-action="open-scene" data-scene-id="${escapeAttr(scene.id)}"><b>${escapeHtml(scene.title)}</b><span>${escapeHtml(platformLabel(platform))} · ${scene.posts.length} 篇帖子${synced}</span></button><div class="pm-scene-card-actions">${templateActions}<button type="button" class="pm-scene-pin-action" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}" aria-label="${pinLabel}" title="${pinLabel}">${COMMUNITY_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="删除社区" title="删除社区">${TRASH_ICON_SVG}</button></div></article>`;
     }).join('');
     return `<div id="pm-scene-app" class="pm-modal pm-scene-shell" data-community-platform="weibo">
         <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" data-action="desktop" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>社区</b></div><div class="pm-scene-view-actions"><button type="button" data-action="exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div></div>
@@ -139,6 +148,7 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
                 ${renderNsfwSwitch(false)}
             </div>
             <button type="button" class="pm-scene-primary" data-action="create-scene">生成社区</button>
+            ${uiScope.igsEnabled === true ? '<button type="button" class="pm-scene-secondary pm-scene-import" data-action="igs-import">从正文导入社区帖子</button>' : ''}
             ${sceneCards ? `<div class="pm-scene-history"><h3>我的社区</h3>${sceneCards}</div>` : ''}
             <div class="pm-scene-status" aria-live="polite" hidden></div>
         </div>
@@ -146,10 +156,11 @@ export function renderCommunityLauncher(scope, uiScope = { pinnedSceneIds: [] })
 }
 
 function renderContextInjectionSettings(scene, state) {
+    // 「全部注入」不含从 gal 正文导入的帖子（它们本来就在正文里），需要时单独勾选。
     const selectedPostIds = new Set(state.communitySelection?.mode === 'all'
-        ? scene.posts.map(post => post.id) : state.communitySelection?.postIds || []);
+        ? scene.posts.filter(post => post.source?.type !== 'igs').map(post => post.id) : state.communitySelection?.postIds || []);
     const posts = scene.posts.map(post => `<article class="pm-scene-injection-post">
-        <span>${escapeHtml(post.content || '无正文帖子')}</span>
+        <span>${post.source?.type === 'igs' ? '<small class="pm-scene-injection-source">来自正文</small>' : ''}${escapeHtml(post.content || '无正文帖子')}</span>
         <button type="button" class="pm-scene-injection-post-toggle ${selectedPostIds.has(post.id) ? 'is-selected' : ''}" data-action="context-toggle-post" data-post-id="${escapeAttr(post.id)}" aria-pressed="${selectedPostIds.has(post.id)}" aria-label="${selectedPostIds.has(post.id) ? '取消注入' : '注入'}此博文" title="${selectedPostIds.has(post.id) ? '取消注入' : '注入此博文'}">${EYE_ICON_SVG}</button>
     </article>`).join('') || '<div class="pm-scene-empty"><span>当前社区还没有帖子。</span></div>';
     return `<div class="pm-scene-injection-settings">
@@ -175,18 +186,27 @@ function renderSceneMenu(scene, uiScope, autoActive) {
     </div>`;
 }
 
-// 风格页：社区名称、主题色（只换点缀色）、成人内容开关、风格提示词。
-function renderPromptPage(scene, accent) {
-    return `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>社区主题色</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="自定义社区主题色"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>自定义</span></label></div></fieldset>${renderNsfwSwitch(scene.nsfw === true)}${renderAutoRespondSwitch(scene.autoRespond !== false)}<label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>设置社区内容的表达风格与氛围。</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`;
+// 「接收 gal 正文的帖子」开关：只在设置里开了与 gal 前端联动、且该平台能接收时出现。同平台只有一个同步社区。
+function renderIgsSyncSwitch(scene, igs) {
+    if (igs?.enabled !== true || !IGS_SYNC_PLATFORMS.includes(platformOf(scene))) return '';
+    const enabled = scene.igsSync === true;
+    return `<div class="pm-scene-switch-row"><span class="pm-scene-switch-text"><b>接收正文的${escapeHtml(platformLabel(platformOf(scene)))}帖子</b><small>gal 正文里出现的同平台帖子放进这个社区</small></span><button type="button" id="pm-scene-igs-sync" class="pm-scene-switch ${enabled ? 'is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="接收正文帖子" data-action="toggle-igs-sync"></button></div>`;
 }
 
-// 小组帖子详情页底部保留输入条，回复楼主；其余平台不再有底部输入条，各自用自己的发布入口（见 view-compose.js）。
+// 风格页：社区名称、主题色（只换点缀色）、成人内容开关、风格提示词。
+function renderPromptPage(scene, accent, igs) {
+    return `<div class="pm-scene-prompt"><label>社区名称<input id="pm-scene-title" maxlength="80" value="${escapeAttr(scene.title)}"></label><fieldset class="pm-scene-accent-field"><legend>社区主题色</legend><div class="pm-scene-accent-options">${renderSceneAccentOptions(accent)}<label class="pm-scene-accent-custom" aria-label="自定义社区主题色"><input id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="${escapeAttr(accent)}"><span>自定义</span></label></div></fieldset>${renderNsfwSwitch(scene.nsfw === true)}${renderAutoRespondSwitch(scene.autoRespond !== false)}${renderIgsSyncSwitch(scene, igs)}<label>社区风格<textarea id="pm-scene-prompt" maxlength="6000">${escapeHtml(scene.generatedPrompt)}</textarea></label><p>设置社区内容的表达风格与氛围。</p><div class="pm-scene-prompt-actions"><button type="button" class="pm-scene-secondary" data-action="regenerate-prompt">重新生成</button><button type="button" class="pm-scene-primary" data-action="save-prompt">保存风格</button></div></div>`;
+}
+
+// 楼层式平台（小组、贴吧、虎扑）的帖子详情页底部保留输入条，回复楼主；其余平台各自用自己的发布入口（见 view-compose.js）。
 function renderThreadReplyBar() {
     return `<div class="pm-scene-bottom-bar"><div class="pm-scene-compose"><div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="回复楼主"></textarea><button type="button" class="pm-scene-primary" data-action="reply-owner" aria-label="回复楼主" title="回复楼主">${SEND_ICON_SVG}</button></div></div></div>`;
 }
 
 const FEED_RENDERERS = Object.freeze({
     weibo: renderWeiboFeed, douban: renderDoubanFeed, review: renderReviewFeed, confess: renderConfessFeed, night: renderNightFeed,
+    tieba: renderTiebaFeed, hupu: renderHupuFeed,
+    moments: renderMomentsFeed, xhs: renderXhsFeed, zhihu: renderZhihuFeed, news: renderNewsFeed,
 });
 
 // state.view 是会话内的临时视图状态：{ segment, postId, work, mood, open[], compose, draft }，不写入存储。
@@ -201,25 +221,29 @@ export function renderCommunityWorkspace(scene, tab = 'feed', uiScope = { pinned
     const accent = sceneAccent(scene);
     const isPrompt = tab === 'prompt';
     const isSubpage = isPrompt || tab === 'context-inject';
-    const inThread = !isSubpage && platform === 'douban' && !!view.postId;
+    // 详情：楼层帖（thread）、小红书笔记与新闻正文（post）、知乎问题页（question），见 community-views/view-detail.js。
+    const detail = isSubpage ? { thread: false, post: null, question: false, detail: false } : detailStateOf(scene, platform, view);
+    const inThread = detail.thread;
     const inBook = !isSubpage && platform === 'review' && !!view.work;
     const accentStyle = scene.themeAccent ? ` style="--pm-community-accent:${escapeAttr(scene.themeAccent)}"` : '';
     const shellOpen = `<div id="pm-scene-app" class="pm-modal pm-scene-shell" data-community-platform="${platform}" data-scene-id="${escapeAttr(scene.id)}"${accentStyle}>`;
-    if (!isSubpage && !inThread && view.compose === true) {
+    // 今日猴条没有发布入口，compose 状态即使被置位也不出编辑页。
+    if (!isSubpage && !inThread && !detail.post && platform !== 'news' && view.compose === true) {
         return `${shellOpen}${renderComposeSheet(platform, { scene, view, authorName: String(state.authorName || '') })}</div>`;
     }
     const leadingAction = isSubpage
         ? 'data-action="tab" data-tab="feed" aria-label="返回子社区" title="返回子社区"'
-        : inThread ? 'data-action="close-thread" aria-label="返回列表" title="返回列表"'
+        : detail.detail ? detailBackAction(detail)
             : inBook ? 'data-action="close-book" aria-label="返回书评" title="返回书评"'
                 : 'data-action="desktop" aria-label="返回桌面" title="返回桌面"';
     const menu = isSubpage ? '' : renderSceneMenu(scene, uiScope, autoActive);
-    const feed = isSubpage ? '' : `<div class="pm-scene-feed${platform === 'weibo' || platform === 'confess' ? ' has-float' : ''}"><div class="pm-scene-posts">${FEED_RENDERERS[platform](scene, view, renderedAt)}</div></div>`;
+    const floats = ['weibo', 'confess'].includes(platform) || (platform === 'xhs' && !detail.post);
+    const feed = isSubpage ? '' : `<div class="pm-scene-feed${floats ? ' has-float' : ''}"><div class="pm-scene-posts">${FEED_RENDERERS[platform](scene, view, renderedAt, { authorName: String(state.authorName || '') })}</div></div>`;
     const content = tab === 'context-inject' ? renderContextInjectionSettings(scene, state)
-        : isPrompt ? renderPromptPage(scene, accent)
-            : `<div class="pm-scene-stage">${feed}${inThread || inBook ? '' : renderComposeFloat(platform)}</div>${inThread ? renderThreadReplyBar() : inBook ? '' : renderComposeDock(platform)}`;
+        : isPrompt ? renderPromptPage(scene, accent, state.igs)
+            : `<div class="pm-scene-stage">${feed}${detail.detail || inBook ? '' : renderComposeFloat(platform)}</div>${inThread ? renderThreadReplyBar() : detail.post ? renderPostDetailBar(platform, detail.post) : inBook ? '' : renderComposeDock(platform, view)}`;
     return `${shellOpen}
-        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage || inThread || inBook ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b></div><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button>${menu}</div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
+        <div class="pm-scene-topbar"><div class="pm-scene-nav-actions"><button type="button" class="pm-scene-home" ${leadingAction}>${isSubpage || detail.detail || inBook ? BACK_ICON_SVG : HOME_ICON_SVG}</button></div><div class="pm-scene-title"><b>${escapeHtml(scene.title)}</b></div><div class="pm-scene-view-actions"><button type="button" class="pm-header-icon-button pm-scene-title-poke" data-action="poke-scene" aria-label="拍一拍社区" title="拍一拍社区">${POKE_ICON_SVG}</button>${menu}</div></div><div class="pm-scene-status" aria-live="polite" hidden></div>
         ${content}
     </div>`;
 }

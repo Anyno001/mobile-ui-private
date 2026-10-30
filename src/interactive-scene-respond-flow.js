@@ -1,5 +1,5 @@
 import { generationErrorMessage } from './ai.js';
-import { ensureInteractiveActor, INTERACTIVE_LIMITS, resolveInteractiveAuthor } from './interactive-scene-model.js';
+import { appendScenePosts, ensureInteractiveActor, INTERACTIVE_LIMITS, resolveInteractiveAuthor } from './interactive-scene-model.js';
 import { isAutoRespondOn, mergeRespondComments, pickSlot } from './interactive-scene-respond.js';
 import { platformOf } from './community-views/view-shared.js';
 import { now, uid } from './interactive-scenes-utils.js';
@@ -21,8 +21,9 @@ export function createRespondFlow({
         view.retry = view.retry.filter(item => item !== entryId);
     };
     // 微博、树洞、夜间来信的评论默认折叠，用户那条要可见就得展开所属帖子；小组的楼层本来就全部展开。
+    // 朋友圈、小红书、新闻的评论本来就全部显示；知乎回答的评论要展开回答才看得到。
     function ensureCommentsVisible(scene, postId) {
-        if (platformOf(scene) === 'douban') return;
+        if (['douban', 'moments', 'xhs', 'news'].includes(platformOf(scene))) return;
         const view = viewOf(scene.id);
         if (!view.open.includes(postId)) view.open.push(postId);
     }
@@ -41,7 +42,7 @@ export function createRespondFlow({
         return true;
     }
     const respondPostContext = (post, excludeCommentId = '') => {
-        const head = [post.title && `标题：${post.title}`, post.work && `书名：${post.work}`, post.rating && `评分：${post.rating}星`, post.content]
+        const head = [post.question && `问题：${post.question}`, post.title && `标题：${post.title}`, post.work && `书名：${post.work}`, post.rating && `评分：${post.rating}星`, post.content]
             .filter(Boolean).join('\n').slice(0, 2400);
         const recent = post.comments.filter(item => item.id !== excludeCommentId).slice(-6)
             .map(item => `${item.authorNameSnapshot}：${String(item.content).slice(0, 120)}`).join('\n');
@@ -70,9 +71,11 @@ export function createRespondFlow({
             const userComment = kind === 'comment' ? post?.comments.find(item => item.id === commentId) : null;
             if (!post || (kind === 'comment' && !userComment)) throw new Error(kind === 'comment' ? '评论不存在' : '帖子不存在');
             const userName = (userComment || post).authorNameSnapshot;
+            // 知乎提问：回应是回答，每条另成一篇挂在同一问题下的帖子，而不是评论。
+            const asking = kind === 'post' && post.ask === true && platformOf(scene) === 'zhihu';
             const items = await request('comment_batch', {
                 post: respondPostContext(post, commentId),
-                respondTo: { type: kind, author: userName, content: (userComment || post).content, replyOwner },
+                respondTo: { type: kind, author: userName, content: asking ? `${post.question}\n${post.content}` : (userComment || post).content, replyOwner, ...(asking ? { ask: true } : {}) },
             }, target);
             if (!communityTasks.isActive(task)) throw new Error('生成已取消');
             await commit(() => {
@@ -80,6 +83,13 @@ export function createRespondFlow({
                 const currentPost = resolved.scene?.posts.find(item => item.id === postId);
                 if (!currentPost) throw new Error('帖子不存在');
                 const seeds = actorSeeds(resolved.scopeId);
+                if (asking) {
+                    const answers = items.filter(item => item.author !== userName).map(item => ({
+                        author: item.author, content: item.content, tags: [], comments: [], question: currentPost.question, ...(item.authorBio ? { authorBio: item.authorBio } : {}),
+                    }));
+                    if (!appendScenePosts(resolved.scope, resolved.scopeId, resolved.scene, answers, [seeds.story, seeds.user]).length) throw new Error('AI 未返回有效内容');
+                    return;
+                }
                 ensureInteractiveActor(resolved.scope, resolved.scopeId, seeds.story);
                 ensureInteractiveActor(resolved.scope, resolved.scopeId, seeds.user);
                 const generated = items.filter(item => item.author !== userName).map(item => ({

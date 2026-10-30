@@ -3,7 +3,7 @@ import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
     entryAttr, isOpenPost, renderAvatar, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu, renderPostMetric,
-    renderPostTime, renderReplyComposer, renderReplyToggle, renderRetryRespond, renderRichText, stablePostMetric, formatCommunityPostTime,
+    renderPostTime, renderReplyComposer, renderReplyToggle, renderRetryRespond, renderRichText, renderStaleMark, stablePostMetric, formatCommunityPostTime,
 } from './view-shared.js';
 
 const COLLAPSED_COMMENTS = 2;
@@ -46,7 +46,7 @@ function renderWeiboPost(post, view, now) {
     const likes = stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
     const shares = stablePostMetric(post, 'shares', 1, 48) + post.shareCount;
     return `<article class="pm-scene-post is-weibo"${entryAttr(post.id)}>
-        <header>${renderAvatar(post.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b>${renderPostTime(post.createdAt, now)}</div>${renderPostMenu(post)}</header>
+        <header>${renderAvatar(post.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}</b>${renderPostTime(post.createdAt, now)}${renderStaleMark(post)}</div>${renderPostMenu(post)}</header>
         <p>${renderRichText(bodyWithTopics(post))}</p>${post.image ? imageCardMarkup(post.image.desc, { postId: post.id, author: post.authorNameSnapshot }) : ''}${renderRepost(post.repost)}
         <footer><button type="button" class="pm-scene-share ${post.shared ? 'is-shared' : ''}" data-action="share" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.shared}" aria-label="${post.shared ? '已分享本帖' : '分享本帖'}">${renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')}</button>${renderReplyToggle(post, { label: '评论' })}${renderLikeButton(post, '赞', likes)}</footer>
         ${renderRetryRespond(view, post.id, post.id, 'post')}${renderComments(post, isOpenPost(view, post), now, view)}${renderReplyComposer(post)}

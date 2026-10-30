@@ -55,7 +55,7 @@
 | `--pm-opacity-*` | 受控透明度 |
 | `--pm-<feature>-*` | 已登记的组件私有 token |
 
-`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css`、`styles/gallery.css`、`styles/live.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
+`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css`、`styles/gallery.css`、`styles/live.css`、`styles/video.css`、`styles/shop.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
 
 | 私有 token | 根选择器 | 语义与适用范围 |
 | --- | --- | --- |
@@ -65,7 +65,9 @@
 | `--pm-scene-quote-bar-width` | `.pm-scene-shell` | 小组论坛楼层引用块左侧点缀色条的宽度；公共间距尺度没有 3px，仅 `.pm-scene-quote::before` 消费，不随主题改变。 |
 | `--pm-scene-star-size-large` | `.pm-scene-shell` | 社区整页编辑页顶部星级选择的星号字号（28px，展示型）；公共字号尺度最大 20px，仅 `.pm-scene-sheet-rating .pm-scene-star` 消费，不随主题改变。 |
 | `--pm-community-accent` | `[data-community-platform]`、`.pm-scene-shell[data-community-platform="night"]` | 社区点缀色，按平台取值（weibo、douban、review、confess、night；浅色 `#e0806a #5f9a86 #e08e55 #8f86c6 #6f7fc4`，深色 `#e8957f #78b29e #e8a06d #a59dd6 #aeb8ec`），只用于图标、选中、标签、星级、话题词；社区自选主题色只覆盖该变量。夜间来信固定使用深色值，不跟随整机浅深色。 |
-| `--pm-community-accent-soft` | `[data-community-platform]` | 点缀色浅底：`color-mix` 混进不透明的 `--pm-color-surface`，得到实色；用于平台卡片选中态、标签、小组首字图标底。 |
+| `--pm-community-accent-soft` | `[data-community-platform]` | 点缀色浅底：`color-mix` 混进不透明的 `--pm-color-surface`，得到实色；用于平台卡片选中态、标签、小组首字图标底。B2 四个平台（moments、xhs、zhihu、news）按方案稿直接给实色，与点缀色同行声明：浅色 `#5f88b8/#eaf0f6`、`#d4616c/#f9eaec`、`#4f8fb8/#e8f0f6`、`#3f5f8f/#e2eaf6`，深色 `#8ca9cc/#323841`、`#e08d95/#433336`、`#80aecc/#303941`、`#758cae/#2e323b`；社区自选主题色时（元素带内联 `--pm-community-accent`）浅底改回 `color-mix` 跟随自选色。 |
+| `--pm-community-breaking` / `-breaking-soft` | `.pm-scene-shell` | 今日猴条「突发」小标签的红字与浅红底，只用于这一个标签，与平台点缀色分开。浅色 `#b8392f/#fbe4e1`，深色 `#ef8b84/#4a3231`，亮暗成对。 |
+| `--pm-scene-headline-size` / `--pm-scene-heading-size` | `.pm-scene-shell` | 社区展示型标题字号 20px / 18px（公共尺度到 16px 为止）：前者用于新闻正文页大标题、小红书笔记页封面大字；后者用于小红书笔记标题、知乎问题页标题、新闻要闻卡标题。不随主题改变。 |
 | `--pm-community-note-1..5` / `--pm-community-note-edge-1..5` | `.pm-scene-shell` | 便签五色与对应书脊色，树洞便签与书评书封共用，文字一律用 `--pm-color-label`。浅色底 `#ecebf7 #f9e8ee #e6f1ed #fdf3e2 #e7eef8`，书脊 `#d9d6ef #efd3dd #cfe4dc #f3e2c4 #d2dfee`；深色各给一组暗的实色，亮暗成对。 |
 | `--pm-community-night-card` / `-stamp` / `-avatar` | `.pm-scene-shell[data-community-platform="night"]` | 夜间来信的话题卡底 `#262a45`、邮戳底 `#3a4170`、头像底 `#2c3150`；该平台固定暗色，不分浅深色成对。 |
 | `--pm-live-cover-1..5` / `-cover-ink` | `.pm-live-shell` | 直播间卡片封面的五组柔和实色（浅色 `#f4b6cc #a9cdf2 #a6e0c5 #fbcf9a #cbbcf2`，深色各给一组更深的实色）与封面上的文字色，按房间 id 哈希取色；不用灰色与莫兰迪色。亮暗成对。 |
@@ -74,6 +76,11 @@
 | `--pm-live-veil` / `-glass` / `-host-veil` / `-name-dim` / `-ring` / `-shadow` | `.pm-live-shell` | 直播间画面上叠加层的半透明色：评论条底、输入胶囊与圆钮底、主播发言条底、评论名字淡白、头像描环白、文字阴影黑。画面叠加层按 IGS 保留半透明；列表页与开播页仍用实色。 |
 | `--pm-live-ghost` / `-initial-ink` / `-mask-ink` | `.pm-live-shell` | 画面中央主播首字圆的背景色（比叠加层更淡的白，作背景不与横飞抢位置），以及评论区与横飞区边缘渐隐遮罩的不透明遮罩色（只用于 mask-image，不产生可见色）。不随主题改变。 |
 | `--pm-live-cover-height` / `-initial-size` / `-play-size` / `-ring-size` / `-textarea-height` / `-lane-pitch` / `-fly-top` / `-fly-share` / `-center-top` / `-fade` / `-bar-height` / `-list-height` | `.pm-live-shell` | 直播页固定几何：封面高度、封面与画面中央主播首字字号（展示型）、播放圆钮图标、首字圆环、设定输入框最小高度，以及直播间内飘屏轨道间距、横飞区起点与下沿（占画面高度的比例，轨道数按此高度除以轨道间距）、中央区顶部、渐隐遮罩长度、底部输入条高度、评论叠层高度。不随主题改变。 |
+| `--pm-live-video-stage` / `-video-cc` / `-video-ink` / `-video-soft` / `-video-lanes` | `.pm-live-shell`（视频分区的 `.pm-video-*` 也登记为该前缀的根） | 视频分区（噼哩噼哩「视频」）：画面区暗底（固定深色，不随主题）；分镜字幕底块（照 IGS 全屏直播自动字幕 CC 的近黑实色，固定不随主题）；点缀字色与评论新增高亮、当前分镜行的淡底（实色，亮暗成对，字色 ≥ 4.5:1）；弹幕飞行区的轨道数（3 条，与 `src/video-format.js` 的 `VIDEO_FLY_LANES` 一致）。其余颜色、封面五色、表单、按钮、飞行弹幕沿用直播的 token 与 class。 |
+| `--pm-shop-accent` / `-accent-soft` / `-accent-ink` / `-on-accent` | `.pm-shop-shell` | 桃宝（原型淘宝）蜜桃点缀色：点缀（浅色 `#dc7d7a`，深色 `#ee9a97`，只用于星级、空状态图标、订单栏下划线这类非文字元素）、浅底（`#fcebea` / `#3d2a29`，规格胶囊、服务标签、追评块、加入购物车）、深字（`#b4524f` / `#f4b4b1`，价格、浅底上的文字、选中的勾选圆与底栏当前项，白底上 4.93:1）、深字实底上的前景（白 / 近黑）。全部实色，亮暗成对。 |
+| `--pm-shop-swatch-1..6` / `-swatch-ink` | `.pm-shop-shell` | 商品图占位的六色实色块与块上的描述文字色（浅色 `#f6cfd6 #c9def5 #cdebd9 #fbe0bd #ddd5f5 #f3e7b9`，深色各给一组暗的实色），按商品 id 哈希取色；以后接生图时换成图片。亮暗成对。 |
+| `--pm-shop-veil` / `-veil-ink` | `.pm-shop-shell` | 商品页大图上返回、购物车圆钮的半透明底与图标色；只用于压在商品图上的叠加层，其余界面一律实色。亮暗成对。 |
+| `--pm-shop-side` / `-photo-tall` / `-photo-mid` / `-photo-short` / `-hero-height` / `-thumb` / `-check` / `-step` / `-avatar` / `-logo` / `-art` / `-art-icon` / `-price-size` / `-price-large` / `-indicator` / `-indicator-inset` | `.pm-shop-shell` | 桃宝固定几何：顶栏左右两组的等宽列（保证标题在整屏正中）、瀑布流商品图三档高度、商品页大图高度、购物车与订单缩略图、勾选圆、数量加减钮、评价头像、店铺头像、空状态插画圆与其图标、价格数字字号（展示型 18px 与商品页 24px）、订单栏下划线的高度与左右内缩。不随主题改变。 |
 | `--pm-calendar-day-height` / `-day-circle` / `-dot` / `-band-inset` / `-textarea-height` / `-rule-height` | `.pm-calendar-shell` | 日历 v3 页面几何：月历日期格高度、日历小圆点直径、生理期色带上下内缩、设置页多行输入与生成规则框的最小高度。不随主题改变。 |
 | `--pm-calendar-holiday*` / `-occasion*` / `-outfit-*` / `-meal-*` / `-band-*` / `-weather` | `.pm-calendar-shell` | 分类色：节假日、纪念日、穿搭、菜谱胶囊的浅底与文字，生理期月格色带与图例，天气月格图标色。只用于日历小标记与分类胶囊，不用于选中态；亮暗成对。 |
 | `--pm-calendar-status-value-size` / `-scene-height` / `-ring-*` / `-status-ink*` | `.pm-calendar-status-card` | 状态卡几何与前景：大号数值字号、天气风景卡高度、周期圆环尺寸/线宽/中心数字，以及压在风景画上的文字色（雷阵雨与夜间为白字）。 |

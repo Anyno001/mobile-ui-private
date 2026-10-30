@@ -27,7 +27,10 @@
 | 聊天元数据写入防抖 | 酒馆 `saveMetadataDebounced`（owner 为宿主，插件不自建计时器） | IndexedDB 写成功后同步 `chatMetadata.tianyin_phone` 并调用宿主防抖；关闭手机与页面挂起时 `flushChatMetadata` 立即 `saveMetadata`；宿主切换聊天时自行取消防抖，未写入的改动由下次对账按本地时间戳补写 |
 | 生图任务与图片卡监听 | `phone-image-controller.js:installPhoneImages`：`jobs` Map（每个任务一个 AbortController）、串行 `queue`、`pendingShots`；`phoneWindow` 上的 click / error（capture）监听挂在 `lifecycle` AbortController 上 | `__pmEnd` 调 `destroyPhoneImages`：abort 监听与全部在途任务，清空任务表和未发送的「拍一张」；已上传的图留在目录里 |
 | 相册页监听与目录订阅 | `phone-gallery.js:installPhoneGallery`：`lifecycle` AbortController + `store.subscribe` 返回的退订函数；`renderSerial` 作废迟到的渲染与缩略图读取 | `__pmEnd` 调 `destroyPhoneGalleryUi`：abort、退订、递增 `renderSerial` |
+| 与 gal 前端联动（IGS） | `igs-feed-sync.js:installIgsFeedSync`：宿主消息事件经 `phone-host-events.js` 的 `igs:*` 注册调用 `observe`；同一批事件以微任务合并成一轮（不建计时器）；「同步后自动续写」一次只跑一个，各带自己的 AbortController；IGS 未启动时只往 `window.IGS_DLC` 推一次回调 | 总开关关闭时 `observe` 直接返回、不碰 `window.IGS`；关闭开关或切到别的聊天时 abort 进行中的续写，迟到结果按 storageId 丢弃 |
 | 图片元数据写入防抖 | 酒馆 `saveMetadataDebounced`（插件不自建计时器） | 写入 `chatMetadata.tianyin_phone_images` 后调用宿主防抖；与聊天记录共用宿主的防抖与保存时机 |
+| 桃宝生成任务与页面监听 | `shop-app.js:installShopApp`：上新与更多评价各带一个 AbortController，挂在社区运行时的 `requestController` 上并占用同一把 `runtime.busy`（与社区、直播互斥）；页面 `[data-phone-page="shop"]` 首次打开时创建，click / submit 监听挂在该节点上 | 「停止」、关闭手机、切换聊天由社区的 `invalidate` 一并 abort；结果提交前核对 requestId 与 storageId，迟到结果丢弃；窗口关闭时页面节点随窗口移除，监听一起释放 |
+| 视频播放计时器与回应高亮 timeout | `video-app.js` 闭包 `timer`（250ms interval，仅点播放时创建）、`freshTimer`（1800ms） | 暂停、播放结束、回首页、切到直播分区、回桌面、打开另一条视频、重新打开手机均 `stopPlayback()` 清除；计时回调发现页面不在噼哩噼哩、页面隐藏、手机最小化或关闭、视频已不存在时自行停止并重绘播放按钮；高亮 timeout 每次重设前先清除 |
 | 会话暂存队列 | `runtime.pendingMessages` | 每个 `storageId + saveKey` 最多 `PENDING_MESSAGE_LIMIT = 50` 条；提交、删除、清空和删除会话时移除空桶 |
 
 ## 缓存边界

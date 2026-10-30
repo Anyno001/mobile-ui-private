@@ -547,7 +547,7 @@ export function installStoryOracle(_state, deps = {}) {
             if (!requestIsCurrent(request)) return;
             render('正在请求剧情助手…');
             const systemPrompt = buildStoryOracleSystemPrompt(request.mode, storyOracleSettings(store, request.storageId));
-            const answer = await deps.callAI?.(systemPrompt, buildStoryOracleUserPrompt(context || {}, history, question, request.mode === 'user-generation' ? revisionTarget : null), { isolated: true, signal: request.signal });
+            const answer = await deps.callAI?.(systemPrompt, buildStoryOracleUserPrompt(context || {}, history, question, request.mode === 'user-generation' ? revisionTarget : null), { isolated: true, module: 'oracle', signal: request.signal });
             if (!requestIsCurrent(request)) return;
             const answerText = String(answer || '').trim();
             if (!answerText) throw new Error('AI 未返回可用文本');

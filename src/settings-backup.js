@@ -30,6 +30,8 @@ import {
 } from './storage.js';
 import { loadUserGenerationStore, saveUserGenerationStore } from './user-generation-storage.js';
 import { normalizeUserGenerationStore } from './user-generation-model.js';
+import { createEmptyShopStore, normalizeShopStore } from './shop-model.js';
+import { loadShopStore, saveShopStore } from './shop-storage.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -143,6 +145,7 @@ export function createBackupStateHandlers(deps = {}) {
         const branchLineage = await loadBranchLineage();
         const desktopIcons = normalizeDesktopIconBackupPayload(await loadDesktopIcons());
         userGenerationWriteState = await loadUserGenerationStore();
+        const shopLoaded = await loadShopStore();
         return {
             histories: clone(window.__pmHistories || {}), config: clone(window.__pmConfig || {}),
             theme: clone(window.__pmTheme || {}), profiles: clone(window.__pmProfiles || []),
@@ -164,6 +167,8 @@ export function createBackupStateHandlers(deps = {}) {
             branchLineage: clone(branchLineage),
             userGeneration: normalizeUserGenerationStore(userGenerationWriteState.store),
             desktopIcons,
+            // 桃宝数据读不懂时不进备份、回滚时也不覆盖原始数据。
+            shop: shopLoaded.store, ...(shopLoaded.writable ? {} : { shopUnreadable: true }),
         };
     };
     const apply = async state => {
@@ -199,6 +204,7 @@ export function createBackupStateHandlers(deps = {}) {
             branchLineage: clone(state.branchLineage || {}),
             userGeneration: normalizeUserGenerationStore(state.userGeneration),
             desktopIcons: normalizeDesktopIconBackupPayload(state.desktopIcons || {}),
+            shop: normalizeShopStore(state.shop ?? createEmptyShopStore()),
         };
     };
     const persist = async (state, phase = 'apply', applied = null) => {
@@ -251,6 +257,7 @@ export function createBackupStateHandlers(deps = {}) {
                 writeHandle: userGenerationWriteState.writeHandle,
             });
             await replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}));
+            if (!state.shopUnreadable) await saveShopStore(normalizeShopStore(state.shop ?? createEmptyShopStore()));
         } catch (error) {
             error.partialApplied = { ...(error.partialApplied || {}), todayTrendReceipt };
             throw error;

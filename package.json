@@ -1,6 +1,6 @@
 {
   "name": "tianyin-xiaojian-st",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Build tooling for the personal Tianyin Xiaojian project.",
@@ -16,6 +16,8 @@
     "check:community-prompts": "node scripts/check-community-prompts.mjs",
     "check:community-desktop": "node scripts/check-community-desktop.mjs",
     "check:live": "node scripts/check-live.mjs",
+    "check:video": "node scripts/check-video.mjs",
+    "check:shop": "node scripts/check-shop.mjs",
     "check:pending": "node scripts/check-pending.mjs",
     "check:press": "node scripts/check-press-gesture.mjs",
     "check:ambient": "node scripts/check-ambient.mjs",
@@ -32,7 +34,9 @@
     "check:chat-metadata": "node scripts/check-chat-metadata.mjs",
     "check:community-files": "node scripts/check-community-files.mjs",
     "check:phone-images": "node scripts/check-phone-images.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:storage-emoji && npm run check:behavior && npm run check:interactive && npm run check:community-prompts && npm run check:community-desktop && npm run check:live && npm run check:pending && npm run check:chat-metadata && npm run check:phone-images && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend && npm run check:desktop-icons && npm run check:appearance-pack"
+    "check:igs-feed": "node scripts/check-igs-feed.mjs",
+    "check:b2-feeds": "node scripts/check-b2-feeds.mjs",
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:storage-emoji && npm run check:behavior && npm run check:interactive && npm run check:community-prompts && npm run check:community-desktop && npm run check:live && npm run check:video && npm run check:shop && npm run check:igs-feed && npm run check:b2-feeds && npm run check:pending && npm run check:chat-metadata && npm run check:phone-images && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend && npm run check:desktop-icons && npm run check:appearance-pack"
 
   },
   "devDependencies": {

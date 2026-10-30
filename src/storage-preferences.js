@@ -1,6 +1,7 @@
 import { BUDGET_CONFIG_KEY } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
-import { normalizeThemePreset } from './config.js';
+import { ensureProfileIds, loadApiRoutes, makeProfileId } from './api-routes.js';
+import { normalizeFontChoice, normalizeThemePreset } from './config.js';
 import { GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY } from './constants.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
@@ -21,6 +22,7 @@ export function loadTheme() {
     window.__pmTheme.ambientStatusEnabled = window.__pmTheme.ambientStatusEnabled === true;
     window.__pmTheme.iconStyle = window.__pmTheme.iconStyle === 'cream' ? 'cream' : 'glass';
     window.__pmTheme.wallpaper = window.__pmTheme.wallpaper === 'plain' ? 'plain' : 'soft';
+    window.__pmTheme.fontFamily = normalizeFontChoice(window.__pmTheme.fontFamily);
 }
 
 export function saveTheme() {
@@ -51,6 +53,9 @@ export function saveGalBubbleEnabled() {
 export function loadProfiles() {
     try { window.__pmProfiles = JSON.parse(localStorage.getItem('ST_SMS_API_PROFILES')) || []; }
     catch (error) { window.__pmProfiles = []; }
+    if (!Array.isArray(window.__pmProfiles)) window.__pmProfiles = [];
+    if (ensureProfileIds(window.__pmProfiles)) saveProfiles();
+    loadApiRoutes();
 }
 
 export function saveProfiles() {
@@ -61,10 +66,14 @@ export function saveProfiles() {
 export function addOrUpdateProfile(profile) {
     if (!profile.apiUrl || !profile.apiKey) return false;
     const previous = window.__pmProfiles.map(item => ({ ...item }));
-    const index = window.__pmProfiles.findIndex(item => item.apiUrl === profile.apiUrl && item.apiKey === profile.apiKey);
-    if (index >= 0) window.__pmProfiles[index] = { ...window.__pmProfiles[index], ...profile, savedAt: Date.now() };
-    else window.__pmProfiles.push({ ...profile, savedAt: Date.now() });
-    if (saveProfiles()) return true;
+    // 正在编辑某个预设时按 id 覆盖；否则地址、密钥、模型都相同才算同一个预设，换模型另存一条。
+    const index = profile.id
+        ? window.__pmProfiles.findIndex(item => item.id === profile.id)
+        : window.__pmProfiles.findIndex(item => item.apiUrl === profile.apiUrl && item.apiKey === profile.apiKey && (item.model || '') === (profile.model || ''));
+    const id = index >= 0 ? window.__pmProfiles[index].id || makeProfileId() : profile.id || makeProfileId();
+    if (index >= 0) window.__pmProfiles[index] = { ...window.__pmProfiles[index], ...profile, id, savedAt: Date.now() };
+    else window.__pmProfiles.push({ ...profile, id, savedAt: Date.now() });
+    if (saveProfiles()) return id;
     window.__pmProfiles = previous;
     return false;
 }

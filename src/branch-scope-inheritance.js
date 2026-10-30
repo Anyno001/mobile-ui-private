@@ -25,6 +25,7 @@ import {
     saveCalendar, saveCalendarCycles, saveCalendarOccasions, saveCalendarOutfits, saveCalendarRecipes,
 } from './calendar-storage.js';
 import { loadTodayTrendStore } from './today-trend-storage.js';
+import { remapVideoAuthors } from './video-model.js';
 
 const clone = value => structuredClone(value);
 const own = (value, key) => !!value && typeof value === 'object' && Object.hasOwn(value, key);
@@ -113,6 +114,7 @@ function remapInteractiveScope(sourceScope, targetId) {
         if (actorIdMap.has(room.hostActorId)) room.hostActorId = actorIdMap.get(room.hostActorId);
         for (const danmaku of room.danmaku || []) remapAuthor(danmaku);
     }
+    remapVideoAuthors(scope, actorIdMap);
     scope.actors = actors;
     return scope;
 }

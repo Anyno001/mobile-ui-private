@@ -28,6 +28,18 @@ export function normalizeThemePreset(preset) {
     return preset === 'custom' || Object.hasOwn(THEME_PRESETS, preset) ? preset : 'default';
 }
 
+// 手机界面字体：rounded 为内置有爱圆体（core.css 默认值，不写变量）；其余走设备自带字体，缺字时逐级回落。
+export const FONT_CHOICES = {
+    rounded: { label: '圆体', stack: '' },
+    system: { label: '系统默认', stack: "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif" },
+    song: { label: '宋体', stack: "'Songti SC','Noto Serif SC','Source Han Serif SC','SimSun',serif" },
+    kai: { label: '楷体', stack: "'Kaiti SC','STKaiti','KaiTi','BiauKai',serif" },
+};
+
+export function normalizeFontChoice(value) {
+    return Object.hasOwn(FONT_CHOICES, value) ? value : 'rounded';
+}
+
 export function resolveThemeAuxiliary(preset, customAccent = '') {
     // 移除强行扭转为互补色的算法，回退到当前 Preset 原本定义的同色系辅助色
     // 或者未来可以在此处添加简单的亮度下降处理。

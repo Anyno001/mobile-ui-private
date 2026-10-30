@@ -113,13 +113,15 @@ export function describeLiveRoom(scope, room) {
 
 const statusStrip = status => `<div class="pm-live-status" role="status" aria-live="polite"${status ? '' : ' hidden'}>${escapeHtml(status || '')}</div>`;
 
-export function renderLiveList({ rooms = [], status = '' } = {}) {
+// segments：噼哩噼哩首页的「视频 / 直播」分段 HTML，由 live-app 传入；不传时没有分段（单独渲染直播列表）。
+export function renderLiveList({ rooms = [], status = '', segments = '' } = {}) {
     const cards = rooms.map(room => `<article class="pm-live-card"><button type="button" class="pm-live-card-open" data-live-action="open-room" data-room-id="${escapeAttr(room.id)}" aria-label="进入直播间：${escapeAttr(room.title)}"><span class="pm-live-cover is-cover-${room.cover}"><span class="pm-live-initial">${escapeHtml(room.initial)}</span><span class="pm-live-pill ${room.started ? 'is-on' : 'is-off'}">${room.started ? '直播中' : '未开播'}</span>${room.started ? `<span class="pm-live-count">${escapeHtml(room.online)}</span>` : ''}</span><span class="pm-live-card-info"><b>${escapeHtml(room.title)}</b><span>${escapeHtml(room.hostName)}${room.category ? ` · ${escapeHtml(room.category)}` : ''}</span></span></button></article>`).join('');
     const body = cards
         ? `<div class="pm-live-grid">${cards}</div>`
         : '<div class="pm-live-empty"><b>还没有直播间</b><button type="button" class="pm-live-primary" data-live-action="compose">开播</button></div>';
     return `<div id="pm-live-app" class="pm-live-shell" data-live-view="list">
         <div class="pm-live-topbar"><button type="button" class="pm-live-icon-button" data-live-action="desktop" aria-label="返回桌面" title="返回桌面">${BACK_ICON_SVG}</button><b class="pm-live-heading">${escapeHtml(appNameOf('live'))}</b><button type="button" class="pm-live-pill-button" data-live-action="compose">开播</button></div>
+        ${segments}
         ${statusStrip(status)}
         <div class="pm-live-scroll"><p class="pm-live-slogan">${escapeHtml(appSloganOf('live'))}</p>${body}</div>
     </div>`;

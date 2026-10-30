@@ -1,8 +1,8 @@
 import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
-    entryAttr, noteIndexOf, renderAvatar, renderComposePill, renderCommentMenu, renderEmptyState, renderLikeButton, renderPostMenu, renderPostTime, renderRating,
-    renderRetryRespond, renderStars, splitTitle, stablePostMetric, summarizeBookRatings, validStarRating,
+    entryAttr, isOpenPost, noteIndexOf, renderAvatar, renderComposePill, renderCommentMenu, renderEmptyState, renderLikeButton, renderPostMenu, renderPostTime, renderRating,
+    renderRetryRespond, renderStaleMark, renderStars, splitTitle, stablePostMetric, summarizeBookRatings, validStarRating,
 } from './view-shared.js';
 
 export const REVIEW_SEGMENTS = Object.freeze([
@@ -48,11 +48,14 @@ function reviewExcerpt(post) {
 
 function renderReviewCard(post, now, view) {
     const { title, body } = reviewExcerpt(post);
-    const useful = stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
+    // 正文默认收成四行；字数或段落多到可能被截断时才给「展开全文」。
+    const long = String(body || '').length > 90 || String(body || '').split('\n').length > 4;
+    const open = long && isOpenPost(view, post);
+    const useful =stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
     const book = post.work ? `<button type="button" class="pm-scene-review-book" data-action="open-book" data-work="${escapeAttr(post.work)}"><span><b>${escapeHtml(post.work)}</b><span class="pm-scene-review-author">${escapeHtml(post.workAuthor || '佚名')}</span></span></button>` : '<span class="pm-scene-review-book is-plain"><span><b>未标注书名</b></span></span>';
     return `<article class="pm-scene-post is-review"${entryAttr(post.id)}><header>${book}${renderPostMenu(post)}</header>
-        ${renderRating(post.rating, { size: 'large' })}${title ? `<h4 class="pm-scene-post-title">${escapeHtml(title)}</h4>` : ''}<p class="pm-scene-review-body">${escapeHtml(body).replace(/\n/g, '<br>')}</p>${post.image ? imageCardMarkup(post.image.desc, { postId: post.id, author: post.authorNameSnapshot }) : ''}
-        <footer><span class="pm-scene-review-by">${escapeHtml(post.authorNameSnapshot)} ${renderPostTime(post.createdAt, now)}</span>${renderLikeButton(post, '有用', useful, { icon: false })}${renderRetryRespond(view, post.id, post.id, 'post')}</footer></article>`;
+        ${renderRating(post.rating, { size: 'large' })}${title ? `<h4 class="pm-scene-post-title">${escapeHtml(title)}</h4>` : ''}<p class="pm-scene-review-body${open ? ' is-open' : ''}">${escapeHtml(body).replace(/\n/g, '<br>')}</p>${long ? `<button type="button" class="pm-scene-comments-more pm-scene-review-more" data-action="toggle-open" data-post-id="${escapeAttr(post.id)}" aria-expanded="${open}">${open ? '收起' : '展开全文'}</button>` : ''}${post.image ? imageCardMarkup(post.image.desc, { postId: post.id, author: post.authorNameSnapshot }) : ''}
+        <footer><span class="pm-scene-review-by">${escapeHtml(post.authorNameSnapshot)} ${renderPostTime(post.createdAt, now)}${renderStaleMark(post)}</span>${renderLikeButton(post, '有用', useful, { icon: false })}${renderRetryRespond(view, post.id, post.id, 'post')}</footer></article>`;
 }
 
 function renderDistribution(summary) {
@@ -61,7 +64,7 @@ function renderDistribution(summary) {
 }
 
 function renderShortComment(post, comment, now) {
-    return `<div class="pm-scene-short"${entryAttr(comment.id)}><header>${renderAvatar(comment.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(comment.authorNameSnapshot)}</b>${renderPostTime(comment.createdAt, now)}</div>${renderRating(comment.rating, { score: false, size: 'medium' })}<span class="pm-scene-short-tag">短评</span>${renderCommentMenu(post, comment)}</header><p class="pm-scene-comment-content">${escapeHtml(comment.content).replace(/\n/g, '<br>')}</p></div>`;
+    return `<div class="pm-scene-short"${entryAttr(comment.id)}><header>${renderAvatar(comment.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(comment.authorNameSnapshot)}</b><span class="pm-scene-short-meta">${renderRating(comment.rating, { score: false, size: 'medium' })}<span class="pm-scene-short-tag">短评</span>${renderPostTime(comment.createdAt, now)}</span></div>${renderCommentMenu(post, comment)}</header><p class="pm-scene-comment-content">${escapeHtml(comment.content).replace(/\n/g, '<br>')}</p></div>`;
 }
 
 function renderBookPage(book, now, view) {

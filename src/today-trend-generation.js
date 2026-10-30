@@ -276,7 +276,7 @@ export function createTodayTrendGenerationController({
             const context = await gather({ ...input, getCtx });
             assertActive(input.signal);
             const prompts = buildInitialization({ context });
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: input.signal });
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'trend', signal: input.signal });
             assertActive(input.signal);
             return { context, store: normalize(parse(raw), context, now, input.presetId), raw };
         } catch (error) {
@@ -296,7 +296,7 @@ export function createTodayTrendGenerationController({
                 worldBookNames: preset.source.worldBookNames, includeExistingChat: preset.source.includeExistingChat, userRequirements: preset.source.userRequirements });
             assertActive(signal);
             const prompts = buildRuleRegeneration({ context, rule, currentRule: rules[field] });
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal });
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'trend', signal });
             assertActive(signal);
             const parsed = parseFirstJsonObject(raw, '今日风向规则重生成未返回可解析 JSON');
             if (!parsed || Object.keys(parsed).length !== 1 || !own(parsed, 'rule') || !ruleText(parsed.rule)) throw new Error('今日风向规则重生成结果无效');
@@ -326,7 +326,7 @@ export function createTodayTrendGenerationController({
                 assistantCount: input.assistantCount, allowIncident, allowHistoricalIncidentRecord, target: input.target,
                 storyDate: input.storyDate ?? null, summaryOnly: input.summaryOnly === true, historyBatch: input.historyBatch });
             input.onPhase?.('generating');
-            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: input.signal });
+            const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'trend', signal: input.signal });
             assertActive(input.signal);
             input.onPhase?.('parsing');
             let delta = null;

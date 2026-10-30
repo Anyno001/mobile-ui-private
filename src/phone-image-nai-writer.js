@@ -57,6 +57,6 @@ export function mergeNaiSlot(raw, characters = [], framing = 'half_body') {
 
 export async function writeNaiSlot({ description, characters, framing, callAI, signal }) {
     if (typeof callAI !== 'function') throw new Error('内置生图需要先在手机设置里配置 API，用来写提示词');
-    const raw = await callAI(NAI_WRITER_PROMPT, buildNaiWriterUserPrompt(description, characters), { isolated: true, signal });
+    const raw = await callAI(NAI_WRITER_PROMPT, buildNaiWriterUserPrompt(description, characters), { isolated: true, module: 'image', signal });
     return mergeNaiSlot(raw, characters, framing);
 }

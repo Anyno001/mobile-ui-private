@@ -4,8 +4,15 @@ import { DOUBAN_PROMPT } from './douban.js';
 import { REVIEW_PROMPT } from './review.js';
 import { CONFESS_PROMPT } from './confess.js';
 import { NIGHT_PROMPT } from './night.js';
+import { TIEBA_PROMPT } from './tieba.js';
+import { HUPU_PROMPT } from './hupu.js';
+import { MOMENTS_PROMPT } from './moments.js';
+import { XHS_PROMPT } from './xhs.js';
+import { ZHIHU_PROMPT } from './zhihu.js';
+import { NEWS_PROMPT } from './news.js';
 import { buildLiveTask } from './live.js';
 import { buildRespondTask } from './respond.js';
+import { buildVideoRequest, isVideoKind } from './video.js';
 
 export const INTERACTIVE_PRESETS = Object.freeze({
     weibo: { label: '微博热场', accent: '#ff8200', mode: 'social', prompt: '短句、热搜感、转评赞语气、鲜明人设与轻快网络表达' },
@@ -66,7 +73,18 @@ export const COMMUNITY_PLATFORM_PROMPTS = Object.freeze({
     review: REVIEW_PROMPT,
     confess: CONFESS_PROMPT,
     night: NIGHT_PROMPT,
+    tieba: TIEBA_PROMPT,
+    hupu: HUPU_PROMPT,
+    moments: MOMENTS_PROMPT,
+    xhs: XHS_PROMPT,
+    zhihu: ZHIHU_PROMPT,
+    news: NEWS_PROMPT,
 });
+
+// 同步社区（接收 gal 正文帖子）的衔接说明：recentPosts 是社区里已有的帖子摘要，新内容接着写、不重复。
+const STORY_LINK_RULE = '本社区的部分帖子来自正文剧情（见 recent_posts_data），新内容要和它们衔接，可以接着讨论、追问或反转，不要重复已有的帖子。';
+const storyLinkBlock = (storyLinked, recentPosts) => (storyLinked
+    ? `\n${STORY_LINK_RULE}\n${dataBlock('recent_posts_data', String(recentPosts || ''), 3000)}` : '');
 
 // 未知平台与存储迁移保持一致，回落到小组论坛。
 export const resolveCommunityPlatform = platform => (Object.hasOwn(COMMUNITY_PLATFORM_PROMPTS, platform) ? platform : 'douban');
@@ -77,7 +95,8 @@ export const communityKindAllowsMeta = (kind, platform) => kind === 'feed_batch'
 const rosterText = actorRoster => (Array.isArray(actorRoster) ? actorRoster.map(name => String(name || '').trim()).filter(Boolean).slice(0, 20).join('、') : '');
 const worldBookBlockOf = worldBookText => (worldBookText ? `\n${dataBlock('world_book_data', worldBookText, String(worldBookText).length)}` : '');
 
-export function buildCommunityRequest({ kind, platform, styleInput, generatedPrompt, context, worldBookText, actorRoster, post, respondTo, room, recentDanmaku, hostIsUser, nsfw }) {
+export function buildCommunityRequest({ kind, platform, styleInput, generatedPrompt, context, worldBookText, actorRoster, post, respondTo, room, recentDanmaku, hostIsUser, nsfw, storyLinked, recentPosts, ...videoArgs }) {
+    if (isVideoKind(kind)) return buildVideoRequest({ kind, nsfw, context, worldBookText, actorRoster, respondTo, ...videoArgs });
     const key = resolveCommunityPlatform(platform);
     const contentRule = communityContentRule(nsfw === true);
     const spec = COMMUNITY_PLATFORM_PROMPTS[key];
@@ -92,7 +111,7 @@ export function buildCommunityRequest({ kind, platform, styleInput, generatedPro
     }
     const tasks = {
         style_prompt: () => `按「${spec.label}」的语感，写一段可直接用于后续内容生成的风格提示词，说明内容结构、语气与排版习惯。items 返回 1 项，字段为 title、prompt。\n平台基调：${spec.defaultStyle}\n${contentRule}`,
-        feed_batch: () => `${spec.feedGuide}\n${spec.feedFields}\n${COMMUNITY_COMMON_RULES}\n${contentRule}`,
+        feed_batch: () => `${spec.feedGuide}\n${spec.feedFields}\n${COMMUNITY_COMMON_RULES}\n${contentRule}${storyLinkBlock(storyLinked === true, recentPosts)}`,
         comment_batch: () => (respondTo
             // 即时回应：用户刚发的帖子或评论由 respondTo 给出，数量与字段以 respond.js 为准。
             ? `${spec.commentGuide}\n${buildRespondTask(key, respondTo)}\n${COMMUNITY_COMMON_RULES}\n${contentRule}\n${dataBlock('post_data', typeof post === 'string' ? post : JSON.stringify(post ?? ''), 3000)}`

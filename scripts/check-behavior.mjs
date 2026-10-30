@@ -59,6 +59,7 @@ import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeOutfitStore } from '../src/calendar-outfit-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
 import { createCommunityTemplate, deleteLiveDanmaku, deriveInteractiveActorId, findLiveRoomForScene, normalizeInteractiveStore, updateLiveDanmaku } from '../src/interactive-scene-model.js';
+import { COMMUNITY_PLATFORMS } from '../src/interactive-scene-constants.js';
 import { pmIDBKeys } from '../src/pm-idb.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getCommunityInjectionState, runCommunityInjectionAction } from '../src/interactive-scene-phone.js';
@@ -3181,8 +3182,8 @@ try {
     const expectedReplacementListenerCounts = new Map([
         ['generation_started', 1], ['settings_updated', 1],
         ['chatcompletion_source_changed', 1], ['oai_preset_changed_after', 1],
-        // MESSAGE_RECEIVED 同时服务社区观察和自动计数，两个职责必须各有一个监听器。
-        ['message_received', 2], ['chat_changed', 1],
+        // MESSAGE_RECEIVED 同时服务社区观察、自动计数和 gal 前端联动（要事件参数里的楼层号），三个职责各有一个监听器。
+        ['message_received', 3], ['chat_changed', 1],
     ]);
     for (const [eventName, expectedCount] of expectedReplacementListenerCounts) {
         assert.equal(replacementListeners.get(eventName)?.length, expectedCount,
@@ -5580,6 +5581,29 @@ const importedUserGeneration = { version: 1, items: [{ id: 'user-1', title: '魅
 const validV16Backup = { ...validV15Backup, schemaVersion: 16, userGeneration: importedUserGeneration };
 const parsedV16Backup = parseBackupData(validV16Backup, currentBackup);
 assert.deepEqual(parsedV16Backup.userGeneration, importedUserGeneration, 'v16 User 库必须规范化后完整往返');
+{
+    // v3 社区帖子的配图描述（image）与 gal 正文来源（source，含 stale）、同步社区标记（igsSync）都要能随备份往返。
+    const actorId = deriveInteractiveActorId('story', 'passerby', 'passerby:阿禾');
+    const v3Scenes = normalizeInteractiveStore({ version: 3, scopes: { story: {
+        activeSceneId: 'scene-img', sceneOrder: ['scene-img'], liveRooms: {}, liveOrder: [],
+        actors: { [actorId]: { actorId, type: 'passerby', displayName: '阿禾', bindingKey: 'passerby:阿禾', profile: '', createdAt: 1 } },
+        scenes: { 'scene-img': {
+            id: 'scene-img', title: '雨城热搜', platform: 'weibo', nsfw: false, igsSync: true, preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '', createdAt: 1, updatedAt: 1,
+            posts: [{
+                id: 'post-img', authorId: actorId, authorNameSnapshot: '阿禾', content: '雨后的天桥', tags: [], createdAt: 1, comments: [], liked: false, shareCount: 0, shared: false,
+                image: { desc: '雨后天桥上的积水倒影' }, source: { type: 'igs', floor: 3, key: 'igs:abc:12:def', stale: true },
+            }],
+        } },
+    } } });
+    const parsedImageBackup = parseBackupData({ ...validV16Backup, interactiveScenes: v3Scenes }, currentBackup);
+    const roundTripped = parsedImageBackup.interactiveScenes.scopes.story.scenes['scene-img'];
+    assert.deepEqual(roundTripped.posts[0].image, { desc: '雨后天桥上的积水倒影' }, '带配图描述的帖子必须能随备份导入');
+    assert.deepEqual(roundTripped.posts[0].source, { type: 'igs', floor: 3, key: 'igs:abc:12:def', stale: true });
+    assert.equal(roundTripped.igsSync, true);
+    const brokenImage = structuredClone(v3Scenes);
+    brokenImage.scopes.story.scenes['scene-img'].posts[0].image = { desc: '描述', url: 'https://example.test/a.png' };
+    assert.throws(() => parseBackupData({ ...validV16Backup, interactiveScenes: brokenImage }, currentBackup), /image/, 'image 只能有 desc');
+}
 assert.deepEqual(parsedV16Backup.desktopIcons, {}, 'v1-v16 备份缺少桌面图标时必须兼容为空映射');
 assert.throws(() => parseBackupData({ ...validV16Backup, schemaVersion: 17 }, currentBackup),
     /备份版本 17 缺少 desktopIcons/);
@@ -7333,7 +7357,7 @@ assert.match(promptWorkspaceHtml, /aria-label="使用瓜博主题色" aria-press
 assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="#123abc"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
 assert.match(promptWorkspaceHtml, /设置社区内容的表达风格与氛围。/);
-assert.equal((promptWorkspaceHtml.match(/data-action="scene-accent" data-accent=/g) || []).length, 5, '主题色选择器是五个平台的点缀色');
+assert.equal((promptWorkspaceHtml.match(/data-action="scene-accent" data-accent=/g) || []).length, COMMUNITY_PLATFORMS.length, '主题色选择器是每个平台一个点缀色（跟随 COMMUNITY_PLATFORMS）');
 assert.match(promptWorkspaceHtml, /id="pm-scene-nsfw" class="pm-scene-switch " role="switch" aria-checked="false"[^>]*data-action="toggle-nsfw"/, '风格页提供成人内容开关，默认随 scene.nsfw');
 assert.match(renderCommunityWorkspace({ ...workspaceScene, nsfw: true }, 'prompt', { pinnedSceneIds: [] }), /id="pm-scene-nsfw" class="pm-scene-switch is-on" role="switch" aria-checked="true"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-home" data-action="tab" data-tab="feed" aria-label="返回子社区"/);
@@ -7437,7 +7461,7 @@ assert.match(unpinnedLauncherHtml, /id="pm-scene-app"[^>]*data-community-platfor
 assert.doesNotMatch(unpinnedLauncherHtml, /data-action="preset"|pm-scene-preset|--scene-accent/, '旧的六个 preset 按钮已删除');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-home"[^>]*data-action="desktop"[^>]*aria-label="返回桌面"/,
     '社区启动页返回桌面必须复用灰色 home 控件');
-assert.equal((unpinnedLauncherHtml.match(/data-action="pick-platform"/g) || []).length, 5, '启动页提供五张平台卡片');
+assert.equal((unpinnedLauncherHtml.match(/data-action="pick-platform"/g) || []).length, COMMUNITY_PLATFORMS.length, '启动页每个平台一张卡片（跟随 COMMUNITY_PLATFORMS）');
 assert.match(unpinnedLauncherHtml, /data-platform="douban" data-community-platform="douban" aria-pressed="false"><span class="pm-scene-platform-icon" aria-hidden="true">逗<\/span><span class="pm-scene-platform-check" aria-hidden="true">[\s\S]*?<b>逗瓣<\/b><span class="pm-scene-platform-slogan">组员都很会说<\/span>/, '平台卡片显示图标圆、谐音名与小标语');
 assert.doesNotMatch(unpinnedLauncherHtml, /pm-scene-platform-dot/, '平台卡片不再有右上角小圆点');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-topbar"[\s\S]*?class="pm-scene-title"><b>社区<\/b>[\s\S]*?data-action="exit"/, '启动页顶栏复用三栏网格：返回、居中标题、关闭');

@@ -1,8 +1,10 @@
 import { COMMUNITY_PLATFORMS, platformForPreset } from './interactive-scene-constants.js';
 
 const PLATFORM_NAMES = Object.freeze({
-    weibo: '微博广场', douban: '小组论坛', review: '书评', confess: '树洞', night: '夜间来信',
+    weibo: '微博广场', douban: '小组论坛', review: '书评', confess: '树洞', night: '夜间来信', tieba: '贴吧', hupu: '虎扑步行街',
+    moments: '朋友圈', xhs: '小红书', zhihu: '知乎', news: '新闻',
 });
+const MOMENTS_AUDIENCE_LABELS = Object.freeze({ partial: '部分可见', private: '仅自己可见' });
 const DANMAKU_TAGS = Object.freeze({ host: '[主播] ', gift: '[礼物] ', system: '[系统] ' });
 
 const cleanText = (value, max) => {
@@ -67,6 +69,63 @@ const POST_RENDERERS = {
         }
         return lines;
     },
+    tieba(post, content, author, actors) {
+        return POST_RENDERERS.douban(post, content, author, actors);
+    },
+    hupu(post, content, author, actors) {
+        const title = cleanText(post.title, 80);
+        const lines = [`${title ? `【${title}】` : ''}${author}：${content}`];
+        for (const comment of comments(post)) {
+            const text = cleanText(comment?.content, 1000);
+            if (text) lines.push(`  回帖 ${renderAuthor(comment, actors)}：${text}`);
+        }
+        return lines;
+    },
+    moments(post, content, author, actors) {
+        const notes = [cleanText(post.place, 40), MOMENTS_AUDIENCE_LABELS[post.audience] || ''].filter(Boolean);
+        const lines = [`${author}：${content}${notes.length ? `（${notes.join('，')}）` : ''}`];
+        const likers = (Array.isArray(post.likers) ? post.likers : []).map(name => cleanText(name, 80)).filter(Boolean);
+        if (likers.length) lines.push(`  点赞：${likers.join('、')}`);
+        const all = comments(post);
+        for (const comment of all) {
+            const text = cleanText(comment?.content, 1000);
+            if (!text) continue;
+            const target = comment.quoteId ? all.find(item => item?.id === comment.quoteId) : null;
+            lines.push(`  ${renderAuthor(comment, actors)}${target ? ` 回复 ${renderAuthor(target, actors)}` : ''}：${text}`);
+        }
+        return lines;
+    },
+    xhs(post, content, author, actors) {
+        const title = cleanText(post.title, 80);
+        const tags = (Array.isArray(post.tags) ? post.tags : []).map(tag => cleanText(tag, 30)).filter(Boolean);
+        const lines = [`${title ? `【${title}】` : ''}${author}：${content}${tags.length ? ` ${tags.map(tag => `#${tag}`).join(' ')}` : ''}`];
+        for (const comment of comments(post)) {
+            const text = cleanText(comment?.content, 1000);
+            if (text) lines.push(`  评论 ${renderAuthor(comment, actors)}：${text}`);
+        }
+        return lines;
+    },
+    zhihu(post, content, author, actors) {
+        const question = cleanText(post.question, 80);
+        const bio = cleanText(post.authorBio, 30);
+        const head = post.ask === true ? `提问 ${author}：${question}${content !== question ? `｜${content}` : ''}`
+            : `${question ? `问：${question}｜` : ''}答主 ${author}${bio ? `（${bio}）` : ''}：${content}`;
+        const lines = [head];
+        for (const comment of comments(post)) {
+            const text = cleanText(comment?.content, 1000);
+            if (text) lines.push(`  评论 ${renderAuthor(comment, actors)}：${text}`);
+        }
+        return lines;
+    },
+    news(post, content, author, actors) {
+        const head = [cleanText(post.column, 12) && `[${cleanText(post.column, 12)}]`, cleanText(post.title, 80) && `【${cleanText(post.title, 80)}】`].filter(Boolean).join('');
+        const lines = [`${head}${author}：${content}`];
+        for (const comment of comments(post)) {
+            const text = cleanText(comment?.content, 1000);
+            if (text) lines.push(`  网友 ${renderAuthor(comment, actors)}：${text}`);
+        }
+        return lines;
+    },
     night(post, content, author, actors) {
         const to = cleanText(post.to, 40);
         const sign = cleanText(post.sign, 40) || author;
@@ -101,6 +160,8 @@ export function renderCommunitySource(source) {
     const body = [];
     for (const post of Array.isArray(scene.posts) ? scene.posts : []) {
         if (selectedPostIds && !selectedPostIds.has(post?.id)) continue;
+        // 从 gal 正文导入的帖子本来就在正文里：「全部注入」时跳过，只有用户在注入页单独勾选才写入。
+        if (!selectedPostIds && post?.source?.type === 'igs') continue;
         const content = cleanText(post?.content, 4000);
         if (!content) continue;
         body.push(...POST_RENDERERS[platform](post, content, renderAuthor(post, actors), actors));

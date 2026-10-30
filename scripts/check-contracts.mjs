@@ -16,6 +16,8 @@ const CSS_MODULE_FILES = [
   'styles/today-trend.css',
   'styles/gallery.css',
   'styles/live.css',
+  'styles/video.css',
+  'styles/shop.css',
   'styles/overrides.css',
 ];
 const [srcEntries, bundle, cssEntry, manifestText, packageText, lockText, readme, projectText, baselineText, cssTokensText, lifecycleResourcesText, governanceRegistryText, ...cssModules] = await Promise.all([
@@ -3204,7 +3206,7 @@ for (const expected of [
   'temperature: normalizeIndependentApiTemperature(cfg.temperature)',
   'const signal = options.signal', 'signal,', 'throwIfAborted(signal)', 'readApiError(response, signal)',
 ]) requireText('ai.js', aiCode, expected);
-for (const expected of ['pm-cfg-temperature', 'normalizeIndependentApiTemperature(profile.temperature)', 'addOrUpdateProfile({ apiUrl, apiKey, model, temperature })']) requireText('settings-api-controller.js', sourceModuleByName.get('settings-api-controller.js')?.code || '', expected);
+for (const expected of ['pm-cfg-temperature', 'normalizeIndependentApiTemperature(profile?.temperature ?? defaultTemperature)', 'addOrUpdateProfile({ ...(editingId ? { id: editingId } : {}), name, apiUrl, apiKey, model, temperature })']) requireText('settings-api-controller.js', sourceModuleByName.get('settings-api-controller.js')?.code || '', expected);
 for (const expected of ['beforeApply', 'closePhone(true)', 'clearPluginData']) requireText('settings-backup-controller.js', settingsBackupControllerCode, expected);
 requireText('settings-ui.js', settingsUiCodeForInteractive, '__pmClearAllData');
 for (const expected of ['if (!force)', 'persistCurrentHistory()', 'persistPhoneUiSnapshot?.()']) {
@@ -3763,7 +3765,7 @@ for (const expected of [
   '.pm-scene-post-author{min-width:0;flex:1;justify-content:center;gap:var(--pm-space-0-5);padding-top:var(--pm-space-0)}',
   '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
   '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
-  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em',
+  '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-post-body-stroke:.25px currentColor;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em',
   '.pm-scene-post p{font-size:var(--pm-scene-post-body-font-size);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-loose);letter-spacing:var(--pm-scene-post-body-letter-spacing)',
   '.pm-scene-comment>span:first-child{flex:1;min-width:0;word-break:break-word}',
   '.pm-scene-comment-content{letter-spacing:var(--pm-scene-comment-letter-spacing)}',
@@ -4071,6 +4073,8 @@ for (const match of css.matchAll(/([^{}]+)\{/g)) {
   if (selector.includes('.pm-message-select-check') && selector.includes('.pm-custom-check')) failures.push('style.css: message selection checkbox and binary toggle must not share a selector');
 }
 requireText('package.json', packageText, 'npm run check:ambient');
+requireText('package.json', packageText, '"check:shop": "node scripts/check-shop.mjs"');
+requireText('package.json', packageText, 'npm run check:shop');
 requireText('package.json', packageText, '"check:emoji": "node scripts/check-emoji.mjs"');
 requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
@@ -5064,7 +5068,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.7.0') failures.push('version: expected release version 1.7.0');
+if (packageJson.version !== '1.8.0') failures.push('version: expected release version 1.8.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

@@ -5,6 +5,7 @@ import { formatQuoteContext } from './chat-message-model.js';
 import { renderCommunitySource } from './community-injection.js';
 import { renderTodayTrendInjection } from './today-trend-injection.js';
 import { buildStoryOraclePlanInjection } from './story-oracle-model.js';
+import { renderShopInjection } from './shop-model.js';
 import { resolveEmojiText } from './messaging.js';
 import { getGroupMembers, resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
@@ -38,6 +39,7 @@ const CALENDAR_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:calendar:`;
 const OUTFIT_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:outfit:`;
 const RECIPE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:recipe:`;
 const STORY_ORACLE_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:story-oracle:`;
+const SHOP_KEY_PREFIX = `${BIDIRECTIONAL_KEY}:shop:`;
 
 function injectionKey(name) {
     return `${BIDIRECTIONAL_KEY}:${encodeURIComponent(name)}`;
@@ -274,7 +276,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore, storyOraclePlans = [],
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore, storyOraclePlans = [], shopStore = null,
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -405,6 +407,20 @@ ${body}
     const storyOraclePrompt = storyOracleItem && !storyOracleBudgetRejected
         ? { prompts: [{ ...storyOracleItem }], usedTokens: storyOracleDemand, truncatedCount: 0 }
         : { prompts: [], usedTokens: 0, truncatedCount: 0 };
+    // 桃宝：只有用户在订单上点过「告诉剧情」的购物才写入；和剧情线路一样先从总预算里预留，放在社区注入的位置。
+    const shopBody = currentStorageId && injection.community.position >= 0
+        ? renderShopInjection(shopStore?.scopes?.[currentStorageId], userName) : '';
+    const shopItem = shopBody ? {
+        key: `${SHOP_KEY_PREFIX}${encodeURIComponent(currentStorageId)}`,
+        source: 'shop',
+        content: `[桃宝购物记录 — 当前角色可见]\n${shopBody}\n[结束]`,
+        position: injection.community.position,
+        depth: injection.community.depth,
+    } : null;
+    const shopDemand = shopItem ? renderedItemTokenDemand(shopItem) : 0;
+    const shopBudgetRejected = Boolean(shopItem && storyOraclePrompt.usedTokens + shopDemand >= baseBudgetTokens);
+    const shopPrompt = shopItem && !shopBudgetRejected ? { prompts: [{ ...shopItem }], usedTokens: shopDemand } : { prompts: [], usedTokens: 0 };
+    const reservedTokens = storyOraclePrompt.usedTokens + shopPrompt.usedTokens;
     const calendarFamilyDemand = {
         calendar: calendarItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
         recipe: recipeItems.reduce((sum, item) => sum + renderedItemTokenDemand(item), 0),
@@ -418,7 +434,7 @@ ${body}
     };
     const budget = allocateContextBudget({
         config,
-        safeMaxTokens: storyOracleBudgetRejected ? baseSafeMaxTokens : Math.max(1, baseBudgetTokens - storyOracleDemand),
+        safeMaxTokens: reservedTokens ? Math.max(1, baseBudgetTokens - reservedTokens) : baseSafeMaxTokens,
         demandBySource,
     });
     const calendarFamilyBudget = allocateCalendarFamilyBudget({
@@ -432,7 +448,7 @@ ${body}
     const outfit = allocateRenderedPrompts(outfitItems, calendarFamilyBudget.allocations.outfit);
     const todayTrend = allocateRenderedPrompts(todayTrendItems, budget.allocations.todayTrend);
     return {
-        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts, ...storyOraclePrompt.prompts],
+        prompts: [...phone.prompts, ...community.prompts, ...calendar.prompts, ...recipe.prompts, ...outfit.prompts, ...todayTrend.prompts, ...storyOraclePrompt.prompts, ...shopPrompt.prompts],
         diagnostics: {
             estimated: true,
             budget,
@@ -464,7 +480,8 @@ ${body}
                 usedTokens: storyOraclePrompt.usedTokens,
                 rejected: storyOracle.rejected || (storyOracleBudgetRejected ? `剧情线路超过本轮可用上下文预算（${storyOracleDemand}/${baseBudgetTokens} tokens），未注入主聊天。` : ''),
             },
-            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens + storyOraclePrompt.usedTokens,
+            ...(shopItem ? { shop: { demandTokens: shopDemand, promptCount: shopPrompt.prompts.length, usedTokens: shopPrompt.usedTokens, rejected: shopBudgetRejected ? `桃宝购物记录超过本轮可用上下文预算（${shopDemand}/${baseBudgetTokens} tokens），未注入主聊天。` : '' } } : {}),
+            usedTokens: phone.usedTokens + community.usedTokens + calendar.usedTokens + recipe.usedTokens + outfit.usedTokens + todayTrend.usedTokens + storyOraclePrompt.usedTokens + shopPrompt.usedTokens,
             truncatedCount: phone.truncatedCount + community.truncatedCount + calendar.truncatedCount + recipe.truncatedCount + outfit.truncatedCount + todayTrend.truncatedCount,
         },
     };

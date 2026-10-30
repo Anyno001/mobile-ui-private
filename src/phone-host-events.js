@@ -1,6 +1,7 @@
 import { beginBranchInheritance, resolveBranchInheritance } from './branch-scope-inheritance.js';
 import { resolveCommunityMessageEvents, resolveHostEvent } from './interactive-scene-scheduler.js';
 
+const IGS_LINK_EVENT_KEYS = Object.freeze(['MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED']);
 const warnedRegistrationFailures = new Set();
 function warnRegistrationFailureOnce(key, eventName, error) {
     if (warnedRegistrationFailures.has(key)) return;
@@ -64,6 +65,13 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
                 try { deps.observeCommunityTurn?.(currentContext?.chat || []); } catch { /* 观察失败不得阻断宿主消息事件 */ }
                 Promise.resolve(deps.observeCalendarTurn?.()).catch(() => {});
                 observeTodayTrendAfterHostEvent(deps, runtime, getCtx, getStorageId);
+            }));
+        }
+        // 与 gal 前端（IGS）联动：事件参数里的楼层号交给 igs-feed-sync.js；联动关着时 observe 直接返回，不碰 IGS。
+        for (const key of IGS_LINK_EVENT_KEYS) {
+            const eventName = resolveHostEvent(eventTypes, key);
+            if (eventName) results.push(registerOnce(`igs:${key}`, eventName, messageId => {
+                try { deps.igsLink?.observe(key, messageId); } catch { /* 联动出错不得阻断宿主消息事件 */ }
             }));
         }
         const received = resolveHostEvent(eventTypes, 'MESSAGE_RECEIVED');

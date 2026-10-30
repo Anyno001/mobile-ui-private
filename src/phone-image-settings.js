@@ -76,7 +76,20 @@ export function loadImageSettings(storage = globalThis.localStorage) {
 export function saveImageSettings(value, storage = globalThis.localStorage) {
     const next = normalizeImageSettings(value);
     storage?.setItem?.(IMAGE_SETTINGS_KEY, JSON.stringify(next));
+    applyImageGenVisibility(next.enabled);
     return next;
+}
+
+/** 生图总开关：关闭时在手机与弹层上挂 data-image-gen="off"，由样式隐藏所有出图入口；已生成的图照常显示。 */
+export function applyImageGenVisibility(enabled = loadImageSettings().enabled) {
+    const doc = globalThis.document;
+    if (!doc?.getElementById) return;
+    for (const id of ['pm-iphone', 'pm-overlay', 'pm-overlay-sub']) {
+        const element = doc.getElementById(id);
+        if (!element) continue;
+        if (enabled) element.removeAttribute('data-image-gen');
+        else element.setAttribute('data-image-gen', 'off');
+    }
 }
 
 /** 某个模块实际用的方案；选的预设被删了就回到全局。 */

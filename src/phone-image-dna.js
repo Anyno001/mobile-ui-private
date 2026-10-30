@@ -146,7 +146,7 @@ export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPe
             }
             const persona = getUserPersona?.() || {};
             const raw = await callAI(DNA_SYSTEM_PROMPT, buildDnaUserPrompt({ name, isUser, ...context,
-                userDesc: context.userDesc ?? persona.description }), { isolated: true, signal });
+                userDesc: context.userDesc ?? persona.description }), { isolated: true, module: 'image', signal });
             const record = parseDnaResponse(raw);
             await setRecord(scopeKey, name, record);
             return record;

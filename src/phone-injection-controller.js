@@ -29,6 +29,8 @@ export function createPhoneInjectionController({ state, runtime, deps, getCtx, g
         try { interactiveStore = await deps.getInteractiveStore?.(); } catch (error) { interactiveStore = null; }
         let storyOracleStore;
         try { storyOracleStore = await deps.getStoryOracleStore?.(); } catch (error) { storyOracleStore = null; }
+        let shopStore;
+        try { shopStore = await deps.getShopStore?.(); } catch (error) { shopStore = null; }
         if (epoch !== runtime.injectionEpoch || getStorageId() !== storageId) return null;
         const storyOraclePlans = enabledStoryOraclePlans(storyOracleStore, storageId);
         return {
@@ -46,7 +48,7 @@ export function createPhoneInjectionController({ state, runtime, deps, getCtx, g
             calendarOutfits: getCalendarData('getCalendarOutfitStore'),
             todayTrendStore: todayTrendStore === undefined
                 ? runtime.todayTrend?.pendingInjectionStore ?? runtime.todayTrend?.store : todayTrendStore,
-            storyOraclePlans,
+            storyOraclePlans, shopStore,
         };
     }
 

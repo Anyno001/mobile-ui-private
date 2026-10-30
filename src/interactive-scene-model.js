@@ -1,8 +1,10 @@
 import {
-    COMMUNITY_PLATFORMS, COMMUNITY_POST_FLAGS, INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, LIVE_DANMAKU_KINDS, PHONE_UI_PAGES, PHONE_UI_TABS,
-    platformForPreset,
+    COMMUNITY_PLATFORMS, COMMUNITY_POST_FLAGS, IGS_SYNC_PLATFORMS, INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, LIVE_DANMAKU_KINDS, PHONE_UI_PAGES, PHONE_UI_TABS,
+    MOMENTS_LIKERS_MAX, platformForPreset,
 } from './interactive-scene-constants.js';
 import { stripPersistedV2ContentRating as stripPersistedV2ContentRatingImpl } from './interactive-scene-store-migration.js';
+import { B2_POST_KEYS, findB2PostFieldError, normalizeB2PostFields } from './interactive-scene-post-fields.js';
+import { normalizeScopeVideos } from './video-schema.js';
 import {
     createCommunityTemplate, createSceneFromCommunityTemplate as createSceneFromCommunityTemplateSnapshot, normalizeImportedTemplateSceneIds,
     normalizeSharedCommunityTemplates, validPhoneUiId,
@@ -510,7 +512,8 @@ function normalizePostSource(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const key = optionalText(value.key, 120);
     if (value.type !== 'igs' || !Number.isSafeInteger(value.floor) || value.floor < 0 || !key) return null;
-    return { type: 'igs', floor: value.floor, key };
+    // stale：正文楼层已改或已删，但用户动过这条（编辑、评论、点赞），所以保留并标记「原文已变」。
+    return { type: 'igs', floor: value.floor, key, ...(value.stale === true ? { stale: true } : {}) };
 }
 
 // 帖子可选字段（书评 work/rating 为 v2 已有，其余为 v3 新增）：缺省不输出该键，非法值丢弃而不让整条帖子失效。
@@ -530,6 +533,7 @@ function normalizePostExtras(raw) {
         ...(title ? { title } : {}), ...(flag ? { flag } : {}), ...(repost ? { repost } : {}), ...(mood ? { mood } : {}),
         ...(work ? { work } : {}), ...(workAuthor ? { workAuthor } : {}), ...(rating ? { rating } : {}),
         ...(to ? { to } : {}), ...(sign ? { sign } : {}), ...(source ? { source } : {}), ...(image ? { image } : {}),
+        ...normalizeB2PostFields(raw),
     };
 }
 
@@ -550,11 +554,14 @@ function assertV3PostExtras(raw) {
         assertV2Text(raw.image.desc, 200, 'post.image.desc');
     }
     if (Object.hasOwn(raw, 'source')) {
-        assertV2Keys(raw.source, ['type', 'floor', 'key'], 'post.source');
+        assertV2Keys(raw.source, ['type', 'floor', 'key', 'stale'], 'post.source');
         if (raw.source.type !== 'igs') throw new Error(`互动场景 ${strictTag} post.source.type 必须是 igs`);
         if (!Number.isSafeInteger(raw.source.floor) || raw.source.floor < 0) throw new Error(`互动场景 ${strictTag} post.source.floor 必须是非负整数`);
         assertV2Text(raw.source.key, 120, 'post.source.key');
+        if (Object.hasOwn(raw.source, 'stale') && raw.source.stale !== true) throw new Error(`互动场景 ${strictTag} post.source.stale 只能是 true`);
     }
+    const b2Error = findB2PostFieldError(raw);
+    if (b2Error) throw new Error(`互动场景 ${strictTag} ${b2Error[0]} ${b2Error[1]}`);
 }
 
 function normalizePost(raw, context) {
@@ -562,7 +569,7 @@ function normalizePost(raw, context) {
         const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
         assertV2Keys(raw, [
             'id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared', 'work', 'rating',
-            ...(isV3 ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image'] : []),
+            ...(isV3 ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', ...B2_POST_KEYS] : []),
         ], 'post');
         assertV2Text(raw.id, 80, 'post.id'); assertV2AuthorFields(raw, 'post'); assertV2Text(raw.content, 4000, 'post.content'); assertV2Timestamp(raw.createdAt, 'post.createdAt');
         if (Object.hasOwn(raw, 'work')) assertV2Text(raw.work, 40, 'post.work');
@@ -668,7 +675,7 @@ function normalizeSceneWithLegacyLive(raw, options = {}) {
     const isV3 = sourceVersion === INTERACTIVE_STORE_VERSION;
     if (isStrictVersion(sourceVersion)) {
         assertV2Keys(raw, isV3
-            ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+            ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
             : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
         if (!isV3 && raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'warmupStarted', 'danmaku'], 'live');
         assertV2Text(raw.id, 80, 'scene.id');
@@ -678,6 +685,7 @@ function normalizeSceneWithLegacyLive(raw, options = {}) {
         }
         if (isV3 && typeof raw.nsfw !== 'boolean') throw new Error(`互动场景 ${strictTag} scene.nsfw 必须是布尔值`);
         if (isV3 && Object.hasOwn(raw, 'autoRespond') && typeof raw.autoRespond !== 'boolean') throw new Error(`互动场景 ${strictTag} scene.autoRespond 必须是布尔值`);
+        if (isV3 && Object.hasOwn(raw, 'igsSync') && raw.igsSync !== true) throw new Error(`互动场景 ${strictTag} scene.igsSync 只能是 true`);
         assertV2Text(raw.preset, 30, 'scene.preset');
         assertV2Text(raw.styleInput, 2000, 'scene.styleInput', { allowEmpty: true });
         assertV2Text(raw.generatedPrompt, 6000, 'scene.generatedPrompt', { allowEmpty: true });
@@ -727,6 +735,8 @@ function normalizeSceneWithLegacyLive(raw, options = {}) {
         nsfw: raw?.nsfw === true,
         // 「发布后自动回应」缺省视为开；宽松读入只认明确的 false，且只在关闭时写出该键，老数据与模板保持原样。
         ...(raw?.autoRespond === false ? { autoRespond: false } : {}),
+        // 接收 gal 正文（IGS）同平台帖子的「同步社区」：只在为 true 时写出；不能接收的平台丢弃。
+        ...(raw?.igsSync === true && IGS_SYNC_PLATFORMS.includes(platform) ? { igsSync: true } : {}),
         preset,
         styleInput: text(raw?.styleInput, 2000),
         generatedPrompt: text(raw?.generatedPrompt, 6000),
@@ -889,10 +899,17 @@ export function deleteSceneComment(scene, postId, commentId) {
     scene.updatedAt = Date.now();
 }
 
-export function toggleScenePostLike(scene, postId) {
+// likerName：朋友圈点赞时把用户名写进点赞名单（取消赞时移除）；其余平台不传。
+export function toggleScenePostLike(scene, postId, likerName = '') {
     const post = scene?.posts?.find(item => item.id === postId);
     if (!post) throw new Error('帖子不存在');
     post.liked = !post.liked;
+    const name = text(likerName, 80);
+    if (name) {
+        const others = list(post.likers).filter(item => item !== name);
+        const likers = post.liked ? [...others, name].slice(-MOMENTS_LIKERS_MAX) : others;
+        if (likers.length) post.likers = likers; else delete post.likers;
+    }
     scene.updatedAt = Date.now();
 }
 
@@ -931,7 +948,7 @@ export function enforceInteractiveSceneLimit(scope) {
 }
 
 export function createEmptyInteractiveScope() {
-    return { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {}, liveRooms: {}, liveOrder: [] };
+    return { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {}, liveRooms: {}, liveOrder: [], videos: {}, videoOrder: [] };
 }
 
 const liveRoomIdFor = (scopeId, sceneId) => `live_${stableHash(`${scopeId}\u0000${sceneId}`)}`;
@@ -1177,7 +1194,8 @@ function normalizeStoreScopes(raw, result, sourceVersion) {
         normalizedScopeIds.add(scopeId);
         if (isStrictVersion(sourceVersion)) {
             const scopeKeys = ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder'] : [])];
-            assertV2Keys(value, scopeKeys, `scope ${scopeId}`);
+            // 视频是 v3 内的可选键（缺省视为空），不进必填清单。
+            assertV2Keys(value, isV3 ? [...scopeKeys, 'videos', 'videoOrder'] : scopeKeys, `scope ${scopeId}`);
             for (const key of scopeKeys) {
                 if (!Object.hasOwn(value, key)) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.${key} 缺失`);
             }
@@ -1262,7 +1280,7 @@ function normalizeStoreScopes(raw, result, sourceVersion) {
             if (live) legacyLives.set(key, live);
         }
         scope.sceneOrder = Object.keys(scope.scenes);
-        if (isV3) normalizeScopeLiveRooms(value, scope, scopeId);
+        if (isV3) { normalizeScopeLiveRooms(value, scope, scopeId); withStrictTag(INTERACTIVE_STORE_VERSION, () => normalizeScopeVideos(value, scope, scopeId)); }
         else migrateLegacyLivesToRooms(scope, scopeId, legacyLives);
         if (sourceVersion === 1 && value.activeSceneId !== undefined && value.activeSceneId !== null && typeof value.activeSceneId !== 'string') throw new Error(`互动场景 v1 scope ${scopeId}.activeSceneId 必须是字符串或 null`);
         const normalizedActiveSceneId = isStrictVersion(sourceVersion) ? value.activeSceneId : normalizeV1DictionaryKey(value.activeSceneId, 80, `scope ${scopeId}.activeSceneId`);

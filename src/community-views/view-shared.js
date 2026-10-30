@@ -6,7 +6,8 @@ import { escapeAttr, escapeHtml } from '../ui.js';
 
 // 各平台默认点缀色（浅色）；与 styles/community.css 里 [data-community-platform] 的值一致，只用于主题色选择器的取值。
 export const COMMUNITY_PLATFORM_ACCENTS = Object.freeze({
-    weibo: '#e0806a', douban: '#5f9a86', review: '#e08e55', confess: '#8f86c6', night: '#6f7fc4',
+    weibo: '#e0806a', douban: '#5f9a86', review: '#e08e55', confess: '#8f86c6', night: '#6f7fc4', tieba: '#5f93c4', hupu: '#b8706c',
+    moments: '#5f88b8', xhs: '#d4616c', zhihu: '#4f8fb8', news: '#3f5f8f',
 });
 
 export const platformOf = scene => (COMMUNITY_PLATFORMS.includes(scene?.platform) ? scene.platform : platformForPreset(scene?.preset));
@@ -142,6 +143,10 @@ export function renderCommentActions(post, comment) {
     return `<span class="pm-scene-comment-actions" hidden><button type="button" data-action="edit-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="编辑评论" title="编辑评论">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-comment" data-post-id="${escapeAttr(post.id)}" data-comment-id="${escapeAttr(comment.id)}" aria-label="删除评论" title="删除评论">${TRASH_ICON_SVG}</button></span>`;
 }
 
+// 从 gal 正文导入的帖子：原楼层改了或删了，但用户动过这条，所以保留并标一个小字「原文已变」。
+export const renderStaleMark = post => (post?.source?.stale === true
+    ? '<span class="pm-scene-stale" title="gal 正文里的原楼层已修改或删除">原文已变</span>' : '');
+
 export const renderEmptyState = (title = '这里还很安静', hint = '发第一篇帖子，或者拍一拍让社区动起来。') => `<div class="pm-scene-empty"><b>${escapeHtml(title)}</b><span>${escapeHtml(hint)}</span></div>`;
 
 // 条目定位：发布并回应后按这个属性滚到用户那条并短暂高亮（见 interactive-scenes.js 的 revealEntry）。
@@ -154,6 +159,33 @@ export function renderRetryRespond(view, entryId, postId, kind) {
 }
 
 export const isOpenPost = (view, post) => Array.isArray(view?.open) && view.open.includes(post.id);
+
+// 帖子从新到旧；createdAt 相同时后写入的在前。
+export const newestFirst = posts => posts.map((post, index) => ({ post, index }))
+    .sort((a, b) => (b.post.createdAt - a.post.createdAt) || (b.index - a.index)).map(item => item.post);
+
+// 筛选胶囊（小红书话题、新闻栏目）：按出现次数汇总，次数相同时先出现的在前。
+export function collectFilterChips(values, max = 8) {
+    const counts = new Map();
+    for (const value of values) if (value) counts.set(value, (counts.get(value) || 0) + 1);
+    return [...counts.entries()].map(([label, count], order) => ({ label, count, order }))
+        .sort((a, b) => (b.count - a.count) || (a.order - b.order)).slice(0, max).map(item => item.label);
+}
+
+// 一排真筛选的胶囊：「全部」加各项；选中项 aria-pressed=true。点击走 filter-tag，写进 view.tag。
+export function renderFilterChips(chips, selected, label) {
+    if (!chips.length) return '';
+    const chip = (value, text) => `<button type="button" class="pm-scene-chip${value === selected ? ' is-active' : ''}" data-action="filter-tag" data-tag="${escapeAttr(value)}" aria-pressed="${value === selected}">${escapeHtml(text)}</button>`;
+    return `<div class="pm-scene-chips" role="group" aria-label="${escapeAttr(label)}">${chip('', '全部')}${chips.map(item => chip(item, item)).join('')}</div>`;
+}
+
+// 只有心形加数字的点赞按钮（小红书卡片、新闻评论区一类紧凑位置）。
+export function renderCompactLike(post, likes, label = '赞') {
+    return `<button type="button" class="pm-scene-like is-compact ${post.liked ? 'is-liked' : ''}" data-action="like" data-post-id="${escapeAttr(post.id)}" aria-pressed="${post.liked}" aria-label="${escapeAttr(`${post.liked ? `取消${label}` : label} ${likes}`)}"><span class="pm-scene-post-metric is-like">${HEART_ICON_SVG}<span>${likes}</span></span></button>`;
+}
+
+// 大于一万写成「1.2万」，其余原样。
+export const compactCount = value => (value >= 10000 ? `${(value / 10000).toFixed(1).replace(/\.0$/, '')}万` : String(value));
 
 // 书的评分汇总：帖子 rating 与评论 rating 一并计入；10 分制保留一位小数，没有评分时 average10 为空串。
 export function summarizeBookRatings(posts) {

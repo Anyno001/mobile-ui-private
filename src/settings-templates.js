@@ -1,6 +1,7 @@
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
-import { THEME_PRESETS } from './config.js';
+import { FONT_CHOICES, normalizeFontChoice, THEME_PRESETS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
+import { loadImageSettings } from './phone-image-settings.js';
 import { DEFAULT_ROLLBACK_FLOORS, MAX_ROLLBACK_FLOORS } from './phone-floor-rollback.js';
 
 export function renderSettingsHome() {
@@ -13,11 +14,19 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>世界书读取</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('igs-link')"><b>与gal前端联动</b></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">全局短消息限制</b><span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
           class="pm-custom-check ${window.__pmWordyLimit === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmWordyLimit === true}"
+          onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+      </div>
+      <div class="pm-global-setting" role="group" aria-labelledby="pm-image-gen-label">
+        <span><b id="pm-image-gen-label">启用生图</b><span class="pm-settings-home-hint">关闭后隐藏所有生图按钮与相册，图片只显示文字描述</span></span>
+        <div id="pm-image-gen-check" onclick="window.__pmToggleImageGen()"
+          class="pm-custom-check ${loadImageSettings().enabled ? 'is-checked' : ''}" role="checkbox" tabindex="0"
+          aria-checked="${loadImageSettings().enabled}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
@@ -30,7 +39,7 @@ export function renderSettingsHome() {
     </div>`;
 }
 
-export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
+export function renderApiSettings({ cfg, useIndependent, profilesHtml, routesHtml = '' }) {
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
@@ -42,10 +51,11 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
         <div id="pm-mode-tip" class="pm-cfg-tip">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆API预设'}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
-        <div class="pm-cfg-label">已保存档案</div>
+        <div class="pm-api-profile-head"><span class="pm-cfg-label">API预设</span><button type="button" class="pm-action-button is-secondary pm-api-profile-new" onclick="window.__pmNewProfile()">新建预设</button></div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
       <div id="pm-indep-config-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
+        <label class="pm-settings-field"><span class="pm-cfg-label">预设名称</span><input id="pm-cfg-name" class="pm-cfg-input" placeholder="留空则用模型名" maxlength="24" value="${cfg.name}"></label>
         <label class="pm-settings-field"><span class="pm-cfg-label">API地址</span><input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}"></label>
         <label class="pm-settings-field"><span class="pm-cfg-label">API Key</span><input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${cfg.apiKey}" maxlength="999"></label>
         <div class="pm-settings-field"><span class="pm-cfg-label">模型名称</span><div class="pm-model-row"><input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或选择" value="${cfg.model}"><button id="pm-model-arrow" type="button" aria-label="选择模型" onclick="window.__pmShowModelPicker()">▼</button></div></div>
@@ -55,6 +65,11 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
           <button id="pm-api-fetch-models" type="button" class="pm-action-button is-model-fetch" onclick="window.__pmTestApi(this)">拉取模型</button>
           <button id="pm-api-test-model" type="button" class="pm-action-button is-api-test" onclick="window.__pmTestModel(this)">测试API</button>
         </div>
+      </div>
+      <div class="pm-settings-section">
+        <div class="pm-cfg-label">按模块分配</div>
+        <div class="pm-cfg-help">各模块可单独指定预设，选择后即时生效；「跟随默认」使用上方保存的模式。</div>
+        <div class="pm-api-route-list">${routesHtml}</div>
       </div>
       <div class="pm-settings-tail"></div>
     </div>`;
@@ -104,6 +119,15 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
         <div class="pm-theme-row">
           <button type="button" class="pm-layout-chip ${theme.iconStyle !== 'cream' ? 'pm-layout-active' : ''}" data-icon-variant="glass" aria-pressed="${theme.iconStyle !== 'cream'}" onclick="window.__pmSetIconStyle('glass')">毛玻璃</button>
           <button type="button" class="pm-layout-chip ${theme.iconStyle === 'cream' ? 'pm-layout-active' : ''}" data-icon-variant="cream" aria-pressed="${theme.iconStyle === 'cream'}" onclick="window.__pmSetIconStyle('cream')">奶油渐层</button>
+        </div>
+      </div>
+      <div class="pm-settings-section">
+        <div class="pm-cfg-label">字体</div>
+        <div class="pm-theme-row">
+          ${Object.entries(FONT_CHOICES).map(([key, choice]) => {
+            const active = normalizeFontChoice(theme.fontFamily) === key;
+            return `<button type="button" class="pm-layout-chip pm-font-chip ${active ? 'pm-layout-active' : ''}" data-font-choice="${key}" aria-pressed="${active}" onclick="window.__pmSetFontFamily('${key}')">${choice.label}</button>`;
+          }).join('')}
         </div>
       </div>
       <div class="pm-settings-section">

@@ -2,7 +2,7 @@ import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
     entryAttr, isOpenPost, noteIndexOf, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu,
-    renderReplyComposer, renderRetryRespond, stablePostMetric,
+    renderReplyComposer, renderRetryRespond, renderStaleMark, stablePostMetric,
 } from './view-shared.js';
 
 export const CONFESS_MOOD_LIMIT = 6;
@@ -39,7 +39,7 @@ function renderNote(post, view) {
     const replies = post.comments.length;
     const replyList = post.comments.map(comment => `<div class="pm-scene-comment"${entryAttr(comment.id)}><span><b>${escapeHtml(comment.authorNameSnapshot)}</b> <span class="pm-scene-comment-content">${escapeHtml(comment.content)}</span>${renderRetryRespond(view, comment.id, post.id, 'comment')}</span>${renderCommentActions(post, comment)}</div>`).join('');
     return `<article class="pm-scene-post is-confess is-note-${noteIndexOf(post.id)} ${open ? 'is-open' : ''}"${entryAttr(post.id)}>
-        <header><span class="pm-scene-note-who">${escapeHtml(post.authorNameSnapshot)}${post.mood ? ` · ${escapeHtml(post.mood)}` : ''}</span>${open ? renderPostMenu(post) : ''}</header>
+        <header><span class="pm-scene-note-who">${escapeHtml(post.authorNameSnapshot)}${post.mood ? ` · ${escapeHtml(post.mood)}` : ''}</span>${renderStaleMark(post)}${open ? renderPostMenu(post) : ''}</header>
         <button type="button" class="pm-scene-note-body" data-action="toggle-open" data-post-id="${escapeAttr(post.id)}" aria-expanded="${open}"><span>${escapeHtml(post.content)}</span></button>
         ${post.image ? imageCardMarkup(post.image.desc, { postId: post.id, author: post.authorNameSnapshot }) : ''}
         <footer>${renderLikeButton(post, '抱抱', hugs, { icon: false })}<span class="pm-scene-note-replies">回应 ${replies}</span>${renderRetryRespond(view, post.id, post.id, 'post')}</footer>

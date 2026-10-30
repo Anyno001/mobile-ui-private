@@ -29,7 +29,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
             const context = await gatherContext(null, { module: 'outfit', signal: task.signal, worldBookMaxChars: 3500, outfitSubject: subject });
             if (!tasks.active(task)) return false;
             const prompts = buildOutfitPrompts(context, profileSnapshot, start, { days, subject });
-            const generated = parseOutfitAiResponse(await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: task.signal }), { start, days });
+            const generated = parseOutfitAiResponse(await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'calendar', signal: task.signal }), { start, days });
             const committed = await commitOutfits(storageId, store => {
                 const current = outfitScopeFor(store, storageId, subject);
                 const currentPreferences = JSON.stringify({

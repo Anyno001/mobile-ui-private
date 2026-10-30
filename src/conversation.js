@@ -52,6 +52,14 @@ export function installConversation(state, deps) {
         );
     };
 
+    // 语音条：点一下展开/收起转写文字；只有展开的那条波形在动，其余静止，长聊天不再常驻动画。
+    window.__pmToggleVoice = card => {
+        const text = card?.parentElement?.querySelector('.pm-voice-text');
+        if (!text) return;
+        text.hidden = !text.hidden;
+        card.classList.toggle('is-open', !text.hidden);
+    };
+
     window.__pmSwitch = (name, _prevSaveKey, _prevStorageId, options = {}) => {
         if (!name?.trim()) return; name = name.trim();
         deps.closeContactSwitcher?.('conversation-switch');

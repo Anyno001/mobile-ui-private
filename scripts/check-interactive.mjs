@@ -379,7 +379,7 @@ assert.match(danmakuRequest.userPrompt, /直播形态：像微博直播现场/, 
         const shellAttributes = {};
         const shell = { querySelectorAll: () => platformButtons, setAttribute: (name, value) => { shellAttributes[name] = value; } };
         assert.equal(pickPlatform(shell, platformButtons[3]), true);
-        assert.deepEqual(platformButtons.map(button => button.getAttribute('aria-pressed')), ['false', 'false', 'false', 'true', 'false']);
+        assert.deepEqual(platformButtons.map(button => button.getAttribute('aria-pressed')), COMMUNITY_PLATFORMS.map((_, index) => String(index === 3)));
         assert.equal(shellAttributes['data-community-platform'], 'confess', '选中平台后点缀色跟随');
         assert.equal(pickPlatform(shell, mkEl({ platform: 'unknown' })), false);
         const switchButton = mkEl({}, 'false'); switchButton.setAttribute('aria-checked', 'false');
@@ -1440,7 +1440,7 @@ const v2DanmakuStore = () => ({
 }
 assert.deepEqual(['weibo', 'douban', 'book', 'romance', 'mature', 'custom', 'unknown-preset', '', undefined].map(platformForPreset),
     ['weibo', 'douban', 'review', 'confess', 'night', 'douban', 'douban', 'douban', 'douban'], 'preset → platform 映射含 custom 与未知值');
-assert.deepEqual([...COMMUNITY_PLATFORMS], ['weibo', 'douban', 'review', 'confess', 'night']);
+assert.deepEqual([...COMMUNITY_PLATFORMS], ['weibo', 'douban', 'review', 'confess', 'night', 'tieba', 'hupu', 'moments', 'xhs', 'zhihu', 'news']);
 assert.equal(normalizeScene({ id: 'scene', preset: 'book' }).platform, 'review');
 assert.equal(normalizeScene({ id: 'scene', preset: 'book', platform: 'night' }).platform, 'night', '已给合法 platform 时不得被 preset 覆盖');
 assert.equal(normalizeScene({ id: 'scene', preset: 'book', platform: 'bogus' }).platform, 'review', '非法 platform 宽松读入时回落到 preset 映射');

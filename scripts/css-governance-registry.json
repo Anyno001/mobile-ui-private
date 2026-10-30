@@ -21,7 +21,8 @@
       "--pm-chat-director-*",
       "--pm-desktop-*",
       "--pm-gallery-*",
-      "--pm-live-*"
+      "--pm-live-*",
+      "--pm-shop-*"
     ],
     "compat": [
       "--pm-palette-*",
@@ -118,6 +119,9 @@
     ],
     "live": [
       ".pm-live-shell"
+    ],
+    "shop": [
+      ".pm-shop-shell"
     ]
   },
   "inline": {
@@ -172,6 +176,15 @@
           "--offset"
         ],
         "reason": "直播间飘屏弹幕的轨道、延迟、时长与纵向偏移，由每条弹幕的稳定哈希计算，为数据驱动值"
+      },
+      {
+        "file": "src/video-views.js",
+        "properties": [
+          "--lane",
+          "--delay",
+          "--duration"
+        ],
+        "reason": "视频画面飘屏弹幕的轨道、延迟与时长，由弹幕时间点和当前播放时间计算，为数据驱动值"
       },
       {
         "file": "src/today-trend-reputation-view.js",
@@ -286,6 +299,7 @@
           "--pm-frost",
           "--pm-color-accent",
           "--pm-color-auxiliary",
+          "--pm-font-family-system",
           "--pm-color-wash",
           "--pm-color-wash-alt",
           "<theme-preset-token>"
@@ -375,10 +389,19 @@
       "themeStrategy": "theme-independent geometry; no dark override"
     },
     {
+      "prefix": "--pm-shop-",
+      "owner": "shop",
+      "rootSelectors": [
+        ".pm-shop"
+      ],
+      "themeStrategy": "蜜桃点缀色三档、商品图六色与图上文字色、商品图叠加层在 .pm-shop-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-shop-shell 声明深色值；固定几何不随主题改变"
+    },
+    {
       "prefix": "--pm-live-",
       "owner": "live",
       "rootSelectors": [
-        ".pm-live"
+        ".pm-live",
+        ".pm-video"
       ],
       "themeStrategy": "封面五色与封面文字色在 .pm-live-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-live-shell 声明深色值；直播间画面用色（粉、金、叠加层半透明、画面底色）固定深色，不随主题改变；固定几何不随主题改变"
     },
@@ -757,11 +780,11 @@
     },
     {
       "path": "styles/core.css",
-      "selector": ".pm-voice-wave i",
+      "selector": ".pm-voice-card.is-open .pm-voice-wave i",
       "property": "animation",
       "value": "pm-wave 1s infinite ease-in-out",
       "owner": "chat",
-      "reason": "语音波形需要持续循环动画表达播放状态",
+      "reason": "语音波形展开播放时需要持续循环动画表达播放状态",
       "removeWhen": "语音状态改为静态图形"
     },
     {
@@ -1262,7 +1285,9 @@
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-api-test,.pm-scene-primary), #pm-iphone :is(.pm-today-trend-form-actions button[type=\"submit\"],.pm-today-trend-primary-action)::color::var(--pm-color-on-dark) !important",
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::background::var(--pm-color-ink) !important",
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::border-color::var(--pm-color-ink) !important",
-    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-ink) !important"
+    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-ink) !important",
+    "styles/gallery.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub)[data-image-gen=\"off\"] :is([data-image-action=\"generate\"],[data-action=\"photo-shot\"],.pm-desktop-app[data-app=\"gallery\"])::display::none !important",
+    "styles/shop.css::root::#pm-iphone .pm-shop-search-input::background-color::transparent !important"
   ],
   "incrementalHardcodeBaseline": [
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::min-height::72px !important",

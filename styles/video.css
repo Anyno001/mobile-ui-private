@@ -1,0 +1,93 @@
+/*视频分区（噼哩噼哩）*/
+/* 私有 token 挂在 .pm-live-shell 上，与直播共用同一个根：画面底色固定深色；点缀字色与淡底亮暗成对；飞行轨道数与 src/video-format.js 的 VIDEO_FLY_LANES 保持一致。 */
+.pm-live-shell{--pm-live-video-stage:#171a26;--pm-live-video-cc:#0b0b0b;--pm-live-video-ink:#a83a64;--pm-live-video-soft:#fde6ee;--pm-live-video-lanes:3;}
+#pm-iphone[data-theme="dark"] .pm-live-shell{--pm-live-video-ink:#ff9fc0;--pm-live-video-soft:#4a2a38;}
+/* 视频首页与投稿页同直播列表一样整页一种底色；视频页整页冷白底，灵动岛那一截、顶栏、内容区连成一片。 */
+.pm-phone-screen:has(.pm-live-shell:is([data-live-view="video-home"],[data-live-view="video-compose"])){background-color:var(--pm-color-bg-grouped);background-image:none;}
+.pm-phone-screen:has(.pm-live-shell[data-live-view="video-watch"]){background-color:var(--pm-color-bg-plain);background-image:none;}
+.pm-live-shell[data-live-view="video-watch"]{background:var(--pm-color-bg-plain);}
+.pm-live-shell[data-live-view="video-watch"] .pm-live-topbar{background:var(--pm-color-bg-plain);}
+.pm-video-segments{display:flex;flex-shrink:0;gap:var(--pm-space-2);padding:var(--pm-space-0) var(--pm-space-3) var(--pm-space-2);}
+.pm-video-segments .pm-live-chip{min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-4);font-size:var(--pm-font-size-compact);}
+/* 首页卡片：封面沿用直播的五色封面，右下角墨色时长小标，标题两行省略。 */
+.pm-video-cover-title{max-width:100%;padding:var(--pm-space-0) var(--pm-space-3);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);text-align:center;overflow-wrap:anywhere;}
+.pm-video-duration{position:absolute;right:var(--pm-space-1-5);bottom:var(--pm-space-1-5);padding:var(--pm-space-0-5) var(--pm-space-1-5);border-radius:var(--pm-radius-pill);background:var(--pm-color-ink);color:var(--pm-color-on-ink);font-size:var(--pm-font-size-caption);font-variant-numeric:tabular-nums;font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}
+.pm-video-card-info b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow-wrap:anywhere;}
+/* 画面区：16:9 的暗色横向播放器，弹幕沿用直播的横飞轨道，只飞一遍，位置由当前时间点决定。 */
+.pm-video-stage{position:relative;display:flex;flex:0 0 auto;flex-direction:column;align-items:center;justify-content:flex-end;margin:var(--pm-space-0) var(--pm-space-3);aspect-ratio:16 / 9;overflow:hidden;border-radius:var(--pm-radius-card);background:var(--pm-live-video-stage);color:var(--pm-color-on-dark);}
+.pm-live-fly.pm-video-fly{top:var(--pm-space-2);height:calc(var(--pm-live-lane-pitch) * var(--pm-live-video-lanes));}
+.pm-live-fly.pm-video-fly span{top:calc(var(--lane) * var(--pm-live-lane-pitch));animation-iteration-count:1;animation-fill-mode:both;}
+.pm-video-stage[data-playing="false"] .pm-video-fly span{animation-play-state:paused;}
+.pm-video-scene{box-sizing:border-box;max-width:calc(100% - var(--pm-space-5) * 2);margin:var(--pm-space-0) var(--pm-space-0) calc(var(--pm-size-control-sm) + var(--pm-space-4));padding:var(--pm-space-1) var(--pm-space-2);border-radius:var(--pm-radius-sm);background:var(--pm-live-video-cc);text-align:center;color:var(--pm-color-on-dark);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);overflow-wrap:anywhere;animation:pm-video-scene-in var(--pm-motion-normal) var(--pm-motion-ease);}
+@keyframes pm-video-scene-in{from{opacity:0;}to{opacity:1;}}
+.pm-video-note{position:absolute;top:var(--pm-space-2);right:var(--pm-space-3);left:var(--pm-space-3);text-align:center;}
+.pm-video-controls{position:absolute;right:0;bottom:0;left:0;display:flex;align-items:center;gap:var(--pm-space-2);padding:var(--pm-space-1) var(--pm-space-2);}
+.pm-video-play[aria-pressed="false"] svg{fill:currentColor;}
+.pm-video-seek{flex:1;min-width:0;height:var(--pm-size-control-sm);margin:var(--pm-space-0);accent-color:var(--pm-live-pink);cursor:pointer;}
+.pm-video-time{flex:0 0 auto;color:var(--pm-live-name-dim);font-size:var(--pm-font-size-helper);font-variant-numeric:tabular-nums;line-height:var(--pm-line-height-tight);}
+.pm-video-danmaku-bar{display:flex;flex-shrink:0;align-items:center;gap:var(--pm-space-2);padding:var(--pm-space-2) var(--pm-space-3);}
+.pm-video-danmaku-bar .pm-live-input,.pm-video-composer-row .pm-live-input{flex:1;width:auto;min-width:0;border-radius:var(--pm-radius-pill);}
+.pm-video-send{display:grid;place-items:center;flex:0 0 auto;width:var(--pm-size-control);height:var(--pm-size-control);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-circle);background:var(--pm-color-ink);color:var(--pm-color-on-ink);cursor:pointer;}
+.pm-video-send svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-video-send:active{opacity:var(--pm-opacity-muted);}
+.pm-video-send:disabled,.pm-live-menu button:disabled{opacity:var(--pm-opacity-disabled);cursor:not-allowed;}
+/* 信息区与评论区按 B 站视频页排布：白底、不加灰块、不加竖线，靠留白和很淡的点缀色实色分隔。 */
+.pm-video-body{position:relative;flex:1;min-height:0;overflow-y:auto;padding:var(--pm-space-0) var(--pm-space-3) var(--pm-space-5);}
+.pm-video-info{display:flex;flex-direction:column;align-items:flex-start;gap:var(--pm-space-1-5);padding:var(--pm-space-1) var(--pm-space-0) var(--pm-space-3);}
+.pm-video-title{margin:var(--pm-space-0);color:var(--pm-color-label);font-size:var(--pm-font-size-subtitle);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);overflow-wrap:anywhere;}
+.pm-video-meta-line{margin:var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}
+.pm-video-desc{display:-webkit-box;margin:var(--pm-space-0);overflow:hidden;color:var(--pm-color-label-2);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-body);overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2;}
+.pm-video-desc.is-open{display:block;overflow:visible;}
+.pm-video-link{display:inline-flex;align-items:center;gap:var(--pm-space-1);min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-color-label-3);font:inherit;font-size:var(--pm-font-size-helper);cursor:pointer;}
+.pm-video-link svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-video-stats{display:flex;gap:var(--pm-space-5);color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);}
+.pm-video-stats>span{display:inline-flex;align-items:center;gap:var(--pm-space-1);}
+.pm-video-stats svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-video-tabs{position:sticky;top:var(--pm-space-0);z-index:var(--pm-z-content);display:flex;gap:var(--pm-space-5);padding:var(--pm-space-1) var(--pm-space-0);background:var(--pm-color-bg-plain);}
+.pm-video-tab{position:relative;min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-1);border:0;background:transparent;color:var(--pm-color-label-3);font:inherit;font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-semibold);cursor:pointer;}
+.pm-video-tab[aria-selected="true"]{color:var(--pm-live-video-ink);}
+.pm-video-tab[aria-selected="true"]::after{content:'';position:absolute;right:var(--pm-space-0);bottom:var(--pm-space-0);left:var(--pm-space-0);width:var(--pm-size-icon-lg);height:var(--pm-space-1);margin:var(--pm-space-0) var(--pm-space-auto);border-radius:var(--pm-radius-pill);background:var(--pm-live-pink);}
+.pm-video-panel{display:flex;flex-direction:column;gap:var(--pm-space-2);padding-top:var(--pm-space-2);}
+.pm-video-list{display:flex;flex-direction:column;gap:var(--pm-space-1);margin:var(--pm-space-0);padding:var(--pm-space-0);list-style:none;}
+.pm-video-subtitle{margin:var(--pm-space-0);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-video-empty{margin:var(--pm-space-0);padding:var(--pm-space-4) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-compact);text-align:center;}
+.pm-video-scene-row{display:flex;gap:var(--pm-space-3);width:100%;padding:var(--pm-space-2);border:0;border-radius:var(--pm-radius-control);background:transparent;color:var(--pm-color-label);font:inherit;font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);text-align:left;cursor:pointer;}
+.pm-video-scene-row time{flex:0 0 auto;color:var(--pm-live-video-ink);font-variant-numeric:tabular-nums;}
+.pm-video-scene-row.is-active{background:var(--pm-live-video-soft);}
+.pm-video-row{display:flex;align-items:center;gap:var(--pm-space-2);padding:var(--pm-space-1) var(--pm-space-2);color:var(--pm-color-label);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);}
+.pm-video-row time{flex:0 0 auto;color:var(--pm-live-video-ink);font-variant-numeric:tabular-nums;}
+.pm-video-row>span:not(.pm-video-row-actions){flex:1;min-width:0;overflow-wrap:anywhere;}
+.pm-video-sorts{display:flex;gap:var(--pm-space-3);}
+.pm-video-sort{min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-1);border:0;background:transparent;color:var(--pm-color-label-3);font:inherit;font-size:var(--pm-font-size-compact);cursor:pointer;}
+.pm-video-sort[aria-pressed="true"]{color:var(--pm-live-video-ink);font-weight:var(--pm-font-weight-semibold);}
+.pm-video-comment,.pm-video-reply{display:flex;gap:var(--pm-space-3);padding:var(--pm-space-2);border-radius:var(--pm-radius-control);transition:background var(--pm-motion-normal) var(--pm-motion-ease);}
+.pm-video-reply{gap:var(--pm-space-2);padding:var(--pm-space-1);}
+.pm-video-comment.is-fresh,.pm-video-reply.is-fresh{background:var(--pm-live-video-soft);}
+.pm-video-avatar{display:grid;place-items:center;flex:0 0 auto;width:var(--pm-size-control);height:var(--pm-size-control);border-radius:var(--pm-radius-circle);background:var(--pm-color-accent-soft);color:var(--pm-color-on-accent-soft);font-size:var(--pm-font-size-body);font-weight:var(--pm-font-weight-semibold);}
+.pm-video-avatar.is-small{width:var(--pm-size-control-sm);height:var(--pm-size-control-sm);font-size:var(--pm-font-size-label);}
+.pm-video-main{display:flex;flex:1;flex-direction:column;gap:var(--pm-space-1);min-width:0;}
+.pm-video-name-row,.pm-video-text{margin:var(--pm-space-0);}
+.pm-video-text{color:var(--pm-color-label);font-size:var(--pm-font-size-body);line-height:var(--pm-line-height-body);overflow-wrap:anywhere;}
+.pm-video-name{color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);}
+.pm-video-text .pm-video-name{margin-right:var(--pm-space-1);}
+.pm-video-up{margin-left:var(--pm-space-1);margin-right:var(--pm-space-1);padding:var(--pm-space-0) var(--pm-space-1);border-radius:var(--pm-radius-sm);background:var(--pm-color-ink);color:var(--pm-color-on-ink);font-size:var(--pm-font-size-micro);font-style:normal;font-weight:var(--pm-font-weight-semibold);}
+.pm-video-at{color:var(--pm-live-video-ink);font-style:normal;}
+.pm-video-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pm-space-3);color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);}
+.pm-video-like{display:inline-flex;align-items:center;gap:var(--pm-space-1);min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-color-label-3);font:inherit;font-size:var(--pm-font-size-helper);cursor:pointer;}
+.pm-video-like svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-video-like[aria-pressed="true"]{color:var(--pm-live-video-ink);}
+.pm-video-like[aria-pressed="true"] svg{fill:currentColor;}
+.pm-video-replies{display:flex;flex-direction:column;gap:var(--pm-space-1);padding-top:var(--pm-space-1);}
+.pm-video-row-actions{display:inline-flex;gap:var(--pm-space-0-5);}
+.pm-video-row-actions button{display:grid;place-items:center;width:var(--pm-size-icon-lg);height:var(--pm-size-icon-lg);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-label-3);cursor:pointer;}
+.pm-video-row-actions button.is-danger{color:var(--pm-color-danger);}
+.pm-video-row-actions svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-video-composer{display:flex;flex:0 0 auto;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-3) var(--pm-space-5);background:var(--pm-color-bg-plain);}
+.pm-video-composer-row{display:flex;align-items:center;gap:var(--pm-space-2);}
+.pm-video-reply-chip{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);padding:var(--pm-space-0) var(--pm-space-2);color:var(--pm-live-video-ink);font-size:var(--pm-font-size-label);}
+.pm-video-submit-bar{flex:0 0 auto;padding:var(--pm-space-2) var(--pm-space-3) var(--pm-space-5);background:var(--pm-color-bg-grouped);}
+.pm-video-submit-bar .pm-live-primary{width:100%;}
+.pm-live-shell :is(.pm-video-send,.pm-video-tab,.pm-video-sort,.pm-video-link,.pm-video-like,.pm-video-scene-row,.pm-video-seek,.pm-video-row-actions button):focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
+@media(max-width:320px){.pm-video-body{padding-right:var(--pm-space-2);padding-left:var(--pm-space-2);}.pm-video-stage{margin-right:var(--pm-space-2);margin-left:var(--pm-space-2);}.pm-video-scene{padding:var(--pm-space-0) var(--pm-space-3);}.pm-video-composer,.pm-video-danmaku-bar{padding-right:var(--pm-space-2);padding-left:var(--pm-space-2);}}
+/* reduced-motion：不飘弹幕，改在分镜文字下方静态列出当前时段的 3 条（飞行区的静态规则在 live.css）。 */
+@media(prefers-reduced-motion:reduce){.pm-video-scene,.pm-video-comment,.pm-video-reply{animation:none;transition:none;}.pm-live-fly.pm-video-fly{position:static;order:1;width:100%;height:auto;}.pm-video-stage[data-playing="false"] .pm-video-fly span{animation-play-state:running;}}

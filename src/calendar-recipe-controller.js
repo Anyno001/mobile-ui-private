@@ -64,7 +64,7 @@ export function createCalendarRecipeController({
             const requestedGenerationRule = requestedScope.generationRule;
             const prompts = buildRecipePrompts(context, requestedScope, start, { days: generationDays });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
-                isolated: true, signal: task.signal,
+                isolated: true, signal: task.signal, module: 'calendar',
             });
             if (!tasks.active(task)) return false;
             const generated = parseRecipeAiResponse(raw, { start, expectedRegion: requestedRegion, days: generationDays });

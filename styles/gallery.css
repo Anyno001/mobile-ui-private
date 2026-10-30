@@ -97,3 +97,5 @@
 .pm-gallery-module-row b{font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);color:var(--pm-color-label-2);}
 .pm-gallery-tabs.is-wrap{flex-wrap:wrap;border-radius:var(--pm-radius-panel);}
 .pm-gallery-people.is-plain{padding:var(--pm-space-0);background:transparent;}
+/* 生图总开关关闭：隐藏出图入口（生成/重试、拍一张、桌面相册），已生成的图照常显示。 */
+:is(#pm-iphone,#pm-overlay,#pm-overlay-sub)[data-image-gen="off"] :is([data-image-action="generate"],[data-action="photo-shot"],.pm-desktop-app[data-app="gallery"]){display:none!important;}

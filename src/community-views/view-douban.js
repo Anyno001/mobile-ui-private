@@ -1,7 +1,7 @@
 import { escapeAttr, escapeHtml } from '../ui.js';
 import {
     entryAttr, formatCommunityPostTime, renderAvatar, renderCommentActions, renderComposePill, renderEmptyState, renderLikeButton, renderPostMenu,
-    renderPostTime, renderRetryRespond, stableHash, stablePostMetric, threadTitleOf,
+    renderPostTime, renderRetryRespond, renderStaleMark, stableHash, stablePostMetric, threadTitleOf,
 } from './view-shared.js';
 
 export const DOUBAN_SEGMENTS = Object.freeze([
@@ -71,7 +71,7 @@ function renderThread(post, now, view) {
     const flag = post.flag && FLAG_LABELS[post.flag] ? `<span class="pm-scene-flag is-${post.flag}">${FLAG_LABELS[post.flag]}</span>` : '';
     const likes = stablePostMetric(post, 'likes', 8, 240) + (post.liked ? 1 : 0);
     const floors = post.comments.map((comment, index) => renderFloor(post, comment, index, now, view)).join('');
-    return `<article class="pm-scene-post is-douban"${entryAttr(post.id)}><div class="pm-scene-owner-card"><header>${renderAvatar(post.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}<span class="pm-scene-owner">楼主</span></b>${renderPostTime(post.createdAt, now)}</div><span class="pm-scene-floor-no">1楼</span>${renderPostMenu(post)}</header>
+    return `<article class="pm-scene-post is-douban"${entryAttr(post.id)}><div class="pm-scene-owner-card"><header>${renderAvatar(post.authorNameSnapshot)}<div class="pm-scene-post-author"><b>${escapeHtml(post.authorNameSnapshot)}<span class="pm-scene-owner">楼主</span></b>${renderPostTime(post.createdAt, now)}${renderStaleMark(post)}</div><span class="pm-scene-floor-no">1楼</span>${renderPostMenu(post)}</header>
         <h4 class="pm-scene-post-title">${flag}${escapeHtml(threadTitleOf(post))}</h4><p>${escapeHtml(post.content).replace(/\n/g, '<br>')}</p>
         <footer>${renderLikeButton(post, '赞', likes)}${renderRetryRespond(view, post.id, post.id, 'post')}</footer></div>
         <div class="pm-scene-floors" aria-label="楼层">${floors}</div></article>`;

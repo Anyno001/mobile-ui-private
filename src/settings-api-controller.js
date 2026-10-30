@@ -1,3 +1,5 @@
+import { API_ROUTE_MODULES, profileDisplayName, saveApiRoutes } from './api-routes.js';
+
 export function createApiRequestController({ runtime, normalizeApiUrls, fetchWithCorsProxy, extractAiResponseContent, normalizeIndependentApiTemperature, defaultTemperature, apiDraftMode, clone, saveProfiles, addOrUpdateProfile, addNote, showApi, showModelPicker, escapeAttr, escapeHtml }) {
     const setStatus = (message, color) => {
         const status = document.getElementById('pm-api-status');
@@ -30,20 +32,50 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
             if (button?.isConnected !== false && originalLabel) button.textContent = originalLabel;
         }
     };
+    // 正在编辑的预设 id；空串表示新建。打开页面时定位到与当前配置一致的那条。
+    let editingId = '';
+    const markEditing = () => {
+        document.querySelectorAll('.pm-prof-li[data-profile-id]').forEach(row => row.classList.toggle('is-selected', row.dataset.profileId === editingId));
+    };
+    const fillForm = profile => {
+        const field = id => document.getElementById(id);
+        if (field('pm-cfg-name')) field('pm-cfg-name').value = profile?.name || '';
+        if (field('pm-cfg-url')) field('pm-cfg-url').value = profile?.apiUrl || '';
+        if (field('pm-cfg-key')) field('pm-cfg-key').value = profile?.apiKey || '';
+        if (field('pm-cfg-model')) field('pm-cfg-model').value = profile?.model || '';
+        if (field('pm-cfg-temperature')) field('pm-cfg-temperature').value = String(normalizeIndependentApiTemperature(profile?.temperature ?? defaultTemperature));
+    };
     const deleteProfile = idx => {
-        const previous = clone(window.__pmProfiles);
+        const profile = window.__pmProfiles[idx]; if (!profile) return false;
+        const previous = clone(window.__pmProfiles), previousRoutes = clone(window.__pmApiRoutes || {});
         window.__pmProfiles.splice(idx, 1);
-        if (!saveProfiles()) { window.__pmProfiles = previous; alert('API 档案删除失败：浏览器存储不可用。'); return false; }
+        // 指向该预设的模块改回跟随默认。
+        for (const [module, route] of Object.entries(window.__pmApiRoutes || {})) if (route === profile.id) delete window.__pmApiRoutes[module];
+        if (!saveProfiles() || !saveApiRoutes()) { window.__pmProfiles = previous; window.__pmApiRoutes = previousRoutes; alert('API 档案删除失败：浏览器存储不可用。'); return false; }
+        if (editingId === profile.id) editingId = '';
         showApi();
         return true;
     };
     const pickProfile = idx => {
         const profile = window.__pmProfiles[idx]; if (!profile) return;
-        const url = document.getElementById('pm-cfg-url'), key = document.getElementById('pm-cfg-key'), model = document.getElementById('pm-cfg-model');
-        const temperature = document.getElementById('pm-cfg-temperature');
-        if (url) url.value = profile.apiUrl || ''; if (key) key.value = profile.apiKey || ''; if (model) model.value = profile.model || '';
-        if (temperature) temperature.value = String(normalizeIndependentApiTemperature(profile.temperature));
+        editingId = profile.id || '';
+        fillForm(profile);
+        markEditing();
         apiDraftMode.set(true);
+    };
+    const newProfile = () => {
+        editingId = '';
+        fillForm(null);
+        markEditing();
+        apiDraftMode.set(true);
+        document.getElementById('pm-cfg-name')?.focus();
+    };
+    const setRoute = (module, value) => {
+        const previous = clone(window.__pmApiRoutes || {});
+        window.__pmApiRoutes = { ...previous };
+        if (!value || value === 'default') delete window.__pmApiRoutes[module]; else window.__pmApiRoutes[module] = value;
+        if (saveApiRoutes()) return true;
+        window.__pmApiRoutes = previous; alert('模块分配保存失败：浏览器存储不可用。'); return false;
     };
     const setMode = value => apiDraftMode.set(value);
     const saveConfig = () => {
@@ -57,7 +89,10 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
         window.__pmConfig = candidate;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
         catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }
-        const profileSaved = !apiUrl || !apiKey || addOrUpdateProfile({ apiUrl, apiKey, model, temperature });
+        const name = (document.getElementById('pm-cfg-name')?.value || '').trim().slice(0, 24);
+        const savedId = !apiUrl || !apiKey ? true : addOrUpdateProfile({ ...(editingId ? { id: editingId } : {}), name, apiUrl, apiKey, model, temperature });
+        if (typeof savedId === 'string') editingId = savedId;
+        const profileSaved = savedId !== false;
         document.getElementById('pm-overlay')?.remove();
         addNote(profileSaved ? `已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}` : 'API 设置已保存；档案列表保存失败，不影响当前配置。');
         return true;
@@ -65,16 +100,26 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
     const getPageState = () => {
         const config = window.__pmConfig;
         const shortUrl = value => (value || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        const maskKey = value => !value ? '' : (value.length <= 8 ? '****' : value.slice(0, 4) + '****' + value.slice(-4));
+        const profiles = window.__pmProfiles, routes = window.__pmApiRoutes || {};
+        const current = profiles.find(item => item.apiUrl === config.apiUrl && item.apiKey === config.apiKey && (item.model || '') === (config.model || ''));
+        editingId = current?.id || '';
+        const option = (value, label, selected) => `<option value="${escapeAttr(value)}" ${selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
         return {
             cfg: {
+                name: escapeAttr(current?.name || ''),
                 apiUrl: escapeAttr(config.apiUrl || ''), apiKey: escapeAttr(config.apiKey || ''),
                 model: escapeAttr(config.model || ''), temperature: escapeAttr(String(normalizeIndependentApiTemperature(config.temperature))),
             },
             useIndependent: apiDraftMode.current(),
-            profilesHtml: window.__pmProfiles.length
-                ? window.__pmProfiles.map((profile, index) => `<div class="pm-prof-li"><div class="pm-prof-info" onclick="window.__pmPickProfile(${index})"><div class="pm-prof-url">${escapeHtml(shortUrl(profile.apiUrl))}</div><div class="pm-prof-meta">${escapeHtml(maskKey(profile.apiKey))}${profile.model ? ' · ' + escapeHtml(profile.model) : ''}</div></div><button type="button" class="pm-prof-del" onclick="window.__pmDeleteProfile(${index})">删除</button></div>`).join('')
-                : '<div class="pm-prof-empty">暂无档案</div>',
+            profilesHtml: profiles.length
+                ? profiles.map((profile, index) => `<div class="pm-prof-li ${profile.id === editingId ? 'is-selected' : ''}" data-profile-id="${escapeAttr(profile.id || '')}"><div class="pm-prof-info" role="button" tabindex="0" onclick="window.__pmPickProfile(${index})"><div class="pm-prof-url">${escapeHtml(profileDisplayName(profile))}</div><div class="pm-prof-meta">${escapeHtml(shortUrl(profile.apiUrl))}${profile.model ? ' · ' + escapeHtml(profile.model) : ''}</div></div><button type="button" class="pm-prof-del" onclick="window.__pmDeleteProfile(${index})">删除</button></div>`).join('')
+                : '<div class="pm-prof-empty">暂无预设，填写后保存即生成</div>',
+            routesHtml: API_ROUTE_MODULES.map(({ key, label }) => {
+                const route = routes[key] || 'default';
+                const choices = [option('default', '跟随默认', route === 'default'), option('main', '酒馆主API', route === 'main'),
+                    ...profiles.filter(item => item.id).map(item => option(item.id, profileDisplayName(item), route === item.id))];
+                return `<label class="pm-api-route-row"><span>${escapeHtml(label)}</span><select class="pm-cfg-input" aria-label="${escapeAttr(label)}使用的API" onchange="window.__pmSetApiRoute('${key}',this.value)">${choices.join('')}</select></label>`;
+            }).join(''),
         };
     };
 
@@ -114,5 +159,5 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
             } catch (error) { setStatus(`测试失败：${error.name === 'AbortError' ? '请求超时' : error.message}`, 'error'); return false; } finally { clearTimeout(timer); }
         });
     };
-    return { deleteProfile, pickProfile, setMode, saveConfig, getPageState, testApi, testModel, showModelPicker: () => showModelPicker(runtime) };
+    return { deleteProfile, pickProfile, newProfile, setRoute, setMode, saveConfig, getPageState, testApi, testModel, showModelPicker: () => showModelPicker(runtime) };
 }

@@ -1,4 +1,5 @@
 import { CONTEXT_LIMIT } from './constants.js';
+import { resolveApiConfig } from './api-routes.js';
 import { buildChatPreferencePrompt } from './behavior-config.js';
 import {
     createMessageEntry, describeMessageEntry, formatQuoteContext,
@@ -66,7 +67,7 @@ export function installPhoneChat(state, deps) {
         }) + (deps.getPhoneOutfitPrompt?.({ storageId, names: isGroup ? groupMembers : [currentPersona], userName }) || '');
 
         try {
-            const cfg = window.__pmConfig;
+            const cfg = resolveApiConfig('chat');
             const useIndep = cfg.useIndependent && cfg.apiUrl && cfg.apiKey;
             const aiRequest = buildChatRequest({
                 isGroup, currentPersona, groupMembers, groupDisplayName, groupRandomNpcEnabled, groupNature,
