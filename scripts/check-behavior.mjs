@@ -15,6 +15,7 @@ import { createTodayTrendStorage, todayTrendJournal, todayTrendV2Authority } fro
 import { createTodayTrendCommitter } from '../src/today-trend-commit.js';
 import { migrateTodayTrendStoreToV2 } from '../src/today-trend-v2-model.js';
 import { normalizeThemePreset, THEME_PRESETS } from '../src/config.js';
+import { ACCENT_TONE_TOKENS, accentToneTokens } from '../src/theme-tones.js';
 import { createWorldBookEntryKey, getCurrentChatWorldBooks, getEnabledWorldBookNames, getReadableWorldBookNames, getTavernDbColumn, isMemberPrivateWorldBookEntryAllowed, isWorldBookEntryAllowed, normalizeWorldBookConfig } from '../src/worldbook-config.js';
 import { buildWorldBookContext } from '../src/worldbook-context.js';
 import {
@@ -57,11 +58,12 @@ import { applyContextInjections } from '../src/phone-injection.js';
 import { normalizeCalendarStore } from '../src/calendar-model.js';
 import { normalizeOutfitStore } from '../src/calendar-outfit-model.js';
 import { normalizeRecipeStore } from '../src/calendar-recipe-model.js';
-import { createCommunityTemplate, deleteSceneDanmaku, deriveInteractiveActorId, normalizeInteractiveStore, updateSceneDanmaku } from '../src/interactive-scene-model.js';
+import { createCommunityTemplate, deleteLiveDanmaku, deriveInteractiveActorId, findLiveRoomForScene, normalizeInteractiveStore, updateLiveDanmaku } from '../src/interactive-scene-model.js';
 import { pmIDBKeys } from '../src/pm-idb.js';
 import { renderPhoneDesktop, runDesktopPageTransition } from '../src/interactive-scenes.js';
 import { getCommunityInjectionState, runCommunityInjectionAction } from '../src/interactive-scene-phone.js';
-import { formatCommunityPostTime, getDanmakuMotion, getDanmakuTone, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
+import * as communityViewsModule from '../src/interactive-scene-views.js';
+import { formatCommunityPostTime, renderCommunityLauncher, renderCommunityWorkspace } from '../src/interactive-scene-views.js';
 import { installPhoneControlCenter, runControlMenuAction } from '../src/phone-control-center.js';
 import { installPhoneChatPoke } from '../src/phone-chat-poke.js';
 import {
@@ -1841,7 +1843,7 @@ const makeClassList = initial => {
         toggle: (value, force) => { if (force) values.add(value); else values.delete(value); return !!force; },
     };
 };
-const themeChips = ['default', 'dark', 'pink', 'mint', 'frost'].map(preset => {
+const themeChips = ['default', 'dark', 'pink', 'mint', 'frost', 'sakura', 'spring'].map(preset => {
     const attributes = new Map();
     return {
         dataset: { preset },
@@ -1916,7 +1918,7 @@ const uiElements = new Map([
     ['pm-cfg-temperature', { value: '0.7' }],
     ['pm-api-status', { textContent: '', dataset: {} }],
     ['pm-api-fetch-models', { textContent: '拉取模型', disabled: false, isConnected: true, setAttribute(name, value) { this[name] = String(value); }, removeAttribute(name) { delete this[name]; } }],
-    ['pm-api-test-model', { textContent: '测试 API', disabled: false, isConnected: true, setAttribute(name, value) { this[name] = String(value); }, removeAttribute(name) { delete this[name]; } }],
+    ['pm-api-test-model', { textContent: '测试API', disabled: false, isConnected: true, setAttribute(name, value) { this[name] = String(value); }, removeAttribute(name) { delete this[name]; } }],
     ['pm-mode-main', { classList: makeClassList(['pm-mode-active']) }],
     ['pm-mode-indep', { classList: makeClassList([]) }],
     ['pm-mode-tip', { textContent: '主 API 使用宿主当前选择的预设与接口' }],
@@ -2424,31 +2426,33 @@ assert.match(settingsWorldBookDirectoryHtml, /aria-expanded="true" aria-controls
 
 window.__pmTheme = { preset: 'default', customRight: '', customLeft: '', borderColor: '#1a1a1a', darkMode: 'dark', customTitle: '', qrLabel: '天音' };
 await window.__pmShowConfig('look');
-assert.deepEqual(Object.keys(THEME_PRESETS), ['default', 'dark', 'pink', 'mint', 'frost'],
-    '颜色预设必须保留蓝、紫、粉、薄荷、磨砂');
+assert.deepEqual(Object.keys(THEME_PRESETS), ['default', 'dark', 'pink', 'mint', 'frost', 'sakura', 'spring'],
+    '颜色预设必须保留蓝灰、紫、粉、薄荷、磨砂，并提供樱花粉调与春日苹果');
 assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.rightText])),
-    { default: '#fff', dark: '#fff', pink: '#fff', mint: '#fff', frost: '#fff' }, '内置主题右气泡文字必须统一为白色');
+    { default: '#1e2a3a', dark: '#fff', pink: '#fff', mint: '#fff', frost: '#fff', sakura: '#4a1f2c', spring: '#1f3a17' }, '实色右气泡用白字；浅色调右气泡（蓝灰、樱花、春日苹果）用同色系深字');
 assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, {
     right: preset.right,
     rightDark: preset.rightDark,
     accent: preset.accent,
 }])), {
-    default: { right: '#1677d2', rightDark: undefined, accent: '#1677d2' },
+    default: { right: '#dfe7f1', rightDark: '#34465c', accent: '#4e6a8c' },
     dark: { right: '#5856d6', rightDark: undefined, accent: '#5856d6' },
     pink: { right: '#E7A9B9', rightDark: '#FFC4D4', accent: '#FFC4D4' },
     mint: { right: '#9FBE8C', rightDark: '#B6D39D', accent: '#9FBE8C' },
     frost: { right: 'rgba(111, 172, 218, 0.62)', rightDark: undefined, accent: '#6FAEDA' },
+    sakura: { right: '#fcd9e2', rightDark: '#5a2f3e', accent: '#b8546f' },
+    spring: { right: '#dcefcf', rightDark: '#2f4a26', accent: '#4a8236' },
 }, '统一右气泡白字不得改动任何内置主题背景或强调色');
 assert.equal(THEME_PRESETS.mint.left, '#F3EBDD', '薄荷日间必须搭配米色左气泡');
 assert.equal(THEME_PRESETS.frost.frost, true, '磨砂预设必须启用玻璃效果标记');
 assert.deepEqual(Object.fromEntries(Object.entries(THEME_PRESETS).map(([name, preset]) => [name, preset.auxiliary])), {
-    default: '#005CBF', dark: '#64D2FF', pink: '#E07A93',
-    mint: '#739E59', frost: '#4B8EC4',
+    default: '#42607f', dark: '#64D2FF', pink: '#E07A93',
+    mint: '#739E59', frost: '#4B8EC4', sakura: '#a3486a', spring: '#3f732d',
 }, '每个主题必须提供与强调色角色不同的稳定辅助色');
 for (const preset of Object.values(THEME_PRESETS)) assert.notEqual(preset.auxiliary.toLowerCase(), preset.accent.toLowerCase(),
     '主题辅助色不得与强调色相同');
-assert.match(settingsOverlayHtml, /data-preset="default" style="--pm-theme-chip-color:#1677d2"/,
-    '默认主题选择边缘必须绑定默认蓝，不得继承当前容器的辅助色');
+assert.match(settingsOverlayHtml, /data-preset="default" style="--pm-theme-chip-color:#4e6a8c"/,
+    '默认主题选择边缘必须绑定默认蓝灰，不得继承当前容器的辅助色');
 const modalSettingsCss = readFileSync(new URL('../styles/modal-settings.css', import.meta.url), 'utf8');
 const activeThemeRule = modalSettingsCss.match(/\.pm-theme-active\{[^}]+\}/)?.[0] || '';
 assert.match(activeThemeRule, /border-color:var\(--pm-theme-chip-color\)/,
@@ -3502,14 +3506,14 @@ assert.equal(foundationPhone['data-theme'], 'light');
 window.__pmTheme.customRight = '#123456';
 foundationDeps.applyTheme();
 assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡色必须生效');
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#1677d2', '自定义气泡色不得覆盖界面强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#4e6a8c', '自定义气泡色不得覆盖界面强调色');
 delete window.__pmTheme.customRight;
 
 window.__pmTheme.preset = 'default';
 window.__pmTheme.darkMode = 'light';
 foundationDeps.applyTheme();
-assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#1677d2', '切回日间主题必须恢复默认强调色');
-assert.equal(synchronizedDropdown.style.values.get('--pm-color-accent'), '#1677d2', '已存在模型浮层切回日间主题时必须恢复默认强调色');
+assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#4e6a8c', '切回日间主题必须恢复默认强调色');
+assert.equal(synchronizedDropdown.style.values.get('--pm-color-accent'), '#4e6a8c', '已存在模型浮层切回日间主题时必须恢复默认强调色');
 
 window.__pmTheme.preset = 'frost';
 foundationDeps.applyTheme();
@@ -3522,6 +3526,21 @@ window.__pmTheme.customRight = '#123456';
 foundationDeps.applyTheme();
 assert.equal(foundationPhoneStyleValues.get('--pm-r-bg'), '#123456', '自定义右气泡必须覆盖主题色默认右气泡');
 assert.equal(foundationPhoneStyleValues.get('--pm-color-accent'), '#c8647d', '自定义右气泡不得反向改写自定义主题色');
+assert.deepEqual(Object.fromEntries(ACCENT_TONE_TOKENS.map(token => [token, foundationPhoneStyleValues.get(token)])), accentToneTokens('#c8647d', 'light'), '主题色派生色调必须随自定义主题色写入');
+
+// 强调色派生色调：极浅、极深与各预设强调色在亮暗模式下都要保证选中块文字与实心控件图标可读。
+const toneLuminance = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
+    .map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+const toneContrast = (a, b) => { const [high, low] = [toneLuminance(a), toneLuminance(b)].sort((x, y) => y - x); return (high + 0.05) / (low + 0.05); };
+for (const accent of [...Object.values(THEME_PRESETS).map(preset => preset.accent).filter(value => /^#[0-9a-f]{6}$/i.test(value)), '#ffe066', '#fff0f5', '#101018']) {
+    for (const mode of ['light', 'dark']) {
+        const tones = accentToneTokens(accent, mode);
+        assert.ok(toneContrast(tones['--pm-color-on-accent-soft'], tones['--pm-color-accent-soft']) >= 4.5, `${accent} ${mode}：选中块文字对比度不足`);
+        assert.ok(toneContrast('#ffffff', tones['--pm-color-accent-strong']) >= 3, `${accent} ${mode}：实心控件白色图标对比度不足`);
+    }
+}
+assert.deepEqual(accentToneTokens('rgba(1,2,3,.5)'), {}, '无法解析的强调色必须交给样式表默认值');
 
 // 停止生成必须真正中止请求信号，并同步停止按钮可用性。
 assert.equal(foundationDeps.cancelGeneration(), false, '没有进行中的生成时停止操作必须返回 false');
@@ -3946,7 +3965,7 @@ assert.equal(uiElements.get('pm-indep-profile-fields').hidden, true);
 assert.equal(uiElements.get('pm-indep-config-fields').hidden, true);
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), true);
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), false);
-assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆 API 预设');
+assert.equal(uiElements.get('pm-mode-tip').textContent, '默认使用酒馆API预设');
 assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.temperature, 0, '主 API 保存不得把合法温度 0 回退为默认值');
 assert.equal(window.__pmConfig.useIndependent, false, '用户手动切回主 API 后必须保留明确选择');
@@ -5749,9 +5768,9 @@ assert.equal(parsedV4Backup.theme.darkMode, 'light');
 assert.equal(parsedV4Backup.theme.ambientStatusEnabled, false);
 assert.deepEqual(parsedV4Backup.ambientStatus, { enabled: false });
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'live',
+    pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
-});
+}, '备份里的旧 lastTab: live 必须归一为 feed');
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.other, {
     pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
@@ -5990,13 +6009,15 @@ const validInteractiveScene = {
 };
 const parsedMigratedBackup = parseBackupData(interactiveBackupWithScene(validInteractiveScene), currentBackup);
 const migratedScene = parsedMigratedBackup.interactiveScenes.scopes.story.scenes.scene;
-assert.equal(parsedMigratedBackup.interactiveScenes.version, 2);
+assert.equal(parsedMigratedBackup.interactiveScenes.version, 3);
 assert.equal(Object.hasOwn(migratedScene, 'contentRating'), false);
 assert.equal(migratedScene.content, validInteractiveScene.content);
 assert.equal(migratedScene.posts[0].content, validInteractiveScene.posts[0].content);
 assert.equal(migratedScene.posts[0].authorNameSnapshot, '作者');
 assert.equal(migratedScene.posts[0].comments[0].authorNameSnapshot, '评论者');
-assert.equal(migratedScene.live.danmaku[0].authorNameSnapshot, '观众');
+const migratedRoom = Object.values(parsedMigratedBackup.interactiveScenes.scopes.story.liveRooms)[0];
+assert.equal(Object.hasOwn(migratedScene, 'live'), false, '备份导入的 v1 live 必须迁成直播间');
+assert.equal(migratedRoom.danmaku[0].authorNameSnapshot, '观众');
 assert.ok(parsedMigratedBackup.interactiveScenes.scopes.story.actors[migratedScene.posts[0].authorId]);
 assert.ok(parsedMigratedBackup.interactiveScenes.scopes.story.actors[migratedScene.posts[0].comments[0].authorId]);
 const parsedLegacyScene = parseBackupData(interactiveBackupWithScene({ id: 'scene' }, { activeSceneId: null }), currentBackup);
@@ -6049,7 +6070,7 @@ assert.equal(normalizedOverflowModel.scopes.story.scenes.scene1.id, 'scene1');
 assert.equal(normalizedOverflowModel.scopes.story.scenes.scene0, undefined);
 assert.deepEqual(normalizeInteractiveStore(normalizedOverflowModel), normalizedOverflowModel);
 
-const normalizedLegacyBackup = parseBackupData(interactiveBackupWithScene({
+const normalizedLegacyScope = parseBackupData(interactiveBackupWithScene({
     ...validInteractiveScene,
     title: ` ${'社'.repeat(81)} `,
     preset: '',
@@ -6066,7 +6087,9 @@ const normalizedLegacyBackup = parseBackupData(interactiveBackupWithScene({
         title: ` ${'直'.repeat(101)} `,
         danmaku: [{ id: 'danmaku', author: ` ${'观'.repeat(81)} `, content: ` ${'弹'.repeat(201)} `, createdAt: 130 }],
     },
-}), currentBackup).interactiveScenes.scopes.story.scenes.scene;
+}), currentBackup).interactiveScenes.scopes.story;
+const normalizedLegacyBackup = normalizedLegacyScope.scenes.scene;
+const normalizedLegacyRoom = Object.values(normalizedLegacyScope.liveRooms)[0];
 assert.equal(normalizedLegacyBackup.title, '社'.repeat(80));
 assert.equal(normalizedLegacyBackup.preset, 'weibo');
 assert.equal(normalizedLegacyBackup.styleInput, '风'.repeat(2000));
@@ -6075,8 +6098,8 @@ assert.equal(normalizedLegacyBackup.posts[0].content, '帖'.repeat(4000));
 assert.equal(normalizedLegacyBackup.posts[0].authorNameSnapshot, '作'.repeat(80));
 assert.deepEqual(normalizedLegacyBackup.posts[0].tags, ['标'.repeat(30)]);
 assert.equal(normalizedLegacyBackup.posts[0].comments[0].content, '论'.repeat(1000));
-assert.equal(normalizedLegacyBackup.live.title, '直'.repeat(100));
-assert.equal(normalizedLegacyBackup.live.danmaku[0].content, '弹'.repeat(200));
+assert.equal(normalizedLegacyRoom.title, '直'.repeat(100));
+assert.equal(normalizedLegacyRoom.danmaku[0].content, '弹'.repeat(200));
 
 const legacyStoreWithScene = (scene = validInteractiveScene, scope = {}) => interactiveBackupWithScene(scene, scope).interactiveScenes;
 const mutateLegacyStore = mutation => {
@@ -6291,7 +6314,45 @@ const validV2InteractiveStore = {
     },
 };
 const parsedV2Backup = parseBackupData({ schemaVersion: 3, interactiveScenes: validV2InteractiveStore }, currentBackup);
-assert.equal(parsedV2Backup.interactiveScenes.version, 2);
+assert.equal(parsedV2Backup.interactiveScenes.version, 3, 'v2 备份导入后必须走同一条迁移得到 v3');
+{
+    const v3Actor = { actorId: v2ActorId, type: 'story', displayName: 'Alice', bindingKey: 'character:alice', profile: '', createdAt: 1 };
+    const v3BackupScene = { id: 'scene', title: '社区', platform: 'review', nsfw: false, preset: 'book', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', createdAt: 1, updatedAt: 1, posts: [{
+        id: 'post', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: '帖子', tags: [], createdAt: 1, liked: false, shareCount: 0, shared: false,
+        work: '某书', workAuthor: '某人', rating: 4, flag: 'pinned',
+        comments: [{ id: 'c1', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: '评论', createdAt: 1, rating: 5 }],
+    }] };
+    const v3BackupRoom = { id: 'live_a', title: '直播', hostIsUser: false, hostActorId: v2ActorId, hostNameSnapshot: 'Alice', category: '', nsfw: true, sourceSceneId: 'scene', createdAt: 1, updatedAt: 1,
+        danmaku: [{ id: 'd1', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: '弹幕', createdAt: 1, kind: 'gift' }] };
+    const v3Backup = (sceneOverride = {}, scopeOverride = {}, roomOverride = {}) => ({
+        schemaVersion: 3,
+        interactiveScenes: { version: 3, scopes: { [v2ScopeId]: {
+            activeSceneId: 'scene', sceneOrder: ['scene'], actors: { [v2ActorId]: v3Actor }, scenes: { scene: { ...v3BackupScene, ...sceneOverride } },
+            liveRooms: { live_a: { ...v3BackupRoom, ...roomOverride } }, liveOrder: ['live_a'], ...scopeOverride,
+        } } },
+    });
+    const parsedV3Backup = parseBackupData(v3Backup(), currentBackup).interactiveScenes.scopes[v2ScopeId];
+    assert.equal(parsedV3Backup.scenes.scene.platform, 'review');
+    assert.equal(parsedV3Backup.scenes.scene.posts[0].flag, 'pinned');
+    assert.equal(parsedV3Backup.liveRooms.live_a.nsfw, true, 'v3 备份必须保留直播间 nsfw');
+    assert.equal(Object.hasOwn(parsedV3Backup.scenes.scene, 'autoRespond'), false, 'v3 备份缺省 autoRespond 视为开');
+    assert.equal(parseBackupData(v3Backup({ autoRespond: false }), currentBackup).interactiveScenes.scopes[v2ScopeId].scenes.scene.autoRespond, false, 'v3 备份保留 autoRespond=false');
+    assert.doesNotThrow(() => parseBackupData(v3Backup({ autoRespond: true }), currentBackup), 'autoRespond=true 是合法的显式值');
+    for (const bad of ['false', 1, null]) {
+        assert.throws(() => parseBackupData(v3Backup({ autoRespond: bad }), currentBackup), /autoRespond 必须是布尔值/, `备份里 autoRespond=${String(bad)} 必须被拒绝`);
+    }
+    assert.equal(parsedV3Backup.liveRooms.live_a.danmaku[0].kind, 'gift');
+    for (const [label, backup, pattern] of [
+        ['scene 缺 nsfw', v3Backup({ nsfw: undefined }), /nsfw 必须是布尔值/],
+        ['scene 非法 platform', v3Backup({ platform: 'forum' }), /platform/],
+        ['scene 残留 live', v3Backup({ live: { title: '', status: 'idle', danmaku: [] } }), /额外字段|不受支持/],
+        ['room nsfw 非布尔', v3Backup({}, {}, { nsfw: 'x' }), /nsfw 必须是布尔值/],
+        ['room 非法 kind', v3Backup({}, {}, { danmaku: [{ id: 'd1', authorId: v2ActorId, authorNameSnapshot: 'Alice', content: '弹', createdAt: 1, kind: 'whisper' }] }), /kind/],
+        ['liveOrder 缺项', v3Backup({}, { liveOrder: [] }), /未列入 liveOrder/],
+        ['scope 缺 liveRooms', v3Backup({}, { liveRooms: undefined }), /liveRooms/],
+    ]) assert.throws(() => parseBackupData(backup, currentBackup), pattern, `v3 备份校验必须拒绝：${label}`);
+    assert.throws(() => parseBackupData({ schemaVersion: 3, interactiveScenes: { version: 4, scopes: {} } }, currentBackup), /版本 4 不受支持/);
+}
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].authorId, v2ActorId);
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].shareCount, 0, '旧 v2 备份缺失 shareCount 时必须补为 0');
 assert.equal(parsedV2Backup.interactiveScenes.scopes[v2ScopeId].scenes.scene.posts[0].shared, false,
@@ -7135,8 +7196,8 @@ assert.equal(pageController.current(), null);
 const baseDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] });
 assert.ok(baseDesktopHtml.length > 0, '无有效会话时基础桌面不得为空');
 assert.match(baseDesktopHtml, /<span>天音小笺<\/span>/, '旧主题或无主题时桌面标题必须回退为品牌名');
-assert.match(baseDesktopHtml, /class="pm-desktop-community-dock"/);
-assert.match(baseDesktopHtml, /data-action="desktop-community" aria-label="发布一条"/);
+assert.doesNotMatch(baseDesktopHtml, /pm-desktop-community-dock|发布一条/, '底部「发布一条」浮条已取消，社区改为普通图标');
+assert.match(baseDesktopHtml, /data-app="community" data-action="desktop-community" aria-label="社区"/);
 for (const [app, label] of [['chat', '会话'], ['directory', '联系人'], ['settings', '设置'], ['calendar', '日历'], ['today-trend', '今日风向']]) {
     assert.match(baseDesktopHtml, new RegExp(`data-app="${app}"[^>]*data-action="desktop-${app}"`));
     assert.match(baseDesktopHtml, new RegExp(`<span class="pm-desktop-app-label">${label}</span>`));
@@ -7149,7 +7210,7 @@ assert.match(renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }), /<span>
 const pinnedDesktopHtml = renderPhoneDesktop({ scenes: {
     'scene-local': { id: 'scene-local', title: '本地社区', preset: 'weibo', themeAccent: '#123abc' },
 } }, { pinnedSceneIds: ['scene-local'] });
-assert.match(pinnedDesktopHtml, /class="pm-desktop-pin"[^>]*>[\s\S]*data-action="desktop-open-scene"[^>]*><b>本地社区<\/b><\/button>/,
+assert.match(pinnedDesktopHtml, /class="pm-desktop-pin"[^>]*>[\s\S]*data-action="desktop-open-scene"[^>]*>[\s\S]*<b>本地社区<\/b>/,
     '普通固定社区必须使用单标题主按钮');
 const sharedDesktopHtml = renderPhoneDesktop({ scenes: {} }, { pinnedSceneIds: [] }, [{
     id: 'template-shared', sourceStorageId: 'source-story', sourceSceneId: 'scene-shared', title: '共享 < 社区',
@@ -7160,23 +7221,16 @@ assert.match(sharedDesktopHtml, /data-action="desktop-import-community-template"
 assert.match(sharedDesktopHtml, /data-action="dismiss-community-template"[^>]*data-template-id="template-shared"[^>]*>移除<\/button>/,
     '跨窗口模板必须提供仅从当前桌面移除的入口');
 assert.match(sharedDesktopHtml, /共享 &lt; 社区/, '共享模板标题必须按普通卡片规则转义');
-assert.match(sharedDesktopHtml, /style="--scene-accent:#123abc"/, '模板入口必须透传模板的场景主题色');
-assert.match(sharedDesktopHtml, /class="pm-desktop-pin pm-desktop-template"[^>]*>[\s\S]*data-action="desktop-import-community-template"[^>]*><b>共享 &lt; 社区<\/b><\/button>/,
-    '跨窗口模板必须复用普通固定社区的单标题主按钮结构');
+assert.match(sharedDesktopHtml, /style="--pm-community-accent:#123abc"/, '模板入口必须透传模板的场景主题色');
+assert.match(sharedDesktopHtml, /class="pm-desktop-pin pm-desktop-template"[^>]*>[\s\S]*<b>共享 &lt; 社区<\/b>[\s\S]*data-action="desktop-import-community-template"[^>]*>导入<\/button>/,
+    '跨窗口模板必须在「可导入的模板」组里显示标题，并提供「导入」「移除」两个按钮');
 assert.doesNotMatch(sharedDesktopHtml, /pm-desktop-template-icon|<small>导入社区模板<\/small>/,
     '跨窗口模板不得保留独立图标和副标题样式');
 delete globalThis.window;
 
-assert.deepEqual(
-    ['a', 'b', 'c', 'd'].map(id => getDanmakuTone({ id })),
-    ['pink', 'cyan', 'gold', 'blue'],
-    '稳定 hash 应覆盖蓝、粉、青、金四种色阶',
-);
-const fallbackDanmaku = { authorNameSnapshot: '访客', content: '晚上好' };
-assert.equal(getDanmakuTone(fallbackDanmaku), getDanmakuTone({ ...fallbackDanmaku }), '缺失 id 时作者与内容组合必须稳定分色');
-assert.ok(['blue', 'pink', 'cyan', 'gold'].includes(getDanmakuTone(fallbackDanmaku)), '弹幕色阶必须属于合同允许集合');
-assert.deepEqual(getDanmakuMotion({ id: 'stable' }), getDanmakuMotion({ id: 'stable' }), '弹幕运动参数必须稳定');
-assert.ok(new Set(['a', 'b', 'c', 'd', 'e', 'f'].map(id => getDanmakuMotion({ id }).lane)).size > 1, '弹幕不得全部落在同一轨道');
+// 直播已拆成独立 App：社区视图模块不得再导出弹幕色阶与运动参数。
+assert.equal(Object.hasOwn(communityViewsModule, 'getDanmakuTone'), false, '社区视图不得再导出弹幕色阶');
+assert.equal(Object.hasOwn(communityViewsModule, 'getDanmakuMotion'), false, '社区视图不得再导出弹幕运动参数');
 const postTimeNow = new Date(2026, 6, 15, 12, 0, 0).getTime();
 const dateLabel = timestamp => {
     const date = new Date(timestamp);
@@ -7203,17 +7257,21 @@ for (const invalidTimestamp of [undefined, 0, -1, NaN, Infinity, -Infinity, '202
     assert.deepEqual(formatCommunityPostTime(invalidTimestamp, postTimeNow), { label: '时间未知', datetime: '', title: '' });
 }
 
-const workspaceScene = normalizeInteractiveStore({
+const workspaceScope = normalizeInteractiveStore({
     version: 1,
     scopes: { story: { activeSceneId: 'scene', sceneOrder: ['scene'], scenes: { scene: {
         id: 'scene', title: '主题社区', preset: 'weibo', themeAccent: '#123abc',
         generatedPrompt: '自然交流', posts: [{ id: 'post', author: '访客', content: '测试帖子', createdAt: postTimeNow - 3_600_000, comments: [{ id: 'comment', author: '路人', content: '测试评论' }] }],
         live: { title: '正在直播', status: 'idle', warmupStarted: true, danmaku: [{ id: 'danmaku', author: '访客', content: '弹幕' }] },
     } } } },
-}).scopes.story.scenes.scene;
+}).scopes.story;
+const workspaceScene = workspaceScope.scenes.scene;
+const workspaceRoom = findLiveRoomForScene(workspaceScope, 'scene');
+assert.equal(workspaceRoom.title, '正在直播', 'v1 live 必须迁成该社区的直播间');
 const workspaceHtml = renderCommunityWorkspace(workspaceScene, 'feed', { pinnedSceneIds: [] }, { now: postTimeNow });
-assert.match(workspaceHtml, /style="--scene-accent:#123abc"/);
-assert.match(workspaceHtml, /placeholder="分享此刻……"/);
+assert.match(workspaceHtml, /style="--pm-community-accent:#123abc"/, '自选主题色只覆盖点缀色变量');
+assert.match(workspaceHtml, /class="pm-scene-fab" data-action="open-compose" aria-label="发微博"/, '微博的发布入口是右下角悬浮圆钮');
+assert.doesNotMatch(workspaceHtml, /placeholder="有什么新鲜事？"|class="pm-scene-bottom-bar"/, '微博列表页不再有底部输入条');
 const expectedPostDatetime = new Date(postTimeNow - 3_600_000).toISOString();
 assert.ok(workspaceHtml.includes(`<time class="pm-scene-post-time" datetime="${expectedPostDatetime}"`));
 assert.match(workspaceHtml, /<time class="pm-scene-post-time" datetime="[^"]+" title="[^"]+">1小时前<\/time>/);
@@ -7227,16 +7285,10 @@ assert.doesNotMatch(workspaceHtml, /刚刚 · 主题社区/);
 assert.match(workspaceHtml, /class="pm-scene-post-author"><b>访客<\/b><time class="pm-scene-post-time"/);
 assert.match(workspaceHtml, /class="pm-scene-nav-actions"[\s\S]*data-action="desktop"/);
 assert.doesNotMatch(workspaceHtml, /data-action="back"|pm-scene-back/);
-assert.match(workspaceHtml, /<nav class="pm-scene-title" aria-label="子社区视图">/,
-    '社区标题和直播必须位于独立的双标签导航');
-assert.match(workspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="feed"[^>]*aria-current="page"[^>]*><span>主题社区<\/span>/,
-    '帖子页必须激活社区标题标签');
-assert.match(workspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="live"[^>]*aria-current="false"[^>]*><span>直播<\/span>/,
-    '直播必须作为第二个文本标签');
-assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-header-icon-button pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-header-icon-button pm-scene-exit"/,
-    '拍一拍必须移出标题居中组并与退出按钮放在右侧操作区');
-assert.doesNotMatch(workspaceHtml, /<nav class="pm-scene-title"[\s\S]*pm-scene-title-poke[\s\S]*<\/nav>/,
-    '拍一拍不得参与双标签的居中宽度计算');
+assert.match(workspaceHtml, /<div class="pm-scene-title"><b>主题社区<\/b><\/div>/, '顶栏标题是居中的社区名');
+assert.doesNotMatch(workspaceHtml, /pm-scene-title-tab|data-tab="live"|<span>直播<\/span>|aria-label="子社区视图"/, '社区页不得保留直播 tab');
+assert.match(workspaceHtml, /class="pm-scene-view-actions">[\s\S]*class="pm-header-icon-button pm-scene-title-poke"[^>]*data-action="poke-scene"[\s\S]*class="pm-scene-menu-wrap"/,
+    '拍一拍必须移出标题居中组，与 ⋯ 菜单一起放在右侧操作区');
 assert.doesNotMatch(workspaceHtml, /pm-scene-tabs/);
 assert.match(workspaceHtml, /data-action="tab" data-tab="prompt">[\s\S]*风格提示词/);
 assert.match(workspaceHtml, /data-action="context-inject">[\s\S]*上下文注入/);
@@ -7245,7 +7297,7 @@ assert.match(workspaceHtml, /data-action="comments"[^>]*aria-label="拍一拍本
 assert.match(workspaceHtml, /class="pm-scene-like [^"]*"[^>]*data-action="like"/);
 assert.match(workspaceHtml, /class="pm-scene-share "[^>]*data-action="share"[^>]*data-post-id="post"[^>]*aria-label="分享本帖"[\s\S]*class="pm-scene-post-metric is-share"/);
 assert.match(workspaceHtml, /class="pm-scene-reply-toggle"[^>]*data-action="toggle-reply"[^>]*aria-controls="pm-comment-composer-post"[^>]*aria-expanded="false"/);
-assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="回复 1"/);
+assert.match(workspaceHtml, /class="pm-scene-post-metric is-reply"[^>]*aria-label="评论 1"/);
 const sharedWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [{ ...workspaceScene.posts[0], shareCount: 1, shared: true }] }, 'feed', { pinnedSceneIds: [] });
 assert.match(sharedWorkspaceHtml, /class="pm-scene-share is-shared"[^>]*aria-pressed="true"[^>]*aria-label="已分享本帖"/,
     '当前用户已分享的帖子必须恢复固定分享着色和可访问状态');
@@ -7256,75 +7308,45 @@ assert.match(workspaceHtml, /id="pm-comment-composer-post" class="pm-scene-comme
 assert.match(workspaceHtml, /placeholder="发表你的想法吧"/);
 assert.match(workspaceHtml, /data-action="post-comment"[^>]*aria-label="发送回复"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(workspaceHtml, /生成更多评论|>喜欢<|>已喜欢</);
-assert.match(workspaceHtml, /class="pm-scene-bottom-bar"/);
+assert.match(workspaceHtml, /pm-scene-title-poke[\s\S]*?class="pm-scene-menu-wrap"/, '社区工具菜单在顶栏拍一拍之后');
 assert.match(workspaceHtml, /class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden/);
-assert.match(workspaceHtml, /class="pm-header-icon-button pm-scene-exit"[^>]*data-action="exit"/);
+assert.doesNotMatch(workspaceHtml, /pm-scene-exit/, '关闭键已从顶栏移除');
+assert.match(workspaceHtml, /<button type="button" role="menuitem" data-action="exit">[\s\S]*?<span>退出手机<\/span><\/button>\s*<\/div>/, '退出手机是 ⋯ 菜单的最后一项');
 assert.doesNotMatch(workspaceHtml, /生成热场内容|编辑社区风格/);
-const liveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'active' });
-assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab "[^>]*data-tab="feed"[^>]*aria-current="false"/);
-assert.match(liveWorkspaceHtml, /class="pm-scene-title-tab is-active"[^>]*data-tab="live"[^>]*aria-current="page"[^>]*>[\s\S]*<span>直播<\/span>/);
-assert.match(liveWorkspaceHtml, /pm-live-stage has-danmaku" data-live-state="active"/);
-assert.match(liveWorkspaceHtml, /<section class="pm-live-details" aria-label="热场内容">/,
-    '热场完成后必须展开独立的下方内容区');
-assert.doesNotMatch(liveWorkspaceHtml, /class="pm-live-play-btn"/,
-    '热场完成后播放三角必须消失');
-assert.match(liveWorkspaceHtml, /--duration:[\d.]+s;--offset:-?\d+px/);
-assert.match(liveWorkspaceHtml, /data-action="send-danmaku"[^>]*aria-label="发送弹幕"[^>]*>[\s\S]*?<svg/,
-    '弹幕发送必须使用图标按钮并保留无障碍名称');
-assert.match(liveWorkspaceHtml, /class="pm-scene-bottom-bar">[\s\S]*?class="pm-scene-menu-wrap"[\s\S]*?class="pm-scene-composer pm-danmaku-input">[\s\S]*?<textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"><\/textarea>[\s\S]*?class="pm-scene-primary" data-action="send-danmaku"/,
-    '直播必须完整复用贴文底栏，并保留弹幕发送契约');
-assert.match(liveWorkspaceHtml, /data-action="toggle-danmaku-actions"[^>]*aria-pressed="false"[^>]*>[\s\S]*?<span>修改弹幕<\/span>/,
-    '仅直播底栏菜单必须提供修改弹幕入口并默认隐藏操作按钮');
-assert.match(liveWorkspaceHtml, /pm-danmaku-row is-[^"]+">[\s\S]*?pm-danmaku-row-header[\s\S]*?<b title="[^"]+">[^<]+<\/b>[\s\S]*?class="pm-scene-comment-actions" hidden>[\s\S]*?data-action="edit-danmaku"[^>]*data-danmaku-id="[^"]+"[\s\S]*?data-action="delete-danmaku"[^>]*data-danmaku-id="[^"]+"[\s\S]*?class="pm-danmaku-content">[^<]+<\/span>/,
-    '修改弹幕开启前必须隐藏同款编辑删除按钮，并维持昵称与正文上下结构');
-assert.doesNotMatch(liveWorkspaceHtml, /danmaku-manage|pm-danmaku-manager/,
-    '直播弹幕修改不得创建独立管理页');
-assert.doesNotMatch(workspaceHtml, /toggle-danmaku-actions|edit-danmaku|delete-danmaku/,
-    '贴文底栏与列表不得出现直播专属弹幕操作');
-const idleLiveWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, live: { ...workspaceScene.live, warmupStarted: false, danmaku: [] } }, 'live', { pinnedSceneIds: [] });
-assert.match(idleLiveWorkspaceHtml, /class="pm-live-play-btn"[^>]*data-action="start-warmup"[^>]*aria-label="开始热场"[^>]*>[\s\S]*?<svg/);
-assert.match(idleLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input[\s\S]*data-action="send-danmaku"/,
-    '进入直播页时必须立即预留弹幕区和发送模块');
-const loadingLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'starting' });
-assert.match(loadingLiveWorkspaceHtml, /data-live-state="starting"[\s\S]*正在准备热场…/);
-assert.doesNotMatch(loadingLiveWorkspaceHtml, /class="pm-live-play-btn"/,
-    '点击播放后必须立即隐藏播放三角');
-assert.match(loadingLiveWorkspaceHtml, /pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input/,
-    '热场生成期间必须保留基础直播布局');
-const failedLiveWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'error' });
-assert.match(failedLiveWorkspaceHtml, /data-live-state="error"[\s\S]*aria-label="重新开始热场"[\s\S]*热场未能启动，请重试。/,
-    '失败后必须保留可重试的播放入口，且不能伪装成已完成热场');
-assert.match(failedLiveWorkspaceHtml, /pm-live-details[\s\S]*pm-danmaku-list[\s\S]*pm-scene-bottom-bar[\s\S]*pm-danmaku-input/,
-    '热场失败后仍必须保留弹幕预留区与手动发送能力');
-assert.doesNotMatch(liveWorkspaceHtml, /toggle-live|data-action="rhythm"|pm-live-actions/,
-    '直播页不得保留旧直播控制与带节奏入口');
-const editableDanmakuScene = structuredClone(workspaceScene);
-editableDanmakuScene.live.danmaku = [{ id: 'danmaku-edit', authorNameSnapshot: '编辑者', content: '原内容' }];
-updateSceneDanmaku(editableDanmakuScene, 'danmaku-edit', '  新内容  ');
-assert.equal(editableDanmakuScene.live.danmaku[0].content, '新内容', '编辑弹幕必须规范化并写回正文');
-assert.throws(() => updateSceneDanmaku(editableDanmakuScene, 'missing', '内容'), /弹幕不存在/);
-assert.throws(() => updateSceneDanmaku(editableDanmakuScene, 'danmaku-edit', '   '), /弹幕内容不能为空/);
-deleteSceneDanmaku(editableDanmakuScene, 'danmaku-edit');
-assert.equal(editableDanmakuScene.live.danmaku.length, 0, '删除弹幕必须移除指定记录');
-assert.throws(() => deleteSceneDanmaku(editableDanmakuScene, 'missing'), /弹幕不存在/);
+const legacyLiveTabHtml = renderCommunityWorkspace(workspaceScene, 'live', { pinnedSceneIds: [] }, { liveState: 'active', liveRoom: workspaceRoom });
+assert.doesNotMatch(legacyLiveTabHtml, /pm-live-|pm-danmaku|start-warmup|send-danmaku|toggle-danmaku-actions|edit-danmaku|delete-danmaku/, '直播已拆成独立 App，社区页不得再渲染直播舞台与弹幕');
+assert.match(legacyLiveTabHtml, /class="pm-scene-feed(?: has-float)?"/, '未知标签回落到帖子流');
+assert.doesNotMatch(workspaceHtml, /toggle-danmaku-actions|edit-danmaku|delete-danmaku/, '帖子页不得出现直播专属弹幕操作');
+const editableDanmakuRoom = structuredClone(workspaceRoom);
+editableDanmakuRoom.danmaku = [{ id: 'danmaku-edit', authorNameSnapshot: '编辑者', content: '原内容' }];
+updateLiveDanmaku(editableDanmakuRoom, 'danmaku-edit', '  新内容  ');
+assert.equal(editableDanmakuRoom.danmaku[0].content, '新内容', '编辑弹幕必须规范化并写回正文');
+assert.throws(() => updateLiveDanmaku(editableDanmakuRoom, 'missing', '内容'), /弹幕不存在/);
+assert.throws(() => updateLiveDanmaku(editableDanmakuRoom, 'danmaku-edit', '   '), /弹幕内容不能为空/);
+deleteLiveDanmaku(editableDanmakuRoom, 'danmaku-edit');
+assert.equal(editableDanmakuRoom.danmaku.length, 0, '删除弹幕必须移除指定记录');
+assert.throws(() => deleteLiveDanmaku(editableDanmakuRoom, 'missing'), /弹幕不存在/);
 const promptWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'prompt', { pinnedSceneIds: [], lastTab: 'live' });
 assert.match(promptWorkspaceHtml, /class="pm-scene-accent-options"/);
-assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#ff8200"/);
-assert.match(promptWorkspaceHtml, /aria-label="使用微博热场主题色" aria-pressed="false"/);
+assert.match(promptWorkspaceHtml, /data-action="scene-accent" data-accent="#e0806a"/);
+assert.match(promptWorkspaceHtml, /aria-label="使用瓜博主题色" aria-pressed="false"/);
 assert.match(promptWorkspaceHtml, /id="pm-scene-accent" type="color" data-action="scene-accent-custom" value="#123abc"/);
 assert.match(promptWorkspaceHtml, /class="pm-scene-secondary" data-action="regenerate-prompt"/);
 assert.match(promptWorkspaceHtml, /设置社区内容的表达风格与氛围。/);
-assert.match(promptWorkspaceHtml, /class="pm-scene-home" data-action="tab" data-tab="live" aria-label="返回子社区"/);
-assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="分享此刻……"/,
+assert.equal((promptWorkspaceHtml.match(/data-action="scene-accent" data-accent=/g) || []).length, 5, '主题色选择器是五个平台的点缀色');
+assert.match(promptWorkspaceHtml, /id="pm-scene-nsfw" class="pm-scene-switch " role="switch" aria-checked="false"[^>]*data-action="toggle-nsfw"/, '风格页提供成人内容开关，默认随 scene.nsfw');
+assert.match(renderCommunityWorkspace({ ...workspaceScene, nsfw: true }, 'prompt', { pinnedSceneIds: [] }), /id="pm-scene-nsfw" class="pm-scene-switch is-on" role="switch" aria-checked="true"/);
+assert.match(promptWorkspaceHtml, /class="pm-scene-home" data-action="tab" data-tab="feed" aria-label="返回子社区"/);
+assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="有什么新鲜事？"/,
     '提示词页不得保留社区二级菜单或发帖输入区');
 assert.doesNotMatch(promptWorkspaceHtml, /class="pm-scene-home" data-action="desktop"/,
     '提示词页左侧按钮必须返回子社区而不是桌面');
 const contextInjectWorkspaceHtml = renderCommunityWorkspace(workspaceScene, 'context-inject', { pinnedSceneIds: [], lastTab: 'feed' });
-assert.doesNotMatch(contextInjectWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="分享此刻……"/,
+assert.doesNotMatch(contextInjectWorkspaceHtml, /class="pm-scene-bottom-bar"|class="pm-control-menu pm-scene-menu"|placeholder="有什么新鲜事？"/,
     '上下文注入页不得保留社区二级菜单或发帖输入区');
-const presetAccentScene = { ...workspaceScene, themeAccent: '#ff8200' };
+const presetAccentScene = { ...workspaceScene, themeAccent: '#e0806a' };
 const presetAccentHtml = renderCommunityWorkspace(presetAccentScene, 'prompt', { pinnedSceneIds: [] });
-assert.match(presetAccentHtml, /data-accent="#ff8200"[^>]*aria-pressed="true"/);
+assert.match(presetAccentHtml, /data-accent="#e0806a"[^>]*aria-pressed="true"/);
 const emptyWorkspaceHtml = renderCommunityWorkspace({ ...workspaceScene, posts: [] }, 'feed', { pinnedSceneIds: [] });
 assert.match(emptyWorkspaceHtml, /class="pm-scene-empty"[\s\S]*这里还很安静[\s\S]*发第一篇帖子/);
 assert.doesNotMatch(emptyWorkspaceHtml, /class="pm-scene-post"/);
@@ -7411,12 +7433,21 @@ const launcherScope = {
     },
 };
 const unpinnedLauncherHtml = renderCommunityLauncher(launcherScope, { pinnedSceneIds: [] });
-assert.match(unpinnedLauncherHtml, /id="pm-scene-app"[^>]*style="--scene-accent:#ff8200"/,
-    '社区启动页必须以默认微博预设色驱动生成按钮');
+assert.match(unpinnedLauncherHtml, /id="pm-scene-app"[^>]*data-community-platform="weibo"/, '社区启动页默认选中微博广场');
+assert.doesNotMatch(unpinnedLauncherHtml, /data-action="preset"|pm-scene-preset|--scene-accent/, '旧的六个 preset 按钮已删除');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-home"[^>]*data-action="desktop"[^>]*aria-label="返回桌面"/,
     '社区启动页返回桌面必须复用灰色 home 控件');
-assert.match(unpinnedLauncherHtml, /data-action="preset"[^>]*data-preset="douban"[^>]*data-accent="#00a65a"/,
-    '豆瓣预设必须向交互层暴露绿色主题色');
+assert.equal((unpinnedLauncherHtml.match(/data-action="pick-platform"/g) || []).length, 5, '启动页提供五张平台卡片');
+assert.match(unpinnedLauncherHtml, /data-platform="douban" data-community-platform="douban" aria-pressed="false"><span class="pm-scene-platform-icon" aria-hidden="true">逗<\/span><span class="pm-scene-platform-check" aria-hidden="true">[\s\S]*?<b>逗瓣<\/b><span class="pm-scene-platform-slogan">组员都很会说<\/span>/, '平台卡片显示图标圆、谐音名与小标语');
+assert.doesNotMatch(unpinnedLauncherHtml, /pm-scene-platform-dot/, '平台卡片不再有右上角小圆点');
+assert.match(unpinnedLauncherHtml, /class="pm-scene-topbar"[\s\S]*?class="pm-scene-title"><b>社区<\/b>[\s\S]*?data-action="exit"/, '启动页顶栏复用三栏网格：返回、居中标题、关闭');
+assert.doesNotMatch(unpinnedLauncherHtml, /pm-scene-header/, '启动页不再使用旧的 pm-scene-header');
+assert.match(unpinnedLauncherHtml, /<div class="pm-scene-form-card">\s*<label class="pm-scene-label">风格补充[\s\S]*?id="pm-scene-nsfw"[\s\S]*?<\/div>\s*<button type="button" class="pm-scene-primary" data-action="create-scene">生成社区<\/button>/, '风格补充与成人内容同放一张白卡，生成按钮在卡外');
+assert.match(unpinnedLauncherHtml, /data-platform="weibo"[^>]*aria-pressed="true"[\s\S]*?<b>瓜博<\/b><span class="pm-scene-platform-slogan">今天也有新瓜<\/span>/, '微博卡片是瓜博');
+assert.doesNotMatch(unpinnedLauncherHtml, /<b>小组论坛<\/b>|<b>微博广场<\/b>|标题列表与楼层|热搜和转评/, '卡片上不再出现真名与旧说明');
+assert.match(unpinnedLauncherHtml, /data-platform="weibo"[^>]*aria-pressed="true"/, '微博广场默认选中');
+assert.match(unpinnedLauncherHtml, /开启后可以写露骨的成人内容[\s\S]*?id="pm-scene-nsfw" class="pm-scene-switch " role="switch" aria-checked="false"/, '成人内容开关默认关');
+assert.match(unpinnedLauncherHtml, /<label class="pm-scene-label">风格补充<textarea id="pm-scene-style"/, '风格补充输入框保留');
 assert.match(unpinnedLauncherHtml, /class="pm-scene-card-actions"/);
 assert.match(unpinnedLauncherHtml, /class="pm-scene-pin-action"[^>]*aria-pressed="false"[^>]*aria-label="固定社区"[^>]*>[\s\S]*?<path d="M4 19V8l8-4 8 4v11"/,
     '未固定按钮必须使用与桌面发布入口一致的社区图标');
@@ -7424,8 +7455,10 @@ assert.match(unpinnedLauncherHtml, /class="pm-scene-template-action"[^>]*data-ac
     '未发布社区必须在固定和删除按钮左侧提供明确的 SVG 模板发布动作');
 assert.doesNotMatch(unpinnedLauncherHtml, /toggle-community-template|aria-pressed="false"[^>]*aria-label="发布共享模板"/,
     '发布模板不是二元开关，不得遗留会误导重复发布语义的 pressed 状态');
-assert.match(unpinnedLauncherHtml, /class="pm-scene-card"[^>]*style="--scene-accent:#123abc"/,
+assert.match(unpinnedLauncherHtml, /class="pm-scene-card" data-community-platform="confess" style="--pm-community-accent:#123abc"/,
     '启动器卡片必须透传场景主题色');
+assert.match(unpinnedLauncherHtml, /<span>表白墙 · 0 篇帖子<\/span>/, '我的社区条目的平台小标签用 app-names 的显示名，而不是旧 preset 名');
+assert.doesNotMatch(unpinnedLauncherHtml, /<span>匿名树洞 · /, '平台小标签不得再用提示词里的真名');
 assert.doesNotMatch(unpinnedLauncherHtml, /--scene-pin-accent/, '固定按钮不得保留与当前预设脱节的卡片级颜色变量');
 assert.match(unpinnedLauncherHtml, /data-action="delete-scene"[^>]*aria-label="删除社区"[^>]*>[\s\S]*?<svg/);
 assert.doesNotMatch(unpinnedLauncherHtml, />固定<\/button>|>删除<\/button>/, '场景卡片操作必须使用 SVG 且保留可访问名称');
@@ -9336,7 +9369,7 @@ try {
     }
     const branchTemplate = {
         id: 'template_external_scene', sourceStorageId: 'external-story', sourceSceneId: 'scene-external',
-        title: '外部模板', preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 1,
+        title: '外部模板', platform: 'weibo', preset: 'weibo', styleInput: '', generatedPrompt: '', themeAccent: '#123abc', sharedAt: 1,
     };
     const branchPhoneInteractive = { version: 2, scopes: {
         [branchIds.source]: { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} },
@@ -9643,7 +9676,7 @@ try {
         '生产分支回归夹具必须先写入可读取的互动主存储');
     localValues.set('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK', JSON.stringify({ version: 2, scopes: {} }));
     assert.deepEqual(normalizeInteractiveStore(JSON.parse(localValues.get('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'))),
-        { version: 2, scopes: {} }, '生产分支回归夹具必须提供可规范化的互动后备存储');
+        { version: 3, scopes: {} }, '生产分支回归夹具必须提供可规范化的互动后备存储（v2 空库归一化为 v3）');
     assert.equal(localStorage.getItem('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'),
         localValues.get('ST_INTERACTIVE_SCENES_V1_LOCAL_FALLBACK'), '生产分支回归夹具不得遗留 localStorage 读取故障注入');
     assert.ok((await pmIDBKeys()).includes('ST_INTERACTIVE_SCENES_V1'),

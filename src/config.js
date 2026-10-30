@@ -1,7 +1,7 @@
 // Presets define color palettes and their default bubble colors. Custom bubble
 // colors deliberately override only message bubbles; toggle controls use the preset auxiliary color.
 export const THEME_PRESETS = {
-    default: { right: '#1677d2', left: '#e8f1fb', rightText: '#fff', leftText: '#000', label: '默认蓝', accent: '#1677d2', auxiliary: '#005CBF' },
+    default: { right: '#dfe7f1', rightDark: '#34465c', left: '#ffffff', leftDark: '#262633', rightText: '#1e2a3a', rightTextDark: '#eef2f8', leftText: '#1e1e2e', leftTextDark: '#e6e6ee', label: '蓝灰', accent: '#4e6a8c', auxiliary: '#42607f', ui: { '--pm-color-wash': '#c9d6e566', '--pm-color-wash-alt': '#dcd8ea55' }, uiDark: { '--pm-color-wash': '#3a4a5e55', '--pm-color-wash-alt': '#3b3a5044' } },
     dark: { right: '#5856d6', left: '#E6EDF3', leftDark: '#2b2a3d', rightText: '#fff', leftText: '#33404C', leftTextDark: '#e0e0e0', label: '暗夜紫', accent: '#5856d6', auxiliary: '#64D2FF' },
     pink: {
         right: '#E7A9B9', rightDark: '#FFC4D4', left: '#E8EEF3', leftDark: '#343B43', rightText: '#fff', leftText: '#4E3840', leftTextDark: '#E6EDF3', label: '柔粉', accent: '#FFC4D4', auxiliary: '#E07A93',
@@ -15,6 +15,8 @@ export const THEME_PRESETS = {
     },
     mint: { right: '#9FBE8C', rightDark: '#B6D39D', left: '#F3EBDD', leftDark: '#3B443B', rightText: '#fff', leftText: '#4D4034', leftTextDark: '#E8EEE5', label: '薄荷', accent: '#9FBE8C', auxiliary: '#739E59' },
     frost: { right: 'rgba(111, 172, 218, 0.62)', left: 'rgba(255,255,255,0.48)', leftDark: 'rgba(54, 68, 82, 0.72)', rightText: '#fff', leftText: '#22303A', leftTextDark: '#E7EFF7', label: '磨砂', accent: '#6FAEDA', auxiliary: '#4B8EC4', frost: true },
+    sakura: { right: '#fcd9e2', rightDark: '#5a2f3e', left: '#ffffff', leftDark: '#262633', rightText: '#4a1f2c', rightTextDark: '#fbe9ee', leftText: '#1e1e2e', leftTextDark: '#e6e6ee', label: '樱花粉调', accent: '#b8546f', auxiliary: '#a3486a', ui: { '--pm-color-wash': '#f7cfdb8c', '--pm-color-wash-alt': '#e8d8f27a' }, uiDark: { '--pm-color-wash': '#5a2c3d66', '--pm-color-wash-alt': '#3e2f5255' } },
+    spring: { right: '#dcefcf', rightDark: '#2f4a26', left: '#ffffff', leftDark: '#262633', rightText: '#1f3a17', rightTextDark: '#eaf5e3', leftText: '#1e1e2e', leftTextDark: '#e6e6ee', label: '春日苹果', accent: '#4a8236', auxiliary: '#3f732d', ui: { '--pm-color-wash': '#d4ebbd99', '--pm-color-wash-alt': '#f9e9b080' }, uiDark: { '--pm-color-wash': '#2f4a2366', '--pm-color-wash-alt': '#4a3d1a44' } },
 };
 
 export const THEME_UI_TOKENS = [...new Set(Object.values(THEME_PRESETS).flatMap(preset => [

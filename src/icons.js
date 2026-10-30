@@ -22,6 +22,8 @@ export const CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
 export const COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
 export const FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
 export const LIVE_ICON_SVG = icon('<rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none"/>');
+// 桌面「直播」App 专用实心图标；LIVE_ICON_SVG 是描边版，仍由今日风向标题图标使用，不能改动。
+export const LIVE_APP_ICON_SVG = icon('<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10.5l5-3v9l-5-3z"/>');
 export const PLAY_ICON_SVG = icon('<path d="M8 5l11 7-11 7z"/>');
 export const PAUSE_ICON_SVG = icon('<path d="M9 5v14M15 5v14"/>');
 
@@ -43,6 +45,7 @@ export const OUTFIT_ICON_SVG = icon('<path d="m9 4 3 2.5L15 4l4 3.5-2 3-2-1.5V20
 export const CYCLE_FERTILE_ICON_SVG = icon('<circle cx="12" cy="12" r="3.2"/><path d="M8.6 7.5C7.4 5.8 5.4 5.2 4 6.3c-1.4 1.2-.8 3.4 1.1 4.4M15.4 7.5c1.2-1.7 3.2-2.3 4.6-1.2 1.4 1.2.8 3.4-1.1 4.4M8.6 16.5c-1.2 1.7-3.2 2.3-4.6 1.2-1.4-1.2-.8-3.4 1.1-4.4M15.4 16.5c1.2 1.7 3.2 2.3 4.6 1.2 1.4-1.2.8-3.4-1.1-4.4"/>');
 export const TIME_ORIGIN_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>');
 export const EDIT_ICON_SVG = icon('<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>');
+export const PLUS_ICON_SVG = icon('<path d="M12 5v14M5 12h14"/>');
 export const BOOK_ICON_SVG = icon('<path d="M4 5.5 12 3l8 2.5v13L12 16l-8 2.5z"/><path d="M12 3v13"/>');
 export const EMOJI_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8.5 15c1 1 2.2 1.5 3.5 1.5s2.5-.5 3.5-1.5"/>');
 export const TRASH_ICON_SVG = icon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
@@ -78,3 +81,14 @@ export const TODAY_TREND_RELATION_ICON_PATHS = Object.freeze({
 });
 
 export const REFRESH_ICON_SVG = icon('<path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.7-2.6L20 11M4 13l2.2 4.6A7 7 0 0 0 17.9 15"/>');
+export const ROUTE_ICON_SVG = icon('<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/>');
+export const USER_ICON_SVG = icon('<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>');
+export const FLAG_ICON_SVG = icon('<path d="M6 21V4"/><path d="M6 4h11l-2 4 2 4H6"/>');
+export const LINK_ICON_SVG = icon('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>');
+export const GAUGE_ICON_SVG = icon('<path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/>');
+export const COPY_ICON_SVG = icon('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>');
+export const GRID_ICON_SVG = icon('<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>');
+export const PHOTO_ICON_SVG = icon('<rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>');
+export const CAMERA_ICON_SVG = icon('<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>');
+export const DOWNLOAD_ICON_SVG = icon('<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/>');
+export const STAR_ICON_SVG = icon('<path d="M12 4l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.4l-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/>');

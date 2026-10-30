@@ -2,7 +2,7 @@ import { escapeAttr, escapeHtml } from './ui.js';
 import { resolveConversationTarget } from './conversation-state.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHARACTER_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG,
-    EDIT_ICON_SVG, EMOJI_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG,
+    EDIT_ICON_SVG, EMOJI_ICON_SVG, REFRESH_ICON_SVG, SETTINGS_ICON_SVG, TRASH_ICON_SVG, CAMERA_ICON_SVG,
 } from './icons.js';
 import { commitAutoPokeConfig, getAutoPokeConfig } from './auto-poke-config.js';
 import {
@@ -16,6 +16,7 @@ const controlActionLabel = action => ({
     'group-settings': '打开群聊设置',
     'auto-poke': '打开自动发消息',
     delete: '进入消息删除模式',
+    'photo-shot': '打开拍一张',
 })[action] || '执行快捷操作';
 
 export function runControlMenuAction(action, runAction, reportActionError) {
@@ -112,7 +113,7 @@ export function installPhoneControlCenter(state, deps) {
     <div id="pm-session-auto-poke-status" class="pm-session-behavior-status" role="status" aria-live="polite" ${statusMessage ? '' : 'hidden'}>${escapeHtml(statusMessage)}</div>
     <section class="pm-session-behavior-section">
       <button id="pm-session-auto-poke" type="button" class="pm-session-behavior-toggle" role="checkbox" aria-checked="${autoPoke.enabled}" onclick="window.__pmToggleCurrentAutoPoke(this)">
-        <span><b>允许当前会话主动发消息</b><small>聊天停下来时，手机有机会自己发一句。</small></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
+        <span><b>允许当前会话主动发消息</b></span><i class="pm-control-toggle ${autoPoke.enabled ? 'is-checked' : ''}" aria-hidden="true"></i>
       </button>
       <label class="pm-session-auto-poke-probability">每次有 <input id="pm-session-auto-poke-probability" type="number" min="0" max="100" step="1" required value="${autoPoke.probability}" ${autoPoke.enabled ? '' : 'disabled'} onchange="window.__pmSaveCurrentAutoPokeProbability(this)"> % 几率自动发消息</label>
       <p id="pm-session-auto-poke-counter">${autoPoke.counter === 1 ? '这次会自动发一条。' : '这次没有自动发消息。'}</p>
@@ -195,7 +196,9 @@ export function installPhoneControlCenter(state, deps) {
         else if (action === 'group-settings') return window.__pmEditGroup?.();
         else if (action === 'auto-poke') return window.__pmShowAutoPokeSettings();
         else if (action === 'emoji') window.__pmShowEmojiManager();
+        else if (action === 'photo-shot') return deps.openPhotoShot?.();
         else if (action === 'delete') window.__pmStartDeleteMode();
+        else if (action === 'regenerate') return window.__pmRegenerateLast?.();
         else if (action === 'calendar') return showPhoneCalendarPage();
     }
 
@@ -239,10 +242,12 @@ export function installPhoneControlCenter(state, deps) {
         const target = getTarget();
         menu.innerHTML = `
   <button type="button" role="menuitem" data-action="pending">${EDIT_ICON_SVG}编辑消息</button>
+  <button type="button" role="menuitem" data-action="regenerate" ${window.__pmCanRegenerate?.() ? '' : 'disabled'}>${REFRESH_ICON_SVG}重新生成</button>
   <button type="button" role="menuitem" data-action="character-settings" ${target ? '' : 'disabled'}>${CHARACTER_ICON_SVG}角色设置</button>
   ${target?.isGroup ? `<button type="button" role="menuitem" data-action="group-settings">${SETTINGS_ICON_SVG}群聊设置</button>` : ''}
   <button type="button" role="menuitem" data-action="auto-poke" ${target ? '' : 'disabled'}>${CHAT_ICON_SVG}自动发消息</button>
-  <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包管理</button>
+  <button type="button" role="menuitem" data-action="photo-shot" ${target ? '' : 'disabled'}>${CAMERA_ICON_SVG}拍一张</button>
+  <button type="button" role="menuitem" data-action="emoji">${EMOJI_ICON_SVG}表情包</button>
   <button type="button" role="menuitem" data-action="calendar">${CALENDAR_ICON_SVG}日历</button>
   <button type="button" role="menuitem" data-action="delete" class="pm-control-menu-danger" ${target ? '' : 'disabled'}>${TRASH_ICON_SVG}删除消息</button>`;
         phone.appendChild(menu);
@@ -252,7 +257,9 @@ export function installPhoneControlCenter(state, deps) {
         const maxLeft = Math.max(8, phone.clientWidth - menu.offsetWidth - 8);
         menu.style.left = `${Math.min(Math.max(8, desiredLeft), maxLeft)}px`;
         menu.style.bottom = `${Math.max(8, phoneRect.bottom - anchorRect.top + 8)}px`;
-        const availableHeight = Math.max(72, anchorRect.top - phoneRect.top - 16);
+        // 菜单只在导航栏以下展开，小尺寸窗口内改为滚动，不盖住灵动岛与顶栏。
+        const ceiling = phone.querySelector('.pm-navbar')?.getBoundingClientRect().bottom ?? phoneRect.top;
+        const availableHeight = Math.max(72, anchorRect.top - ceiling - 16);
         menu.style.maxHeight = `${availableHeight}px`;
         anchor.setAttribute('aria-expanded', 'true');
         bindControlMenu(menu, anchor);

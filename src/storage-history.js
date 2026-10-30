@@ -155,12 +155,23 @@ export function saveHistories() {
     saveHistoriesStrict().catch(error => console.warn('[phone-mode] 短信历史保存失败', error));
 }
 
+let historyPersistListener = null;
+/** IndexedDB 写成功后通知（聊天元数据同步用）；监听器异常不影响保存结果。 */
+export function setHistoryPersistListener(listener) {
+    historyPersistListener = typeof listener === 'function' ? listener : null;
+}
+function notifyHistoryPersisted() {
+    try { historyPersistListener?.(); }
+    catch (error) { console.warn('[phone-mode] 聊天记录同步通知失败', error?.name || 'Error'); }
+}
+
 export async function saveHistoriesStrict(data = window.__pmHistories, { requireLocalMirror = false, coordinated = false } = {}) {
     const recoveryMarkerAtInvocation = readRecoveryMarkerRaw();
     const localSnapshotRevisionAtInvocation = historyLocalSnapshotRevision;
     const persist = async (snapshot, protectedScopes = []) => {
         const value = await preserveProtectedScopes(snapshot, protectedScopes);
         if (!await pmIDBSet(HISTORY_KEY, value)) throw new Error('聊天记录保存失败：IndexedDB 不可用');
+        notifyHistoryPersisted();
         const currentRecoveryMarker = readRecoveryMarkerRaw();
         if (currentRecoveryMarker !== recoveryMarkerAtInvocation
             || historyLocalSnapshotRevision !== localSnapshotRevisionAtInvocation) return true;

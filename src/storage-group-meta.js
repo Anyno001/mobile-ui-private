@@ -5,6 +5,12 @@ import { pmIDBGet, pmIDBSet } from './storage-primitives.js';
 const GROUP_META_STORE_KEY = 'ST_SMS_GROUP_META';
 const GROUP_META_FALLBACK_KEY = `${GROUP_META_STORE_KEY}_LOCAL_FALLBACK`;
 
+let groupMetaPersistListener = null;
+/** IndexedDB 写成功后通知（聊天元数据同步用）。 */
+export function setGroupMetaPersistListener(listener) {
+    groupMetaPersistListener = typeof listener === 'function' ? listener : null;
+}
+
 export async function loadGroupMeta() {
     try {
         const fallback = localStorage.getItem(GROUP_META_FALLBACK_KEY);
@@ -43,6 +49,8 @@ export async function saveGroupMeta(data) {
             }
         }
         if (await pmIDBSet(GROUP_META_STORE_KEY, value)) {
+            try { groupMetaPersistListener?.(); }
+            catch (error) { console.warn('[phone-mode] 群聊配置同步通知失败', error?.name || 'Error'); }
             try { localStorage.setItem(GROUP_META_STORE_KEY, JSON.stringify(value)); } catch (error) {}
             try { localStorage.removeItem(GROUP_META_FALLBACK_KEY); } catch (error) {}
         } else {

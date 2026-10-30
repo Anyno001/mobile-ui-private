@@ -1,3 +1,5 @@
+import { COMMUNITY_PLATFORMS, platformForPreset } from './interactive-scene-constants.js';
+
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
 const finitePositiveNumber = value => {
     const number = Number(value);
@@ -26,7 +28,8 @@ const normalizeCommunityTemplate = value => {
     if (!validPhoneUiId(templateId, 120) || !validPhoneUiId(sourceStorageId, 160) || !validPhoneUiId(sourceSceneId, 80) || !title || !preset) return null;
     const sharedAt = finitePositiveNumber(value?.sharedAt);
     if (!sharedAt) return null;
-    return { id: templateId, sourceStorageId, sourceSceneId, title, preset, styleInput: text(value?.styleInput, 2000), generatedPrompt: text(value?.generatedPrompt, 6000), themeAccent: normalizeThemeAccent(value?.themeAccent), sharedAt };
+    const platform = COMMUNITY_PLATFORMS.includes(value?.platform) ? value.platform : platformForPreset(preset);
+    return { id: templateId, sourceStorageId, sourceSceneId, title, platform, preset, styleInput: text(value?.styleInput, 2000), generatedPrompt: text(value?.generatedPrompt, 6000), themeAccent: normalizeThemeAccent(value?.themeAccent), sharedAt };
 };
 
 export { validPhoneUiId };
@@ -50,11 +53,13 @@ export function createCommunityTemplate(scene, sourceStorageId, sharedAt = Date.
     if (!scene || !validPhoneUiId(sourceStorageId, 160) || !validPhoneUiId(scene.id, 80)) throw new Error('社区模板来源无效');
     const timestamp = finitePositiveNumber(sharedAt);
     if (!timestamp) throw new Error('社区模板时间无效');
-    return { id: `template_${stableHash(`${sourceStorageId}\u0000${scene.id}`)}`, sourceStorageId, sourceSceneId: scene.id, title: text(scene.title, 80) || '未命名互动场景', preset: text(scene.preset, 30) || 'weibo', styleInput: text(scene.styleInput, 2000), generatedPrompt: text(scene.generatedPrompt, 6000), themeAccent: normalizeThemeAccent(scene.themeAccent), sharedAt: timestamp };
+    const preset = text(scene.preset, 30) || 'weibo';
+    const platform = COMMUNITY_PLATFORMS.includes(scene.platform) ? scene.platform : platformForPreset(preset);
+    return { id: `template_${stableHash(`${sourceStorageId}\u0000${scene.id}`)}`, sourceStorageId, sourceSceneId: scene.id, title: text(scene.title, 80) || '未命名互动场景', platform, preset, styleInput: text(scene.styleInput, 2000), generatedPrompt: text(scene.generatedPrompt, 6000), themeAccent: normalizeThemeAccent(scene.themeAccent), sharedAt: timestamp };
 }
 export function createSceneFromCommunityTemplate(template, sceneId, createdAt = Date.now()) {
     const normalized = normalizeCommunityTemplate(template);
     const timestamp = finitePositiveNumber(createdAt);
     if (!normalized || !validPhoneUiId(sceneId, 80) || !timestamp) throw new Error('社区模板无效');
-    return { id: sceneId, title: normalized.title, preset: normalized.preset, styleInput: normalized.styleInput, generatedPrompt: normalized.generatedPrompt, themeAccent: normalized.themeAccent, createdAt: timestamp, updatedAt: timestamp, posts: [], live: { title: '', status: 'idle', warmupStarted: false, danmaku: [] } };
+    return { id: sceneId, title: normalized.title, platform: normalized.platform, nsfw: false, preset: normalized.preset, styleInput: normalized.styleInput, generatedPrompt: normalized.generatedPrompt, themeAccent: normalized.themeAccent, createdAt: timestamp, updatedAt: timestamp, posts: [] };
 }

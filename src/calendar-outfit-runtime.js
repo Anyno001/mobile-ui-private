@@ -1,4 +1,4 @@
-import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitSubjectKeys, outfitSubjectLabel } from './calendar-outfit-model.js';
+import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitScopeFor, outfitSubjectKeys, outfitSubjectLabel, renderOutfitInjection } from './calendar-outfit-model.js';
 import { loadCalendarOutfits } from './calendar-storage.js';
 
 export const loadOutfitStore = () => normalizeOutfitStore(loadCalendarOutfits());
@@ -13,6 +13,17 @@ export function outfitSubjectOptions(state, store, storageId, userName = '') {
         const label = outfitSubjectLabel(value, userName);
         return label ? [{ value, label }] : [];
     });
+}
+
+// 手机短信回复用：用户与当前联系人/群成员在故事日期前后一天的穿搭，受日历「穿搭注入」开关控制。
+export function renderPhoneOutfitPrompt({ store, storageId, enabled, start, names = [], userName = '' }) {
+    if (!enabled || !storageId) return '';
+    const subjects = [[OUTFIT_SELF_SUBJECT, OUTFIT_SELF_SUBJECT], ...[...new Set(names.map(name => String(name || '').trim()).filter(Boolean))].map(name => [`role:${name}`, name])];
+    const blocks = subjects.flatMap(([subject, label]) => {
+        const body = renderOutfitInjection(outfitScopeFor(store, storageId, subject), { start, subject: label, userName: subject === OUTFIT_SELF_SUBJECT ? userName : '' });
+        return body ? [body] : [];
+    });
+    return blocks.length ? `\n\n【当日穿搭】（仅在相关时自然提及，不必每条复述）\n${blocks.join('\n')}` : '';
 }
 
 export function handleOutfitPageAction({ button, app, storageId, state, runtime, viewFor, rerender, outfitController }) {

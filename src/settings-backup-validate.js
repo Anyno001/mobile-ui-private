@@ -3,7 +3,7 @@ import { normalizeBudgetConfig } from './budget.js';
 import { normalizeThemePreset } from './config.js';
 import { normalizeDesktopIconBackupPayload } from './desktop-icon-storage.js';
 import {
-    INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION,
+    COMMUNITY_PLATFORMS, INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION, LIVE_DANMAKU_KINDS, LIVE_HOST_SETTING_MAX,
     deriveInteractiveActorId, normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState,
 } from './interactive-scene-model.js';
 import { getStorageIdFor } from './host-context.js';
@@ -74,15 +74,17 @@ const assertInteractiveActor = (value, actorId, field, scopeId) => {
     if (!Object.hasOwn(actor, 'createdAt')) throw new Error(`备份字段 ${field}.createdAt 缺失`);
     if (deriveInteractiveActorId(scopeId, actor.type, actor.bindingKey) !== actorId) throw new Error(`备份字段 ${field}.actorId 与绑定信息不一致`);
 };
+const isStrictBackupVersion = version => version === 2 || version === INTERACTIVE_STORE_VERSION;
 const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actorIds = null } = {}) => {
     const item = objectValue(value, field);
-    const authorKeys = version === INTERACTIVE_STORE_VERSION ? ['authorId', 'authorNameSnapshot'] : ['author'];
+    const authorKeys = isStrictBackupVersion(version) ? ['authorId', 'authorNameSnapshot'] : ['author'];
     const allowedKeys = kind === 'post'
-        ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(version === INTERACTIVE_STORE_VERSION ? ['shareCount', 'shared'] : [])]
-        : ['id', ...authorKeys, 'content', 'createdAt'];
+        ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(isStrictBackupVersion(version) ? ['shareCount', 'shared', 'work', 'rating'] : []),
+            ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source'] : [])]
+        : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind'] : ['quoteId', 'rating']) : [])];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, 'id', field, 80);
-    if (version === INTERACTIVE_STORE_VERSION) {
+    if (isStrictBackupVersion(version)) {
         const contentMax = kind === 'post' ? 4000 : kind === 'comment' ? 1000 : 200;
         assertNormalizedText(item.content, `${field}.content`, contentMax);
         assertNormalizedText(item.authorId, `${field}.authorId`, 80);
@@ -93,6 +95,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
         assertOptionalLegacyText(item, 'author', field);
     }
     assertOptionalTimestamp(item, 'createdAt', field);
+    if (kind === 'danmaku' && Object.hasOwn(item, 'kind') && !LIVE_DANMAKU_KINDS.includes(item.kind)) throw new Error(`备份字段 ${field}.kind 无效`);
     if (kind === 'post') {
         if (Object.hasOwn(item, 'liked') && typeof item.liked !== 'boolean') throw new Error(`备份字段 ${field}.liked 必须是布尔值`);
         if (Object.hasOwn(item, 'shared') && typeof item.shared !== 'boolean') throw new Error(`备份字段 ${field}.shared 必须是布尔值`);
@@ -102,7 +105,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
         if (Object.hasOwn(item, 'tags')) {
             if (!Array.isArray(item.tags) || item.tags.some(tag => typeof tag !== 'string')) throw new Error(`备份字段 ${field}.tags 必须是字符串数组`);
             if (item.tags.length > 5) throw new Error(`备份字段 ${field}.tags 不能超过 5 项`);
-            if (version === INTERACTIVE_STORE_VERSION) {
+            if (isStrictBackupVersion(version)) {
                 item.tags.forEach((tag, index) => assertNormalizedText(tag, `${field}.tags.${index}`, 30));
             }
         }
@@ -119,27 +122,28 @@ const assertInteractiveBackupStore = value => {
     normalizeInteractiveStore(value);
     const store = objectValue(value, 'interactiveScenes');
     assertAllowedKeys(store, 'interactiveScenes', ['version', 'scopes']);
-    if (store.version !== undefined && (!Number.isInteger(store.version) || ![1, INTERACTIVE_STORE_VERSION].includes(store.version))) throw new Error('备份字段 interactiveScenes.version 必须是数字 1 或 2');
-    const sourceVersion = store.version === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
+    if (store.version !== undefined && (!Number.isInteger(store.version) || ![1, 2, INTERACTIVE_STORE_VERSION].includes(store.version))) throw new Error('备份字段 interactiveScenes.version 必须是数字 1、2 或 3');
+    const sourceVersion = isStrictBackupVersion(store.version) ? store.version : 1;
+    const isV3 = sourceVersion === INTERACTIVE_STORE_VERSION;
     const scopes = objectValue(store.scopes, 'interactiveScenes.scopes');
     const normalizedScopeIds = new Set();
     for (const [scopeId, scopeValue] of Object.entries(scopes)) {
-        const normalizedScopeId = sourceVersion === INTERACTIVE_STORE_VERSION
+        const normalizedScopeId = isStrictBackupVersion(sourceVersion)
             ? scopeId
             : normalizeLegacyDictionaryKey(scopeId, 'interactiveScenes.scopes', 160);
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+        if (isStrictBackupVersion(sourceVersion)) {
             assertNormalizedDictionaryKey(scopeId, 'interactiveScenes.scopes', 160);
         }
         if (normalizedScopeIds.has(normalizedScopeId)) throw new Error(`备份字段 interactiveScenes.scopes 归一化后包含重复 scope ${normalizedScopeId}`);
         normalizedScopeIds.add(normalizedScopeId);
         const field = `interactiveScenes.scopes.${scopeId}`;
         const scope = objectValue(scopeValue, field);
-        const scopeKeys = sourceVersion === INTERACTIVE_STORE_VERSION
-            ? ['activeSceneId', 'sceneOrder', 'scenes', 'actors']
+        const scopeKeys = isStrictBackupVersion(sourceVersion)
+            ? ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder'] : [])]
             : ['activeSceneId', 'sceneOrder', 'scenes'];
         assertAllowedKeys(scope, field, scopeKeys);
         const actorIds = new Set();
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+        if (isStrictBackupVersion(sourceVersion)) {
             const actors = objectValue(scope.actors, `${field}.actors`);
             for (const [actorId, actorValue] of Object.entries(actors)) {
                 assertNormalizedDictionaryKey(actorId, `${field}.actors`, 80);
@@ -148,11 +152,11 @@ const assertInteractiveBackupStore = value => {
             }
         }
         if (!Array.isArray(scope.sceneOrder)) throw new Error(`备份字段 ${field}.sceneOrder 必须是数组`);
-        if (sourceVersion === INTERACTIVE_STORE_VERSION && scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`备份字段 ${field}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
+        if (isStrictBackupVersion(sourceVersion) && scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`备份字段 ${field}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
         const scenes = objectValue(scope.scenes, `${field}.scenes`);
         const normalizedScenes = new Map();
         for (const sceneId of Object.keys(scenes)) {
-            const normalizedSceneId = sourceVersion === INTERACTIVE_STORE_VERSION
+            const normalizedSceneId = isStrictBackupVersion(sourceVersion)
                 ? assertNormalizedDictionaryKey(sceneId, `${field}.scenes`, 80)
                 : normalizeLegacyDictionaryKey(sceneId, `${field}.scenes`, 80);
             if (normalizedScenes.has(normalizedSceneId)) throw new Error(`备份字段 ${field}.scenes 归一化后包含重复场景 ${normalizedSceneId}`);
@@ -161,29 +165,36 @@ const assertInteractiveBackupStore = value => {
         if (Object.hasOwn(scope, 'activeSceneId') && scope.activeSceneId !== null && typeof scope.activeSceneId !== 'string') throw new Error(`备份字段 ${field}.activeSceneId 必须是字符串或 null`);
         const normalizedOrder = scope.sceneOrder.map(rawSceneId => {
             if (typeof rawSceneId !== 'string') throw new Error(`备份字段 ${field}.sceneOrder 必须是字符串数组`);
-            return sourceVersion === INTERACTIVE_STORE_VERSION
+            return isStrictBackupVersion(sourceVersion)
                 ? assertNormalizedDictionaryKey(rawSceneId, `${field}.sceneOrder`, 80)
                 : normalizeLegacyDictionaryKey(rawSceneId, `${field}.sceneOrder`, 80);
         }).filter(Boolean);
-        const retainedOrder = sourceVersion === INTERACTIVE_STORE_VERSION ? normalizedOrder : normalizedOrder.slice(-INTERACTIVE_LIMITS.scenes);
+        const retainedOrder = isStrictBackupVersion(sourceVersion) ? normalizedOrder : normalizedOrder.slice(-INTERACTIVE_LIMITS.scenes);
         const orderedIds = new Set();
         for (const sceneId of retainedOrder) {
             if (orderedIds.has(sceneId)) throw new Error(`备份字段 ${field}.sceneOrder 包含重复场景 ${sceneId}`);
             orderedIds.add(sceneId);
             const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
-            const sceneKeys = ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'];
-            if (sourceVersion !== INTERACTIVE_STORE_VERSION) sceneKeys.push('contentRating');
+            const sceneKeys = isV3
+                ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+                : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'];
+            if (!isStrictBackupVersion(sourceVersion)) sceneKeys.push('contentRating');
             assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
             if (Object.hasOwn(scene, 'id')) {
                 if (typeof scene.id !== 'string') throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须是字符串`);
-                const normalizedSceneValueId = sourceVersion === INTERACTIVE_STORE_VERSION
+                const normalizedSceneValueId = isStrictBackupVersion(sourceVersion)
                     ? assertNormalizedDictionaryKey(scene.id, `${field}.scenes.${sceneId}.id`, 80)
                     : normalizeLegacyDictionaryKey(scene.id, `${field}.scenes.${sceneId}.id`, 80);
                 if (normalizedSceneValueId !== sceneId) throw new Error(`备份字段 ${field}.scenes.${sceneId}.id 必须与场景键一致`);
             }
-            if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+            if (isStrictBackupVersion(sourceVersion)) {
                 assertOptionalNormalizedText(scene, 'title', `${field}.scenes.${sceneId}`, 80);
                 assertOptionalNormalizedText(scene, 'preset', `${field}.scenes.${sceneId}`, 30);
+                if (isV3) {
+                    if (!COMMUNITY_PLATFORMS.includes(scene.platform)) throw new Error(`备份字段 ${field}.scenes.${sceneId}.platform 无效`);
+                    if (typeof scene.nsfw !== 'boolean') throw new Error(`备份字段 ${field}.scenes.${sceneId}.nsfw 必须是布尔值`);
+                    if (Object.hasOwn(scene, 'autoRespond') && typeof scene.autoRespond !== 'boolean') throw new Error(`备份字段 ${field}.scenes.${sceneId}.autoRespond 必须是布尔值`);
+                }
                 assertOptionalNormalizedText(scene, 'styleInput', `${field}.scenes.${sceneId}`, 2000, { allowEmpty: true });
                 assertOptionalNormalizedText(scene, 'generatedPrompt', `${field}.scenes.${sceneId}`, 6000, { allowEmpty: true });
                 assertOptionalNormalizedText(scene, 'themeAccent', `${field}.scenes.${sceneId}`, 7, { allowEmpty: true });
@@ -204,10 +215,10 @@ const assertInteractiveBackupStore = value => {
                     post, `${field}.scenes.${sceneId}.posts.${index}`, { version: sourceVersion, actorIds },
                 ));
             }
-            if (Object.hasOwn(scene, 'live')) {
+            if (!isV3 && Object.hasOwn(scene, 'live')) {
                 const live = objectValue(scene.live, `${field}.scenes.${sceneId}.live`);
                 assertAllowedKeys(live, `${field}.scenes.${sceneId}.live`, ['title', 'status', 'warmupStarted', 'danmaku']);
-                if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+                if (isStrictBackupVersion(sourceVersion)) {
                     assertOptionalNormalizedText(live, 'title', `${field}.scenes.${sceneId}.live`, 100);
                 } else {
                     assertOptionalLegacyText(live, 'title', `${field}.scenes.${sceneId}.live`);
@@ -223,7 +234,37 @@ const assertInteractiveBackupStore = value => {
                 }
             }
         }
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+        if (isV3) {
+            const liveRooms = objectValue(scope.liveRooms, `${field}.liveRooms`);
+            if (!Array.isArray(scope.liveOrder)) throw new Error(`备份字段 ${field}.liveOrder 必须是数组`);
+            if (scope.liveOrder.length > INTERACTIVE_LIMITS.liveRooms) throw new Error(`备份字段 ${field}.liveOrder 不能超过 ${INTERACTIVE_LIMITS.liveRooms} 项`);
+            const orderedRoomIds = new Set();
+            for (const roomId of scope.liveOrder) {
+                assertNormalizedDictionaryKey(roomId, `${field}.liveOrder`, 80);
+                if (orderedRoomIds.has(roomId)) throw new Error(`备份字段 ${field}.liveOrder 包含重复直播间 ${roomId}`);
+                orderedRoomIds.add(roomId);
+                if (!Object.hasOwn(liveRooms, roomId)) throw new Error(`备份字段 ${field}.liveOrder 引用了不存在的直播间 ${roomId}`);
+                const roomField = `${field}.liveRooms.${roomId}`;
+                const room = objectValue(liveRooms[roomId], roomField);
+                assertAllowedKeys(room, roomField, ['id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku']);
+                if (room.id !== roomId) throw new Error(`备份字段 ${roomField}.id 必须与直播间键一致`);
+                assertNormalizedText(room.title, `${roomField}.title`, 100);
+                assertOptionalNormalizedText(room, 'hostSetting', roomField, LIVE_HOST_SETTING_MAX, { allowEmpty: true });
+                if (typeof room.hostIsUser !== 'boolean') throw new Error(`备份字段 ${roomField}.hostIsUser 必须是布尔值`);
+                if (typeof room.nsfw !== 'boolean') throw new Error(`备份字段 ${roomField}.nsfw 必须是布尔值`);
+                if (Object.hasOwn(room, 'hostActorId') && !actorIds.has(room.hostActorId)) throw new Error(`备份字段 ${roomField}.hostActorId 未指向有效 actor`);
+                assertOptionalTimestamp(room, 'createdAt', roomField);
+                assertOptionalTimestamp(room, 'updatedAt', roomField);
+                if (!Array.isArray(room.danmaku)) throw new Error(`备份字段 ${roomField}.danmaku 必须是数组`);
+                if (room.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`备份字段 ${roomField}.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
+                room.danmaku.forEach((item, index) => assertInteractiveItem(
+                    item, `${roomField}.danmaku.${index}`, { kind: 'danmaku', version: sourceVersion, actorIds },
+                ));
+            }
+            const orphanRoomId = Object.keys(liveRooms).find(roomId => !orderedRoomIds.has(roomId));
+            if (orphanRoomId) throw new Error(`备份字段 ${field}.liveRooms 包含未列入 liveOrder 的直播间 ${orphanRoomId}`);
+        }
+        if (isStrictBackupVersion(sourceVersion)) {
             const extraSceneIds = [...normalizedScenes.keys()].filter(sceneId => !orderedIds.has(sceneId));
             if (extraSceneIds.length) throw new Error(`备份字段 ${field}.scenes 包含未列入 sceneOrder 的场景 ${extraSceneIds[0]}`);
             if (scope.activeSceneId === null && orderedIds.size) throw new Error(`备份字段 ${field}.activeSceneId 不能在存在场景时为 null`);

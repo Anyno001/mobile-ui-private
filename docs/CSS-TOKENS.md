@@ -55,14 +55,32 @@
 | `--pm-opacity-*` | 受控透明度 |
 | `--pm-<feature>-*` | 已登记的组件私有 token |
 
-`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
+`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css`、`styles/gallery.css`、`styles/live.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
 
 | 私有 token | 根选择器 | 语义与适用范围 |
 | --- | --- | --- |
 | `--pm-scene-topbar-height` | `.pm-scene-shell` | 场景顶栏的稳定结构高度；同时锚定顶栏菜单的 `top`，避免两个 `38px` 声明漂移。仅社区场景使用，不随主题改变。 |
 | `--pm-scene-post-body-letter-spacing` | `.pm-scene-shell` | 社区帖子正文专用的扩展字距；避免提高评论字距，仅 `.pm-scene-post p` 消费，不随主题改变。 |
 | `--pm-scene-body-letter-spacing` | `.pm-scene-shell` | 社区评论正文的轻度字距，改善小字号中文阅读的视觉呼吸感；仅 `.pm-scene-comment-content` 消费，不随主题改变。 |
-| `--pm-calendar-status-value-offset` | `.pm-calendar-status-card` | 日历状态卡大号数值在 SF/Segoe UI 回退栈中的光学校正位移；仅供 `translateY()` 消费，不改变卡片布局或主题值。 |
+| `--pm-scene-quote-bar-width` | `.pm-scene-shell` | 小组论坛楼层引用块左侧点缀色条的宽度；公共间距尺度没有 3px，仅 `.pm-scene-quote::before` 消费，不随主题改变。 |
+| `--pm-scene-star-size-large` | `.pm-scene-shell` | 社区整页编辑页顶部星级选择的星号字号（28px，展示型）；公共字号尺度最大 20px，仅 `.pm-scene-sheet-rating .pm-scene-star` 消费，不随主题改变。 |
+| `--pm-community-accent` | `[data-community-platform]`、`.pm-scene-shell[data-community-platform="night"]` | 社区点缀色，按平台取值（weibo、douban、review、confess、night；浅色 `#e0806a #5f9a86 #e08e55 #8f86c6 #6f7fc4`，深色 `#e8957f #78b29e #e8a06d #a59dd6 #aeb8ec`），只用于图标、选中、标签、星级、话题词；社区自选主题色只覆盖该变量。夜间来信固定使用深色值，不跟随整机浅深色。 |
+| `--pm-community-accent-soft` | `[data-community-platform]` | 点缀色浅底：`color-mix` 混进不透明的 `--pm-color-surface`，得到实色；用于平台卡片选中态、标签、小组首字图标底。 |
+| `--pm-community-note-1..5` / `--pm-community-note-edge-1..5` | `.pm-scene-shell` | 便签五色与对应书脊色，树洞便签与书评书封共用，文字一律用 `--pm-color-label`。浅色底 `#ecebf7 #f9e8ee #e6f1ed #fdf3e2 #e7eef8`，书脊 `#d9d6ef #efd3dd #cfe4dc #f3e2c4 #d2dfee`；深色各给一组暗的实色，亮暗成对。 |
+| `--pm-community-night-card` / `-stamp` / `-avatar` | `.pm-scene-shell[data-community-platform="night"]` | 夜间来信的话题卡底 `#262a45`、邮戳底 `#3a4170`、头像底 `#2c3150`；该平台固定暗色，不分浅深色成对。 |
+| `--pm-live-cover-1..5` / `-cover-ink` | `.pm-live-shell` | 直播间卡片封面的五组柔和实色（浅色 `#f4b6cc #a9cdf2 #a6e0c5 #fbcf9a #cbbcf2`，深色各给一组更深的实色）与封面上的文字色，按房间 id 哈希取色；不用灰色与莫兰迪色。亮暗成对。 |
+| `--pm-live-badge-bg` / `-badge-ink` / `-badge-off-ink` | `.pm-live-shell` | 列表封面上「直播中」「未开播」小胶囊的底色与文字色，压在柔和封面上，浅深色同值，不随主题改变。 |
+| `--pm-live-pink` / `-pink-ink` / `-gold` / `-heart` / `-flame` / `-alert` / `-host-fly` | `.pm-live-shell` | 直播间画面（照 IGS 的 B 站竖屏直播间，固定深色）的强调色：粉（主播头像、关注、主播标签，文字用 `-pink-ink` 以达 4.5:1）、金（礼物行与礼物飘屏）、心形粉、火焰橙、报错浅红、主播飘屏浅粉。不随主题改变。 |
+| `--pm-live-veil` / `-glass` / `-host-veil` / `-name-dim` / `-ring` / `-shadow` | `.pm-live-shell` | 直播间画面上叠加层的半透明色：评论条底、输入胶囊与圆钮底、主播发言条底、评论名字淡白、头像描环白、文字阴影黑。画面叠加层按 IGS 保留半透明；列表页与开播页仍用实色。 |
+| `--pm-live-ghost` / `-initial-ink` / `-mask-ink` | `.pm-live-shell` | 画面中央主播首字圆的背景色（比叠加层更淡的白，作背景不与横飞抢位置），以及评论区与横飞区边缘渐隐遮罩的不透明遮罩色（只用于 mask-image，不产生可见色）。不随主题改变。 |
+| `--pm-live-cover-height` / `-initial-size` / `-play-size` / `-ring-size` / `-textarea-height` / `-lane-pitch` / `-fly-top` / `-fly-share` / `-center-top` / `-fade` / `-bar-height` / `-list-height` | `.pm-live-shell` | 直播页固定几何：封面高度、封面与画面中央主播首字字号（展示型）、播放圆钮图标、首字圆环、设定输入框最小高度，以及直播间内飘屏轨道间距、横飞区起点与下沿（占画面高度的比例，轨道数按此高度除以轨道间距）、中央区顶部、渐隐遮罩长度、底部输入条高度、评论叠层高度。不随主题改变。 |
+| `--pm-calendar-day-height` / `-day-circle` / `-dot` / `-band-inset` / `-textarea-height` / `-rule-height` | `.pm-calendar-shell` | 日历 v3 页面几何：月历日期格高度、日历小圆点直径、生理期色带上下内缩、设置页多行输入与生成规则框的最小高度。不随主题改变。 |
+| `--pm-calendar-holiday*` / `-occasion*` / `-outfit-*` / `-meal-*` / `-band-*` / `-weather` | `.pm-calendar-shell` | 分类色：节假日、纪念日、穿搭、菜谱胶囊的浅底与文字，生理期月格色带与图例，天气月格图标色。只用于日历小标记与分类胶囊，不用于选中态；亮暗成对。 |
+| `--pm-calendar-status-value-size` / `-scene-height` / `-ring-*` / `-status-ink*` | `.pm-calendar-status-card` | 状态卡几何与前景：大号数值字号、天气风景卡高度、周期圆环尺寸/线宽/中心数字，以及压在风景画上的文字色（雷阵雨与夜间为白字）。 |
+| `--pm-calendar-sky` / `-far` / `-near` / `-front` / `-water` / `-glint` / `-sun` / `-halo` / `-cloud*` / `-tree` / `-mist` / `-rain` / `-snowcap` / `-flake` / `-bolt` | `.pm-calendar-status-card` | 天气风景画的分层实色，按 `data-weather-scene`（晴/多云/雨/雪/雾/雷阵雨）覆盖；夜间不另设色板，由 `.pm-calendar-status-art` 的 `filter` 统一压暗。属品牌插画，不受普通界面渐变禁令约束，但仍全部实色。 |
+| `--pm-calendar-cycle-*` / `--pm-calendar-ring-period` / `-fertile` / `-rest` / `-today` | `.pm-calendar-status-card` | 生理期状态卡底色、文字与圆环分段色；易孕期按 `data-cycle-phase="ovulatory"` 切到浅紫组；亮暗成对。 |
+| `--pm-calendar-dialog-width` | `.pm-calendar-month-dialog` | 跳转日期弹窗宽度，与 `.pm-calendar-entry-dialog` 一致；弹窗渲染在 `#pm-overlay`，不继承 `.pm-calendar-shell` 的 token。 |
+| `--pm-gallery-chat-photo-max` | `.pm-img-card` | 聊天图片卡里图片的最大高度（260px），竖图不占满一屏；只给 `.pm-img-card-photo img` 用，不随主题变化。 |
 | `--pm-today-trend-*` | `.pm-today-trend-shell` | 今日风向共享的标题字距、统计计量与事件时间线几何；派生自公共 token，不随主题独立变化。 |
 | `--pm-today-trend-world-*` | `.pm-today-trend-world` | 世界态势的头部、信号轨道、摘要与收尾装饰参数；颜色从公共语义 token 派生。 |
 | `--pm-today-trend-reputation-*` | `.pm-today-trend-reputation` | 个人风评的图标、评级尺和收尾装饰尺寸；颜色从公共语义 token 派生。 |
@@ -86,9 +104,9 @@
 | `--pm-color-border-strong` | `#b7b7bd` | `#48484a` |
 | `--pm-color-accent` | `#1677d2` | `#0a84ff` |
 | `--pm-color-auxiliary` | 当前主题预设的相邻色或对比色；自定义主题按强调色色相映射到独立辅助色 | 同左 |
-| `--pm-color-success` | `#34c759` | `#34c759` |
-| `--pm-color-warning` | `#ff9500` | `#ff9500` |
-| `--pm-color-danger` | `#ff3b30` | `#ff3b30` |
+| `--pm-color-success` | `#2e9e6a` | `#4cc08a` |
+| `--pm-color-warning` | `#c98a12` | `#e0a63a` |
+| `--pm-color-danger` | `#d64545` | `#ef6b6b` |
 | `--pm-color-focus-ring` | `#1677d2` | `#64a8ff` |
 | `--pm-color-overlay` | `rgba(0,0,0,.45)` | 同左 |
 
@@ -102,7 +120,7 @@
 | `--pm-color-on-accent` | `#ffffff` | 同左 |
 | `--pm-color-on-dark` | `#ffffff` | 同左 |
 | `--pm-color-on-light` / `--pm-color-on-success` / `--pm-color-on-warning` | `#000000` | 同左 |
-| `--pm-color-on-danger` | `#000000` | 同左 |
+| `--pm-color-on-danger` | `#ffffff` | `#000000` |
 
 `--pm-color-surface-input` 作为迁移别名映射到 control，新组件不得使用旧名。
 
@@ -114,6 +132,14 @@
 
 `--pm-color-auxiliary` 只表达与主题强调色不同色系的配套辅助色，统一用于圆形交互按钮、圆形选择控件与胶囊开关的开启态；成功、警告和危险状态仍使用各自语义 token，不得以辅助色替代。主题预设不得仅通过调整强调色明度生成辅助色。
 
+强调色派生色调由 `src/theme-tones.js` 按当前强调色计算，`phone-theme.js` 随主题写入；只保留强调色的色相与彩度，亮度按用途固定，因此预设与自定义强调色（含极浅色）都满足对比度。样式表中的值是默认蓝灰主题的兜底，强调色无法解析时生效。
+
+| token | 浅色兜底 | 深色兜底 | 用途 |
+| --- | --- | --- | --- |
+| `--pm-color-accent-soft` | `#d9edff` | `#1f3a56` | 选中或进行中的浅色块（卡片、选项行、胶囊），只表达状态，不做主按钮 |
+| `--pm-color-on-accent-soft` | `#243e5e` | `#ddedff` | 位于 accent-soft 上的文字与图标，对比度 ≥ 8:1 |
+| `--pm-color-accent-strong` | `#5a7799` | `#6b89aa` | 进行中状态的实心小控件（如播放/暂停圆钮），白色图标对比度 ≥ 3.5:1 |
+
 hover 与 active 优先通过现有表面色、文字色和描边变化表达，不为每个组件创建透明混色 token。确需半透明语义层时，必须先证明三层表面色无法表达，并使用组件私有 token。
 
 
@@ -123,7 +149,7 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 
 | Token | 值 | 用途 |
 | --- | ---: | --- |
-| `--pm-font-family-system` | `-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif` | 全局界面字体栈；组件不得写裸 sans 字栈 |
+| `--pm-font-family-system` | `'Tianyin Rounded',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif` | 全局界面字体栈；首选随插件分发的有爱圆体（Nowar Rounded，OFL，见 `assets/fonts/OFL.txt`），按 `unicode-range` 分片按需加载；组件不得写裸 sans 字栈 |
 | `--pm-font-family-mono` | `ui-monospace,SFMono-Regular,Consolas,monospace` | 代码、文件号等等宽内容 |
 | `--pm-font-size-micro` | `9px` | 极小装饰或空间极窄的非关键元信息 |
 | `--pm-font-size-caption` | `10px` | 图标标签、紧凑次要元信息；不得承载关键内容 |
@@ -144,7 +170,7 @@ hover 与 active 优先通过现有表面色、文字色和描边变化表达，
 
 MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺牲可读性。10px 及以下只允许非关键装饰；17px 以上只允许少量页面主标题或数据展示，并定义组件私有 token。正文不使用超粗字重、全大写或过密行高。字重只允许 400/500/600 三档，不得使用 650/700/750 等非标准字重，避免不同系统字体映射不一致。
 
-全局定义：`--pm-font-family-system:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif`、`--pm-font-family-mono:ui-monospace,SFMono-Regular,Consolas,monospace`、`--pm-line-height-loose:1.75`。
+全局定义：`--pm-font-family-system:'Tianyin Rounded',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif`、`--pm-font-family-mono:ui-monospace,SFMono-Regular,Consolas,monospace`、`--pm-line-height-loose:1.75`。
 
 生产规则的 `font-family` 必须使用 `--pm-font-family-system`、`--pm-font-family-mono` 或 `inherit`；`font` 简写的 family 部分必须使用字体 token，`inherit` 只能作为完整的 `font:inherit` 声明。
 
@@ -163,7 +189,7 @@ MUST 从表中选择。控件与正文统一使用 14px，避免为了紧凑牺�
 
 ## 7. 阴影、层级与动效
 
-只保留两种轻阴影：`--pm-shadow-floating:0 8px 24px rgba(0,0,0,.14)` 用于菜单/下拉；`--pm-shadow-modal:0 16px 48px rgba(0,0,0,.18)` 用于模态。普通卡片不使用阴影；手机宿主壳阴影属于兼容例外。
+只保留两种轻阴影：`--pm-shadow-floating:0 4px 12px rgba(30,30,46,.06),0 12px 32px rgba(30,30,46,.10)` 用于菜单/下拉；`--pm-shadow-modal:0 8px 24px rgba(30,30,46,.08),0 24px 56px rgba(30,30,46,.14)` 用于模态。普通卡片不使用阴影；手机宿主壳阴影属于兼容例外。
 
 层级只保留：`--pm-z-base:0`、`--pm-z-menu:20`、`--pm-z-popover:30`、`--pm-z-modal:40`、`--pm-z-host:2147483647`。组件消费规则必须引用对应的 `--pm-z-*` token，不得重复写入其数值。模态遮罩与面板处于同一 modal 层级容器，面板通过 DOM 顺序覆盖遮罩。不得为解决遮挡创建 21、31、9999 等临时值；先检查 stacking context。
 

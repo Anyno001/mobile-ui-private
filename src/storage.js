@@ -20,6 +20,11 @@ import { DESKTOP_ICON_RESOURCE_PREFIX, DESKTOP_ICON_STORAGE_KEY } from './deskto
 import { DESKTOP_BG_KEY, isBigData, pmIDBDel, pmIDBGet, pmIDBKeys, pmIDBReadEntry, pmIDBSet, pmOpenIDB } from './storage-primitives.js';
 import { STORY_ORACLE_FALLBACK_KEY, STORY_ORACLE_STORE_KEY } from './story-oracle-storage.js';
 import { USER_GENERATION_FALLBACK_KEY, USER_GENERATION_STORE_KEY } from './user-generation-storage.js';
+import { CHAT_METADATA_STAMP_KEY } from './chat-metadata-sync.js';
+import { ROLLBACK_FLOORS_KEY } from './phone-floor-rollback.js';
+import { COMMUNITY_FILE_STAMP_KEY } from './community-file-sync.js';
+import { IMAGE_CATALOG_KEY, IMAGE_DNA_STORE_KEY, IMAGE_THUMB_PREFIX } from './phone-image-store.js';
+import { IMAGE_SETTINGS_KEY } from './phone-image-settings.js';
 import {
     addOrUpdateProfile, loadGalBubbleEnabled, loadInjectionConfig, loadProfiles, loadTheme, loadWordyLimit,
     loadWorldBookConfig, saveGalBubbleEnabled, saveInjectionConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
@@ -33,7 +38,8 @@ export {
 export {
     HISTORY_RECOVERY_KEY, loadHistoriesFromIDB, readHistoriesSnapshot, saveHistories, saveHistoriesBeforeUnload, saveHistoriesStrict,
 } from './storage-history.js';
-export { loadGroupMeta, saveGroupMeta } from './storage-group-meta.js';
+export { loadGroupMeta, saveGroupMeta, setGroupMetaPersistListener } from './storage-group-meta.js';
+export { setHistoryPersistListener } from './storage-history.js';
 
 const EMOJI_STORE_KEY = 'ST_SMS_EMOJIS';
 const EMOJI_FALLBACK_KEY = `${EMOJI_STORE_KEY}_LOCAL_FALLBACK`;
@@ -51,14 +57,14 @@ export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     CALENDAR_STORAGE_KEY, CALENDAR_OCCASION_STORAGE_KEY, CALENDAR_HOLIDAY_STORAGE_KEY,
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY,
     TODAY_TREND_FALLBACK_KEY, TODAY_TREND_V2_FALLBACK_KEY,
-    STORY_ORACLE_FALLBACK_KEY, USER_GENERATION_FALLBACK_KEY,
+    STORY_ORACLE_FALLBACK_KEY, USER_GENERATION_FALLBACK_KEY, CHAT_METADATA_STAMP_KEY, ROLLBACK_FLOORS_KEY, COMMUNITY_FILE_STAMP_KEY, IMAGE_SETTINGS_KEY,
 ]);
 export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, BRANCH_LINEAGE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY, DESKTOP_ICON_STORAGE_KEY,
     TODAY_TREND_STORAGE_KEY, TODAY_TREND_V1_MIGRATION_BACKUP_KEY, TODAY_TREND_V2_STORAGE_KEY, TODAY_TREND_V2_AUTHORITY_KEY,
-    STORY_ORACLE_STORE_KEY, USER_GENERATION_STORE_KEY,
+    STORY_ORACLE_STORE_KEY, USER_GENERATION_STORE_KEY, IMAGE_CATALOG_KEY, IMAGE_DNA_STORE_KEY,
 ]);
-export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX]);
+export const PLUGIN_IDB_DYNAMIC_PREFIXES = Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX, IMAGE_THUMB_PREFIX]);
 
 export async function loadEmojis() {
     const primary = await pmIDBReadEntry(EMOJI_STORE_KEY);
@@ -234,6 +240,12 @@ export async function loadInteractiveScenes() {
     }
 }
 
+let interactivePersistListener = null;
+/** 社区 IndexedDB 写成功后通知（酒馆社区文件同步用）。 */
+export function setInteractivePersistListener(listener) {
+    interactivePersistListener = typeof listener === 'function' ? listener : null;
+}
+
 export async function saveInteractiveScenes(store, { coordinated = false } = {}) {
     const persist = async (snapshot, protectedScopes = []) => {
         let value = snapshot;
@@ -256,6 +268,8 @@ export async function saveInteractiveScenes(store, { coordinated = false } = {})
         }
         const saved = await pmIDBSet(INTERACTIVE_STORE_KEY, value);
         if (saved) {
+            try { interactivePersistListener?.(); }
+            catch (error) { console.warn('[phone-mode] 社区同步通知失败', error?.name || 'Error'); }
             try {
                 localStorage.removeItem(INTERACTIVE_FALLBACK_KEY);
             } catch (error) {
@@ -275,6 +289,19 @@ export async function saveInteractiveScenes(store, { coordinated = false } = {})
     };
     if (coordinated) return persist(structuredClone(store));
     return enqueueDirectorySave('interactive', store, persist);
+}
+
+// 旧版互动场景存储升级前的原始备份：键为 INTERACTIVE_STORE_KEY:backup-v<旧版本号>，已存在时不覆盖；写入失败抛错，由调用方中止迁移。
+export const interactiveBackupKey = version => `${INTERACTIVE_STORE_KEY}:backup-v${version}`;
+
+export async function saveInteractiveBackup(version, raw, { readEntry = pmIDBReadEntry, writeEntry = pmIDBSet } = {}) {
+    if (!Number.isInteger(version) || version < 1) throw new TypeError('互动场景备份版本无效');
+    const key = interactiveBackupKey(version);
+    const existing = await readEntry(key);
+    if (!existing?.ok) throw new Error('互动场景升级备份失败：浏览器存储不可用');
+    if (existing.value !== undefined && existing.value !== null) return false;
+    if (!await writeEntry(key, structuredClone(raw))) throw new Error('互动场景升级备份失败：浏览器存储不可用');
+    return true;
 }
 
 export function loadPhoneUiState(interactiveStore) {

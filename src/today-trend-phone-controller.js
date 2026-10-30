@@ -58,38 +58,6 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             if (!destroyed) await render();
         }
     };
-    let headProgressFrame = 0;
-    let lastHeadProgress = 0;
-    let headProgressLockUntil = 0;
-    const syncHeadProgress = () => {
-        const shell = container.querySelector?.('.pm-today-trend-shell');
-        if (!shell || typeof shell.style?.setProperty !== 'function') return;
-        const content = container.querySelector?.('.pm-today-trend-content');
-        if (!content) return;
-        const now = typeof performance?.now === 'function' ? performance.now() : Date.now();
-        // 折叠过渡期间不再重算：折叠会缩短滚动高度并让浏览器回夹 scrollTop，重算会在半压位置反复翻转
-        if (now < headProgressLockUntil) return;
-        const top = Number(content.scrollTop) || 0;
-        const slack = (Number(content.scrollHeight) || 0) - (Number(content.clientHeight) || 0);
-        // 可滚动余量不足时禁止折叠，避免折叠后 scrollTop 被回夹到展开区间
-        const next = lastHeadProgress ? (top > 16 ? 1 : 0) : (slack >= 96 && top > 40 ? 1 : 0);
-        if (next === lastHeadProgress) return;
-        lastHeadProgress = next;
-        headProgressLockUntil = now + 260;
-        shell.style.setProperty('--pm-today-trend-head-progress', String(next));
-    };
-    const scheduleHeadProgress = () => {
-        if (typeof requestAnimationFrame !== 'function') { syncHeadProgress(); return; }
-        if (headProgressFrame) return;
-        headProgressFrame = requestAnimationFrame(() => { headProgressFrame = 0; syncHeadProgress(); });
-    };
-    const onHeadScroll = () => scheduleHeadProgress();
-    const bindHeadProgress = () => {
-        const content = container.querySelector?.('.pm-today-trend-content');
-        if (!content || typeof content.addEventListener !== 'function') return;
-        content.addEventListener('scroll', onHeadScroll, { passive: true });
-        syncHeadProgress();
-    };
 
     const render = async view => {
         if (destroyed) return false;
@@ -111,14 +79,16 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             detailStorageId = id;
             for (const key of Object.keys(detailById)) delete detailById[key];
         }
+        const changes = scope && typeof deps.getTodayTrendChanges === 'function'
+            ? await Promise.resolve(deps.getTodayTrendChanges(id, scope)).catch(() => null) : null;
+        if (destroyed || epoch !== renderEpoch || state.phoneWindow?.querySelector('.pm-today-trend-page') !== container) return false;
         lastScope = scope; lastPresets = Object.values(current?.presets || {}); retentionRevisions = revisions;
         const currentFloor = deps.getTodayTrendCurrentFloor?.();
         const currentAssistantCount = assistantCount();
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
-            view: lastView,
+            view: lastView, changes,
             generation: deps.getTodayTrendGenerationState?.() || {}, currentFloor, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode,
             detailById, loadingDetailIds, retentionRevisions, retentionSaving, retentionDraft, diagnosticCopyStatus, assistantCount: currentAssistantCount, batchDraft: scope?.operation?.batchDraft });
-        bindHeadProgress();
 
         const focusSelector = pendingFocusSelector;
         pendingFocusSelector = '';
@@ -246,7 +216,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
                 return report(new Error('当前聊天没有可处理的 AI 回复楼层'));
             }
             if (!Number.isSafeInteger(recentAssistantCount) || recentAssistantCount < 1 || recentAssistantCount > currentCount) {
-                return report(new Error('最近处理层数必须在当前聊天 AI 回复累计层数范围内'));
+                return report(new Error('最近处理层数必须在当前聊天AI回复累计层数范围内'));
             }
             if (!Number.isSafeInteger(mergeAssistantCount) || mergeAssistantCount < 1 || mergeAssistantCount > recentAssistantCount) {
                 return report(new Error('每批合并层数必须在最近处理层数范围内'));
@@ -311,7 +281,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
                 const currentCount = assistantCount();
                 if (currentCount > 0 && (!Number.isSafeInteger(initializationDraft.recentAssistantCount)
                     || initializationDraft.recentAssistantCount < 1 || initializationDraft.recentAssistantCount > currentCount)) {
-                    return report(new Error('最近处理层数必须在当前聊天 AI 回复累计层数范围内'));
+                    return report(new Error('最近处理层数必须在当前聊天AI回复累计层数范围内'));
                 }
                 if (currentCount > 0 && (!Number.isSafeInteger(initializationDraft.mergeAssistantCount)
                     || initializationDraft.mergeAssistantCount < 1 || initializationDraft.mergeAssistantCount > initializationDraft.recentAssistantCount)) {
@@ -438,8 +408,6 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         container.removeEventListener('click', click, true);
         container.removeEventListener('change', change);
         container.removeEventListener('submit', submit);
-        if (headProgressFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(headProgressFrame);
-        headProgressFrame = 0;
 
         return true;
     };

@@ -19,6 +19,8 @@ export function loadTheme() {
         }
     } catch (error) {}
     window.__pmTheme.ambientStatusEnabled = window.__pmTheme.ambientStatusEnabled === true;
+    window.__pmTheme.iconStyle = window.__pmTheme.iconStyle === 'cream' ? 'cream' : 'glass';
+    window.__pmTheme.wallpaper = window.__pmTheme.wallpaper === 'plain' ? 'plain' : 'soft';
 }
 
 export function saveTheme() {

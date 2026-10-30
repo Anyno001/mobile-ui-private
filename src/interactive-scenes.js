@@ -1,12 +1,22 @@
 import { generationErrorMessage } from './ai.js';
-import { buildInteractiveRequest, buildStylePrompt, getInteractivePresets, parseInteractiveResponse } from './interactive-scene-ai.js';
+import { buildCommunityRequest, COMMUNITY_PLATFORM_PROMPTS, parseCommunityResponse } from './interactive-scene-ai.js';
 import {
-    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, deleteSceneComment, deleteSceneDanmaku, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, normalizeScene,
-    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateSceneDanmaku, updateScenePost,
+    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
+    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, setSceneHot, setSceneTonight, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
-import { loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState } from './storage.js';
-import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, selectScenePreset, toggleDanmakuActions, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
-import { createCommunityGenerationRunner, createCommunityTaskController, runLiveWarmup } from './interactive-scene-scheduler.js';
+import { COMMUNITY_PLATFORMS } from './interactive-scene-constants.js';
+import {
+    loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState,
+    setInteractivePersistListener,
+} from './storage.js';
+import { createCommunityFileSync } from './community-file-sync.js';
+import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
+import { createCommunityGenerationRunner, createCommunityTaskController } from './interactive-scene-scheduler.js';
+import { installLiveApp } from './live-app.js';
+import { composePostFields, insertTopicMark, pickMood, pickPlatform, pickRating, readComposeDraft, readComposeUi, toggleNsfwSwitch } from './community-views/view-actions.js';
+import { COMMUNITY_PLATFORM_ACCENTS, platformOf } from './community-views/view-shared.js';
+import { createRespondFlow } from './interactive-scene-respond-flow.js';
+import { placePostInWindow } from './interactive-scene-respond.js';
 import { createCommitWithPhoneUi } from './interactive-scene-phone-transaction.js';
 import { createCommunityTemplateImportAction } from './interactive-scene-template-import.js';
 import { renderCommunityLauncher as renderCommunityLauncherView, renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop } from './interactive-scene-views.js';
@@ -17,12 +27,12 @@ export function installInteractiveScenes(_state, deps) {
     const { getCtx, getStorageId, getUserPersona, gatherContext, callAI } = deps;
     const runtime = {
         store: null, loadPromise: null, mutationPromise: Promise.resolve(), requestId: 0, contextEpoch: 0,
-        loadGeneration: 0, openSceneId: null, openSceneStorageId: null, busy: false, creating: false, phoneUiState: null, requestController: null, liveWarmupError: null,
+        loadGeneration: 0, openSceneId: null, openSceneStorageId: null, busy: false, creating: false, phoneUiState: null, requestController: null, communityViews: {},
     };
     const storeLoader = createInteractiveStoreLoader({ runtime, load: loadInteractiveScenes,
         migrate: raw => migrateInteractiveStore(raw, saveInteractiveScenes) });
     const { loadStore } = storeLoader;
-    const getScope = (store, scopeId) => store.scopes[scopeId] || (store.scopes[scopeId] = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} });
+    const getScope = (store, scopeId) => store.scopes[scopeId] || (store.scopes[scopeId] = createEmptyInteractiveScope());
     const actorSeeds = scopeId => {
         const context = getCtx();
         const character = context?.characters?.[context.characterId] || {};
@@ -40,6 +50,9 @@ export function installInteractiveScenes(_state, deps) {
         return { scopeId, scope, scene: scope?.scenes?.[runtime.openSceneId || scope.activeSceneId] || null };
     };
     const clearOpenScene = () => { runtime.openSceneId = null; runtime.openSceneStorageId = null; };
+    // 版式内的临时视图状态（分段、打开的帖子或书、心情筛选、展开的帖子、编辑页与草稿），只在会话内保存，不写入存储。
+    const viewOf = sceneId => (runtime.communityViews[sceneId] ||= { segment: '', postId: '', work: '', mood: '', open: [], compose: false, draft: null, feedScroll: 0, retry: [] });
+    const resetView = sceneId => { delete runtime.communityViews[sceneId]; };
     const resolveTarget = target => {
         const scope = runtime.store?.scopes?.[target?.storageId];
         return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null }; };
@@ -55,9 +68,11 @@ export function installInteractiveScenes(_state, deps) {
         getOpenSceneId: () => runtime.openSceneId,
         isMounted: () => !!document.getElementById('pm-scene-app'),
     }, { epoch: runtime.contextEpoch, storageId, sceneId });
+    let liveApp = null;
     const communityTasks = createCommunityTaskController({
         runtime,
         isTargetActive,
+        isLiveTargetActive: task => liveApp?.isTargetActive(task) === true,
         isAllowed: target => _state.phoneActive && !_state.isMinimized && document.visibilityState !== 'hidden'
             && !runtime.busy && isTargetActive(target) });
     let communityRunner = null;
@@ -104,6 +119,7 @@ export function installInteractiveScenes(_state, deps) {
         const container = document.querySelector(selector);
         if (!container) return false;
         container.innerHTML = html;
+        deps.hydrateImageCards?.(container);
         return true;
     };
     const showPhonePage = page => window.__pmShowPhonePage?.(page) === true;
@@ -145,27 +161,24 @@ export function installInteractiveScenes(_state, deps) {
         clearOpenScene();
         return renderInto('.pm-community-page', renderCommunityLauncherView(scope, communityUiScope(scopeId, store)));
     }
-    const isLiveWarmupActive = (scopeId, sceneId) => communityTasks.state().task?.kind === 'live-warmup'
-        && communityTasks.state().task.storageId === scopeId && communityTasks.state().task.sceneId === sceneId;
-    const getLiveWarmupState = (scopeId, sceneId, scene) => isLiveWarmupActive(scopeId, sceneId) ? 'starting'
-        : scene?.live?.warmupStarted === true ? 'active'
-            : runtime.liveWarmupError?.storageId === scopeId && runtime.liveWarmupError.sceneId === sceneId ? 'error' : 'idle';
     function renderCommunityWorkspace(scopeId, sceneId, tab, store = runtime.store) {
         const scope = getScope(store, scopeId);
         const scene = scope.scenes[sceneId];
         if (!scene) return false;
         runtime.openSceneId = sceneId;
         runtime.openSceneStorageId = scopeId;
-        return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId, store), {
+        syncComposeDraft(sceneId);
+        return renderInto('.pm-community-page', renderCommunityWorkspaceView(scene, tab, { ...phoneScope(scopeId, store), lastTab: 'feed' }, {
             autoActive: communityTasks.state().mode === 'auto',
-            liveState: getLiveWarmupState(scopeId, sceneId, scene),
+            view: viewOf(sceneId),
+            authorName: actorSeeds(scopeId).user.displayName,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, sceneId),
         }));
     }
     window.__pmReturnToCommunityDataSource = async () => {
         const scopeId = runtime.openSceneStorageId || getStorageId();
         const sceneId = runtime.openSceneId;
-        const tab = phoneScope(scopeId).lastTab;
+        const tab = 'feed';
         document.getElementById('pm-overlay')?.remove();
         if (sceneId && renderCommunityWorkspace(scopeId, sceneId, tab)) {
             showPhonePage('community');
@@ -179,6 +192,7 @@ export function installInteractiveScenes(_state, deps) {
             .filter(Boolean).join('\n').slice(0, 9000);
         return { context, worldBookText: ctx.worldBookText };
     }
+    // 返回解析后的 items；热搜 / 今夜信箱这类 meta 以不可枚举属性挂在 items 上，由 commitFeed 取用，调度器无需改动。
     async function request(kind, extra = {}, target = null) {
         if (runtime.busy) throw new Error('已有生成任务正在进行');
         const { scopeId, scene } = target ? resolveTarget(target) : current();
@@ -196,13 +210,16 @@ export function installInteractiveScenes(_state, deps) {
                 .map(actor => actor.displayName), currentStorySeed.displayName]
                 .filter((name, index, values) => name && values.indexOf(name) === index);
             const contextData = await contextText(controller.signal);
-            const prompts = buildInteractiveRequest({ kind, presetKey: scene.preset, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, ...contextData, actorRoster, ...extra });
+            const platform = platformOf(scene);
+            const prompts = buildCommunityRequest({ kind, platform, nsfw: scene.nsfw === true, styleInput: scene.styleInput, generatedPrompt: scene.generatedPrompt, ...contextData, actorRoster, ...extra });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, {
                 isolated: true,
                 signal: controller.signal,
             });
             if (requestId !== runtime.requestId || !document.getElementById('pm-scene-app')) throw new Error('生成已取消');
-            return parseInteractiveResponse(raw, kind);
+            const { items, meta } = parseCommunityResponse(raw, kind, platform);
+            Object.defineProperty(items, 'meta', { value: meta, enumerable: false });
+            return items;
         } finally {
             if (requestId === runtime.requestId) {
                 runtime.requestController = null;
@@ -213,21 +230,34 @@ export function installInteractiveScenes(_state, deps) {
     }
     function replaceApp(html, { feedScrollTop = null } = {}) {
         const app = document.getElementById('pm-scene-app');
-        if (app) app.outerHTML = html;
+        if (app) { app.outerHTML = html; deps.hydrateImageCards?.(document.getElementById('pm-scene-app')); }
         else renderInto('.pm-community-page', html);
         if (Number.isFinite(feedScrollTop)) {
             const feed = document.querySelector('#pm-scene-app .pm-scene-feed'); if (feed) feed.scrollTop = feedScrollTop;
         }
     }
-    function rerender(tab = phoneScope(getStorageId()).lastTab, { preserveFeedScroll = false } = {}) {
+    // 编辑页开着时，重绘前把输入框里的内容存回 view.draft（只在内存里），避免后台重绘把正在写的字冲掉。
+    function syncComposeDraft(sceneId) {
+        const view = runtime.communityViews[sceneId];
+        const sheet = document.querySelector('#pm-scene-app .pm-scene-sheet');
+        if (view?.compose === true && sheet) view.draft = readComposeDraft(document.getElementById('pm-scene-app'));
+    }
+    // 编辑页重绘后把光标放回第一个输入处（data-compose-focus 标记）。
+    function focusComposeField() {
+        document.querySelector('#pm-scene-app .pm-scene-sheet [data-compose-focus]')?.focus?.({ preventScroll: true });
+    }
+    function rerender(tab = 'feed', { preserveFeedScroll = false, scrollToEnd = false, scrollTop = null } = {}) {
         const { scopeId, scene } = current();
         if (!scene) return;
-        const feedScrollTop = preserveFeedScroll ? document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop : null;
-        replaceApp(renderCommunityWorkspaceView(scene, tab, phoneScope(scopeId), {
+        const feedScrollTop = Number.isFinite(scrollTop) ? scrollTop : preserveFeedScroll ? document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop : null;
+        syncComposeDraft(scene.id);
+        replaceApp(renderCommunityWorkspaceView(scene, tab, { ...phoneScope(scopeId), lastTab: 'feed' }, {
             autoActive: communityTasks.state().mode === 'auto',
-            liveState: getLiveWarmupState(scopeId, scene.id, scene),
+            view: viewOf(scene.id),
+            authorName: actorSeeds(scopeId).user.displayName,
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id),
         }), { feedScrollTop });
+        if (scrollToEnd) { const feed = document.querySelector('#pm-scene-app .pm-scene-feed'); if (feed) feed.scrollTop = feed.scrollHeight; }
     }
     async function openScene(sceneId, tab = 'feed') {
         invalidate();
@@ -238,28 +268,25 @@ export function installInteractiveScenes(_state, deps) {
         await commit(() => { getScope(runtime.store, scopeId).activeSceneId = sceneId; });
         runtime.openSceneId = sceneId;
         runtime.openSceneStorageId = scopeId;
-        updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: tab });
-        renderCommunityWorkspace(scopeId, sceneId, tab);
+        resetView(sceneId);
+        updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: 'feed' });
+        renderCommunityWorkspace(scopeId, sceneId, 'feed');
         showPhonePage('community');
     }
     async function importCommunityTemplate(templateId) {
         return createCommunityTemplateImportAction({ getStorageId, loadStore, getInteractiveStore: () => runtime.store, getPhoneUiState: () => getPhoneUiState(runtime.store), getScope: scopeId => getScope(runtime.store, scopeId), phoneScope: scopeId => phoneScope(scopeId, runtime.store), commitWithPhoneUi, patchPhoneUiScope, refreshDesktop, openScene, createSceneFromCommunityTemplate, createSceneId: () => uid('scene'), sceneLimit: INTERACTIVE_LIMITS.scenes })(templateId);
     }
-    function appendPosts(scopeId, scope, scene, items) {
+    function appendPosts(scopeId, scope, scene, items, options = {}) {
         const seeds = actorSeeds(scopeId);
-        appendScenePosts(scope, scopeId, scene, items, [seeds.story, seeds.user]);
+        return appendScenePosts(scope, scopeId, scene, items, [seeds.story, seeds.user], options);
     }
-    function appendDanmaku(scopeId, scope, scene, items) {
-        const seeds = actorSeeds(scopeId);
-        ensureInteractiveActor(scope, scopeId, seeds.story);
-        ensureInteractiveActor(scope, scopeId, seeds.user);
-        scene.live.danmaku.push(...items.map(item => ({
-            id: uid('danmaku'),
-            ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed || null),
-            content: item.content, createdAt: now(),
-        })));
-        scene.live.danmaku = scene.live.danmaku.slice(-INTERACTIVE_LIMITS.danmaku);
-        scene.updatedAt = now();
+    // 随机数可由 deps.random 打桩；每次调用时才读取。
+    const randomSource = () => (typeof deps.random === 'function' ? deps.random() : Math.random());
+    // 热搜、今夜信箱这类随 feed 一起返回的平台数据，只写给对应平台的社区。
+    function applyFeedMeta(scene, meta) {
+        if (!meta) return;
+        if (platformOf(scene) === 'weibo' && meta.hot) setSceneHot(scene, meta.hot);
+        if (platformOf(scene) === 'night' && meta.tonight) setSceneTonight(scene, meta.tonight, now());
     }
     async function createScene(app) {
         if (runtime.creating || runtime.busy) throw new Error('已有生成任务正在进行');
@@ -268,35 +295,32 @@ export function installInteractiveScenes(_state, deps) {
         try {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') throw new Error('请先打开有效的角色聊天');
-            const preset = app.querySelector('.pm-scene-preset.is-active')?.dataset.preset || 'weibo';
-            const presetDefinition = getInteractivePresets()[preset] || getInteractivePresets().custom;
+            const picked = app.querySelector('.pm-scene-platform.is-active')?.dataset.platform;
+            const platform = COMMUNITY_PLATFORMS.includes(picked) ? picked : 'weibo';
             const styleInput = app.querySelector('#pm-scene-style')?.value.trim() || '';
-            if (preset === 'custom' && !styleInput) throw new Error('自定义风格不能为空');
+            const nsfw = app.querySelector('#pm-scene-nsfw')?.getAttribute('aria-checked') === 'true';
             const isValid = operationGuard(scopeId, () => createdSceneId);
             await loadStore();
-            await commit(async () => {
+            await commit(() => {
                 const scope = getScope(runtime.store, scopeId);
                 const scene = normalizeScene({
                     id: uid('scene'),
-                    title: preset === 'custom' ? '正在生成社区…' : presetDefinition.label,
-                    preset,
+                    title: COMMUNITY_PLATFORM_PROMPTS[platform].label,
+                    platform,
+                    nsfw,
+                    preset: platform,
                     styleInput,
-                    generatedPrompt: preset === 'custom' ? '' : buildStylePrompt(preset, styleInput),
-                    themeAccent: presetDefinition.accent,
+                    generatedPrompt: COMMUNITY_PLATFORM_PROMPTS[platform].defaultStyle,
                 });
                 createdSceneId = scene.id;
                 scope.scenes[scene.id] = scene;
                 scope.sceneOrder.push(scene.id);
                 scope.activeSceneId = scene.id;
                 runtime.openSceneId = scene.id;
-                if (preset === 'custom') {
-                    const [style] = await request('style_prompt');
-                    scene.title = style.title;
-                    scene.generatedPrompt = style.prompt;
-                }
                 enforceInteractiveSceneLimit(scope);
             }, isValid, '创建社区');
             if (!isValid()) throw new Error('生成已取消');
+            resetView(createdSceneId);
             updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: runtime.openSceneId, lastTab: 'feed' });
             refreshDesktop(scopeId);
             rerender('feed');
@@ -314,14 +338,15 @@ export function installInteractiveScenes(_state, deps) {
     }
     communityRunner = createCommunityGenerationRunner({
         controller: communityTasks, getTarget: getCommunityTarget, request,
-        commitFeed: (target, items, isValid, onComplete) => commit(async () => {
-            const { scopeId, scope, scene } = resolveTarget(target);
-            if (!scene) throw new Error('生成已取消'); appendPosts(scopeId, scope, scene, items); await onComplete?.();
-        }, isValid),
-        commitDanmaku: (target, items, isValid, onComplete) => commit(async () => {
-            const { scopeId, scope, scene } = resolveTarget(target);
-            if (!scene) throw new Error('生成已取消'); appendDanmaku(scopeId, scope, scene, items); await onComplete?.();
-        }, isValid),
+        commitFeed: async (target, items, isValid, onComplete) => {
+            let added = [];
+            await commit(async () => {
+                const { scopeId, scope, scene } = resolveTarget(target);
+                if (!scene) throw new Error('生成已取消'); added = appendPosts(scopeId, scope, scene, items); applyFeedMeta(scene, items.meta); await onComplete?.();
+            }, isValid);
+            // 落库成功后才排配图任务（开了社区自动生成才会出图）。
+            deps.notePhoneImagePosts?.(added, { storageId: target?.storageId, sceneId: target?.sceneId });
+        },
         onRender: rerender, onStatus: setStatus,
     });
     async function generateComments(postId) {
@@ -329,7 +354,8 @@ export function installInteractiveScenes(_state, deps) {
         const post = scene?.posts.find(item => item.id === postId);
         if (!post) throw new Error('帖子不存在');
         const isValid = operationGuard(scopeId, scene.id);
-        const items = await request('comment_batch', { post: post.content });
+        const postContext = [post.title && `标题：${post.title}`, post.work && `书名：${post.work}`, post.content].filter(Boolean).join('\n');
+        const items = await request('comment_batch', { post: postContext });
         await commit(() => {
             const { scopeId, scope, scene: currentScene } = current();
             if (!currentScene) throw new Error('生成已取消');
@@ -338,17 +364,26 @@ export function installInteractiveScenes(_state, deps) {
             ensureInteractiveActor(scope, scopeId, seeds.user);
             const currentPost = currentScene?.posts.find(item => item.id === postId);
             if (!currentPost) throw new Error('帖子不存在');
-            currentPost.comments.push(...items.map(item => ({
-                id: uid('comment'),
-                ...resolveInteractiveAuthor(scope, scopeId, item.author),
-                content: item.content, createdAt: now(),
-            })));
+            for (const item of items) {
+                // quote 是被引用楼层的作者名：在同帖已有评论里找同名作者的最近一条，找不到就不带 quoteId。
+                const quoteId = findQuoteTargetId(currentPost.comments, item.quote);
+                currentPost.comments.push({
+                    id: uid('comment'),
+                    ...resolveInteractiveAuthor(scope, scopeId, item.author),
+                    content: item.content, createdAt: now(),
+                    ...(quoteId ? { quoteId } : {}), ...(item.rating ? { rating: item.rating } : {}),
+                });
+            }
             currentPost.comments = currentPost.comments.slice(-INTERACTIVE_LIMITS.comments);
             currentScene.updatedAt = now();
         }, isValid, '生成评论');
         if (!isValid()) throw new Error('生成已取消');
         rerender('feed');
     }
+    // 发布后即时回应（流程在 interactive-scene-respond-flow.js）。
+    const { respondToUser, retryRespond, revealEntry, ensureCommentsVisible } = createRespondFlow({
+        runtime, communityTasks, current, resolveTarget, actorSeeds, operationGuard, request, commit, rerender, setStatus, viewOf, randomSource,
+    });
     async function regeneratePrompt() {
         const { scopeId, scene } = current();
         if (!scene) throw new Error('社区不存在或已被删除');
@@ -368,8 +403,47 @@ export function installInteractiveScenes(_state, deps) {
         const action = button.dataset.action;
         const calendarAction = dispatchCalendarAppAction(button, app, { showPhoneDesktopPage, handleCalendarAction: deps.handleCalendarAction }); if (calendarAction) { await calendarAction; return; }
         if (action === 'more') { toggleSceneMenu(button); return; } if (action === 'post-actions') { toggleScenePostActions(button); return; }
-        if (action === 'toggle-danmaku-actions') { toggleDanmakuActions(button, app); return; }
         if (action === 'toggle-reply') { toggleSceneReplyComposer(button, app); return; }
+        if (action === 'pick-platform') { pickPlatform(app, button); return; }
+        if (action === 'toggle-nsfw') { toggleNsfwSwitch(button); return; }
+        if (action === 'toggle-auto-respond') { toggleNsfwSwitch(button); return; }
+        if (action === 'pick-rating') { pickRating(app, button); return; }
+        if (action === 'pick-mood') { pickMood(app, button); return; }
+        if (action === 'insert-topic') { insertTopicMark(document.getElementById('pm-scene-post-input')); return; }
+        // 各平台的发布入口都进同一个整页编辑页；草稿只在内存里（view.draft），取消即丢弃。
+        if (action === 'open-compose' || action === 'close-compose') {
+            const sceneId = current().scene?.id;
+            if (!sceneId) return;
+            const view = viewOf(sceneId);
+            if (action === 'open-compose') {
+                view.feedScroll = document.querySelector('#pm-scene-app .pm-scene-feed')?.scrollTop || 0;
+                Object.assign(view, { compose: true, draft: {} });
+                rerender('feed');
+                focusComposeField();
+            } else {
+                Object.assign(view, { compose: false, draft: null });
+                rerender('feed', { scrollTop: view.feedScroll });
+            }
+            return;
+        }
+        if (['set-segment', 'open-thread', 'close-thread', 'open-book', 'close-book', 'filter-mood', 'toggle-open'].includes(action)) {
+            const sceneId = current().scene?.id;
+            if (!sceneId) return;
+            const view = viewOf(sceneId);
+            if (action === 'set-segment') Object.assign(view, { segment: button.dataset.segment || '', postId: '', work: '' });
+            else if (action === 'open-thread') view.postId = button.dataset.postId || '';
+            else if (action === 'close-thread') view.postId = '';
+            else if (action === 'open-book') view.work = button.dataset.work || '';
+            else if (action === 'close-book') view.work = '';
+            else if (action === 'filter-mood') view.mood = button.dataset.mood || '';
+            else if (button.dataset.postId) {
+                const index = view.open.indexOf(button.dataset.postId);
+                if (index >= 0) view.open.splice(index, 1); else view.open.push(button.dataset.postId);
+            }
+            // 切换分段、打开或返回时回到顶部；展开收起保持滚动位置。
+            rerender('feed', { preserveFeedScroll: action === 'toggle-open' || action === 'filter-mood' });
+            return;
+        }
         if (action === 'community-worldbook-columns') {
             await window.__pmShowWorldBookColumns?.({
                 title: '数据来源', module: 'community',
@@ -383,18 +457,20 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-calendar') { await showPhoneCalendarPage(); return; }
         if (action === 'desktop-today-trend') { await deps.showTodayTrendPage?.(); return; }
         if (action === 'desktop-story-oracle') { await deps.showStoryOraclePage?.(getStorageId()); return; }
+        if (action === 'desktop-gallery') { await deps.showPhoneGalleryPage?.(); return; }
+        if (action === 'desktop-live') { await window.__pmOpenLiveApp?.(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (await handleCommunityInjectionUiAction(action, {
             app, button, getCurrent: current,
-            getLastTab: scopeId => phoneScope(scopeId).lastTab,
+            getLastTab: () => 'feed',
                 config: window.__pmBudgetConfig,
                 saveConfig: deps.saveBudgetConfig,
                 refreshInjection: deps.applyBidirectionalInjection,
             rerender, setStatus,
         })) return;
         if (action === 'desktop-open-scene') {
-            await openScene(button.dataset.sceneId, phoneScope(getStorageId()).lastTab);
+            await openScene(button.dataset.sceneId, 'feed');
             return;
         }
         if (action === 'desktop-import-community-template') {
@@ -412,7 +488,6 @@ export function installInteractiveScenes(_state, deps) {
             await showPhoneDesktopPage();
             return;
         }
-        if (action === 'preset') { selectScenePreset(app, button); return; }
         if (handleSceneAccentAction(action, app, button)) return;
         if (action === 'create-scene') { await createScene(app); return; }
         if (action === 'open-scene') {
@@ -425,7 +500,7 @@ export function installInteractiveScenes(_state, deps) {
             persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
             if (button.closest('#pm-scene-app') && !button.closest('.pm-scene-card')) {
-                rerender(phoneScope(scopeId).lastTab);
+                rerender('feed', { preserveFeedScroll: true });
             } else if (button.closest('.pm-community-page')) {
                 const pinned = nextState.scopes[scopeId]?.pinnedSceneIds.includes(button.dataset.sceneId) === true, pinLabel = pinned ? '取消固定社区' : '固定社区'; button.setAttribute('aria-pressed', String(pinned)); button.setAttribute('aria-label', pinLabel); button.title = pinLabel;
             }
@@ -465,7 +540,7 @@ export function installInteractiveScenes(_state, deps) {
             invalidate();
             const { scopeId, scene } = current();
             const nextTab = button.dataset.tab;
-            if (['feed', 'live'].includes(nextTab)) updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: nextTab });
+            if (nextTab === 'feed') updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: scene?.id || null, lastTab: 'feed' });
             rerender(nextTab);
             return;
         }
@@ -474,57 +549,71 @@ export function installInteractiveScenes(_state, deps) {
             const rawContent = input?.value || '';
             const { scopeId, scope, scene } = current();
             if (!scope || !scene) throw new Error('互动场景不存在');
+            const platform = platformOf(scene);
             const target = { storageId: scopeId, sceneId: scene.id };
             const { authorSeed, content } = parseCommunityPostInput(rawContent, scope.actors, actorSeeds(scopeId).user);
+            // 附加输入（书名与星级、心情、写给）随平台带上；落款默认用用户名。
+            const fields = composePostFields(platform, content, readComposeUi(app), { view: viewOf(scene.id), scene, authorName: authorSeed.displayName });
             const isValid = operationGuard(scopeId, scene.id);
+            let createdPostId = '';
             await commit(() => {
                 const currentTarget = resolveTarget(target);
                 if (!currentTarget.scope || !currentTarget.scene) throw new Error('互动场景不存在');
-                appendPosts(currentTarget.scopeId, currentTarget.scope, currentTarget.scene, [{
-                    author: authorSeed.displayName, authorSeed, content, tags: [],
-                }]);
+                // 用户的新帖子随机插进最新 6 条里，位置只在这里决定一次。
+                const [created] = appendPosts(currentTarget.scopeId, currentTarget.scope, currentTarget.scene, [{
+                    author: authorSeed.displayName, authorSeed, ...fields,
+                }], { place: (posts, post) => placePostInWindow(posts, post, { random: randomSource, now: now() }) });
+                createdPostId = created?.id || '';
             }, isValid, '发布帖子');
-            rerender('feed'); return;
-        }
-        if (action === 'poke-scene') {
-            const tab = phoneScope(getStorageId()).lastTab;
-            await communityRunner[tab === 'live' ? 'generateDanmaku' : 'generateFeed'](null, { renderTab: tab === 'live' ? 'live' : 'feed' }); return;
-        }
-        if (action === 'start-warmup') {
-            const { scopeId, scene } = current();
-            if (!scene) return;
-            const target = { storageId: scopeId, sceneId: scene.id };
-            runtime.liveWarmupError = null;
-            try {
-                await runLiveWarmup({
-                    target, generateDanmaku: communityRunner.generateDanmaku,
-                    isStarted: () => resolveTarget(target).scene?.live.warmupStarted === true,
-                    isActive: () => isLiveWarmupActive(scopeId, scene.id),
-                    setStarted: started => {
-                        const targetScene = resolveTarget(target).scene;
-                        if (!targetScene) throw new Error('社区不存在或已被删除');
-                        targetScene.live.warmupStarted = started; targetScene.updatedAt = now();
-                    },
-                    render: () => rerender('live'),
-                    isCurrent: () => isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live',
-                });
-            } catch (error) {
-                if (error?.message !== '生成已取消' && isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live') { runtime.liveWarmupError = { ...target, message: generationErrorMessage(error) }; rerender('live'); }
-                if (error?.message !== '生成已取消') setStatus(generationErrorMessage(error));
+            // 发布成功：关闭编辑页、丢弃草稿，回到列表顶部；筛选回到能看见新内容的状态。
+            const view = viewOf(scene.id);
+            Object.assign(view, { compose: false, draft: null, mood: '' });
+            if (platform === 'douban') view.segment = '';
+            else if (platform === 'review' && !view.work) view.segment = '';
+            rerender('feed');
+            if (createdPostId) {
+                revealEntry(createdPostId);
+                await respondToUser({ kind: 'post', postId: createdPostId });
             }
             return;
+        }
+        // 豆瓣详情页底部输入框：回复楼主，写进该帖评论。
+        if (action === 'reply-owner') {
+            const rawContent = document.getElementById('pm-scene-post-input')?.value || '';
+            const postId = viewOf(current().scene?.id).postId;
+            if (!postId) throw new Error('帖子不存在');
+            let createdCommentId = '';
+            await commit(() => {
+                const { scopeId, scope, scene } = current();
+                const { authorSeed, content } = parseCommunityPostInput(rawContent, scope?.actors, actorSeeds(scopeId).user, { contentLabel: '评论', maxLength: 1000 });
+                createdCommentId = addSceneComment(scope, scopeId, scene, postId, authorSeed, content).id;
+            });
+            rerender('feed', { scrollToEnd: true });
+            await respondToUser({ kind: 'comment', postId, commentId: createdCommentId, replyOwner: true });
+            return;
+        }
+        if (action === 'retry-respond') { await retryRespond(button.dataset); return; }
+        if (action === 'poke-scene') {
+            await communityRunner.generateFeed(null, { renderTab: 'feed' }); return;
         }
         if (action === 'comments') { await generateComments(button.dataset.postId); return; }
         if (action === 'post-comment') {
             const composer = button.closest?.('.pm-scene-comment-composer');
             const input = composer?.querySelector?.('input');
             const rawContent = input?.value || '';
+            const postId = button.dataset.postId;
+            let createdCommentId = '';
             await commit(() => {
                 const { scopeId, scope, scene } = current();
                 const { authorSeed, content } = parseCommunityPostInput(rawContent, scope?.actors, actorSeeds(scopeId).user, { contentLabel: '评论', maxLength: 1000 });
-                addSceneComment(scope, scopeId, scene, button.dataset.postId, authorSeed, content);
+                createdCommentId = addSceneComment(scope, scopeId, scene, postId, authorSeed, content).id;
             });
-            rerender('feed'); return;
+            const commented = current().scene;
+            if (commented) ensureCommentsVisible(commented, postId);
+            rerender('feed', { preserveFeedScroll: true });
+            revealEntry(createdCommentId);
+            await respondToUser({ kind: 'comment', postId, commentId: createdCommentId });
+            return;
         }
         if (action === 'like') {
             await commit(() => toggleScenePostLike(current().scene, button.dataset.postId));
@@ -545,6 +634,8 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'delete-post') {
             if (!confirmDelete('确定删除这篇帖子及其全部评论吗？')) return;
             await commit(() => deleteScenePost(current().scene, button.dataset.postId));
+            const view = viewOf(current().scene?.id);
+            if (view.postId === button.dataset.postId) view.postId = '';
             rerender('feed'); return;
         }
         if (action === 'edit-comment') {
@@ -572,29 +663,25 @@ export function installInteractiveScenes(_state, deps) {
             const themeAccent = document.getElementById('pm-scene-accent')?.value.trim().toLowerCase() || '';
             if (!title || !prompt) throw new Error('社区名称和提示词不能为空');
             if (!/^#[0-9a-f]{6}$/.test(themeAccent)) throw new Error('社区主题色格式无效');
+            const nsfwSwitch = document.getElementById('pm-scene-nsfw');
+            const autoRespondSwitch = document.getElementById('pm-scene-auto-respond');
             await commit(() => {
                 const { scene } = current();
                 scene.title = title.slice(0, 80);
                 scene.generatedPrompt = prompt.slice(0, 6000);
-                scene.themeAccent = themeAccent;
+                // 选中的就是平台默认色且此前没有自选色时，不写入覆盖值，继续跟随平台默认色。
+                scene.themeAccent = themeAccent === COMMUNITY_PLATFORM_ACCENTS[platformOf(scene)] && !scene.themeAccent ? '' : themeAccent;
+                if (nsfwSwitch) scene.nsfw = nsfwSwitch.getAttribute('aria-checked') === 'true';
+                // 缺省视为开：只在明确关闭时写出 false，打开时去掉该键。
+                if (autoRespondSwitch) {
+                    if (autoRespondSwitch.getAttribute('aria-checked') === 'true') delete scene.autoRespond;
+                    else scene.autoRespond = false;
+                }
                 scene.updatedAt = now();
             });
             rerender('prompt'); return;
         }
         if (action === 'regenerate-prompt') { await regeneratePrompt(); return; }
-        if (action === 'send-danmaku') {
-            const input = document.getElementById('pm-danmaku-input');
-            const content = input?.value.trim() || '';
-            if (!content) throw new Error('弹幕不能为空');
-            await commit(() => {
-                const { scopeId, scope, scene } = current();
-                const userSeed = actorSeeds(scopeId).user;
-                appendDanmaku(scopeId, scope, scene, [{ author: userSeed.displayName, authorSeed: userSeed, content }]);
-            });
-            rerender('live'); return;
-        }
-        if (action === 'edit-danmaku') { const item = current().scene?.live?.danmaku?.find(value => value.id === button.dataset.danmakuId); if (!item) throw new Error('弹幕不存在'); const content = window.prompt('编辑弹幕内容', item.content); if (content === null) return; await commit(() => updateSceneDanmaku(current().scene, button.dataset.danmakuId, content)); rerender('live'); return; }
-        if (action === 'delete-danmaku') { if (!confirmDelete('确定删除这条弹幕吗？')) return; await commit(() => deleteSceneDanmaku(current().scene, button.dataset.danmakuId)); rerender('live'); return; }
     }
     const bindPhonePageUi = phoneWindow => bindPhonePageActions(
         phoneWindow, handleAction, reportPhoneUiError,
@@ -659,6 +746,7 @@ export function installInteractiveScenes(_state, deps) {
             }
             if (uiScope.lastPage === 'today-trend' && await deps.showTodayTrendPage?.(scopeId)) { runtime.openSceneId = null; return; }
             if (uiScope.lastPage === 'story-oracle' && await deps.showStoryOraclePage?.(scopeId)) { runtime.openSceneId = null; return; }
+            if (uiScope.lastPage === 'live' && await deps.showLivePage?.({ resume: true })) { runtime.openSceneId = null; return; }
             runtime.openSceneId = null;
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },
@@ -684,5 +772,24 @@ export function installInteractiveScenes(_state, deps) {
         invalidateInteractiveStore() {
             invalidate(); storeLoader.invalidateStore(); runtime.openSceneId = null; runtime.phoneUiState = null;
         },
+    });
+
+    // 社区随酒馆文件保存（user/files/）。采用文件内容时经提交队列写入，走同样的校验与补偿。
+    const communityFiles = createCommunityFileSync({
+        getCtx, getStorageId,
+        getStore: () => runtime.store,
+        loadStore,
+        commitStore: replace => commit(() => { runtime.store = replace(runtime.store); }, null, '同步酒馆社区文件'),
+    });
+    setInteractivePersistListener(communityFiles.noteLocalChange);
+    Object.assign(deps, {
+        reconcileCommunityFiles: communityFiles.reconcile,
+        flushCommunityFiles: communityFiles.flush,
+        markCommunityFilesLocalAuthoritative: communityFiles.markLocalAuthoritative,
+    });
+    // 直播是独立 App：只共用运行时、提交队列与任务控制器（同一时间一个生成任务），逻辑全在 live-app.js。
+    liveApp = installLiveApp(deps, {
+        runtime, communityTasks, actorSeeds, commit, getScope, invalidate, clearOpenScene, loadStore, showPhonePage,
+        updatePhoneUiScope, contextText,
     });
 }

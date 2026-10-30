@@ -49,6 +49,8 @@ export function handlePhonePageSuspension(deps, reason, {
         console.warn('[phone-mode] 页面挂起前保存活动手机会话失败，将继续写入当前历史快照。', errorType);
     }
     save();
+    try { deps.flushChatMetadata?.(); deps.flushCommunityFiles?.(); }
+    catch (error) { console.warn('[phone-mode] 页面挂起前写入聊天元数据失败', error?.name || 'Error'); }
     deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);
     deps.cancelTodayTrendInitialization?.(reason);
@@ -136,8 +138,9 @@ export function installPhoneFoundation(state, deps) {
     const { makeOverlay, closeOverlay } = createPhoneOverlayController({ runtime, applyTheme });
     const {
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
-        clearBubbleQuoteGesture, clearBubbleQuoteGestures,
-    } = createPhoneMessageRenderer({ state, quote });
+        clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
+    } = createPhoneMessageRenderer({ state, quote, getStoryToday: () => deps.getStoryToday?.() || '',
+        onBubblesRendered: nodes => deps.hydrateImageCards?.(nodes) });
     const {
         beginGeneration, isGenerationTaskActive, finishGeneration, cancelGeneration, invalidateGeneration, syncGenerationControls,
     } = createPhoneGenerationController({ state, getCtx, getStorageId, hideTyping });
@@ -251,7 +254,7 @@ export function installPhoneFoundation(state, deps) {
         applyBidirectionalInjection, prepareBidirectionalInjection, clearBidirectionalInjection, hookGenerationEvent,
         bindIsland, bindPhoneResize, applyPhoneScale,
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget,
-        showTyping, hideTyping, clearBubbleQuoteGesture, clearBubbleQuoteGestures,
+        showTyping, hideTyping, clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
         makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,
         cancelGeneration, invalidateGeneration, syncGenerationControls,

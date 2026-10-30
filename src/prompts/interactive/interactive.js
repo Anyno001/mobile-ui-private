@@ -1,3 +1,12 @@
+import { COMMUNITY_COMMON_RULES, communityContentRule, communitySystemPrompt, dataBlock, fencedStyle } from './shared.js';
+import { WEIBO_PROMPT } from './weibo.js';
+import { DOUBAN_PROMPT } from './douban.js';
+import { REVIEW_PROMPT } from './review.js';
+import { CONFESS_PROMPT } from './confess.js';
+import { NIGHT_PROMPT } from './night.js';
+import { buildLiveTask } from './live.js';
+import { buildRespondTask } from './respond.js';
+
 export const INTERACTIVE_PRESETS = Object.freeze({
     weibo: { label: '微博热场', accent: '#ff8200', mode: 'social', prompt: '短句、热搜感、转评赞语气、鲜明人设与轻快网络表达' },
     douban: { label: '豆瓣小组', accent: '#00a65a', mode: 'forum', prompt: '克制、生活化、观察细腻，标题像小组帖子，评论有真实分歧' },
@@ -27,14 +36,7 @@ export const INTERACTIVE_LIVE_GUIDES = Object.freeze({
 
 export const getInteractivePresets = () => INTERACTIVE_PRESETS;
 
-export function fencedStyle(value) {
-    return String(value || '').trim().slice(0, 2000);
-}
-
-export function dataBlock(name, value, max) {
-    const encoded = JSON.stringify(String(value || '').slice(0, max)).replace(/[<>&]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
-    return `<${name} encoding="json-string">\n${encoded}\n</${name}>`;
-}
+export { dataBlock, fencedStyle };
 
 export function buildStylePrompt(presetKey, styleInput) {
     const preset = INTERACTIVE_PRESETS[presetKey] || INTERACTIVE_PRESETS.custom;
@@ -55,4 +57,52 @@ export function buildInteractiveRequest({ kind, presetKey, styleInput, generated
         danmaku_batch: `围绕当前直播氛围生成 8-14 条短弹幕。items 字段只能为 author、content；内容应有即时反应、互相呼应和不同语气，不得生成帖子、标题、标签或评论数组。\n直播形态：${INTERACTIVE_LIVE_GUIDES[preset.mode] || INTERACTIVE_LIVE_GUIDES.forum}`,
     };
     return { systemPrompt: system, userPrompt: `${common}\n\n任务：${instructions[kind] || instructions.feed_batch}` };
+}
+
+// 新版按平台分文件的提示词登记表。键为存储里的 platform。
+export const COMMUNITY_PLATFORM_PROMPTS = Object.freeze({
+    weibo: WEIBO_PROMPT,
+    douban: DOUBAN_PROMPT,
+    review: REVIEW_PROMPT,
+    confess: CONFESS_PROMPT,
+    night: NIGHT_PROMPT,
+});
+
+// 未知平台与存储迁移保持一致，回落到小组论坛。
+export const resolveCommunityPlatform = platform => (Object.hasOwn(COMMUNITY_PLATFORM_PROMPTS, platform) ? platform : 'douban');
+
+// 只有微博热搜与夜间信箱题目需要 meta。
+export const communityKindAllowsMeta = (kind, platform) => kind === 'feed_batch' && ['weibo', 'night'].includes(resolveCommunityPlatform(platform));
+
+const rosterText = actorRoster => (Array.isArray(actorRoster) ? actorRoster.map(name => String(name || '').trim()).filter(Boolean).slice(0, 20).join('、') : '');
+const worldBookBlockOf = worldBookText => (worldBookText ? `\n${dataBlock('world_book_data', worldBookText, String(worldBookText).length)}` : '');
+
+export function buildCommunityRequest({ kind, platform, styleInput, generatedPrompt, context, worldBookText, actorRoster, post, respondTo, room, recentDanmaku, hostIsUser, nsfw }) {
+    const key = resolveCommunityPlatform(platform);
+    const contentRule = communityContentRule(nsfw === true);
+    const spec = COMMUNITY_PLATFORM_PROMPTS[key];
+    const roster = dataBlock('known_actor_names_data', rosterText(actorRoster), 1600);
+    if (kind === 'danmaku_batch') {
+        const live = buildLiveTask({ room, recentDanmaku, hostIsUser });
+        const world = context ? `\n${dataBlock('world_context_data', context, 6000)}` : '';
+        return {
+            systemPrompt: communitySystemPrompt(kind),
+            userPrompt: `${live.blocks}${world}${worldBookBlockOf(worldBookText)}\n${roster}\n\n任务：${live.task}\n${COMMUNITY_COMMON_RULES}\n${contentRule}`,
+        };
+    }
+    const tasks = {
+        style_prompt: () => `按「${spec.label}」的语感，写一段可直接用于后续内容生成的风格提示词，说明内容结构、语气与排版习惯。items 返回 1 项，字段为 title、prompt。\n平台基调：${spec.defaultStyle}\n${contentRule}`,
+        feed_batch: () => `${spec.feedGuide}\n${spec.feedFields}\n${COMMUNITY_COMMON_RULES}\n${contentRule}`,
+        comment_batch: () => (respondTo
+            // 即时回应：用户刚发的帖子或评论由 respondTo 给出，数量与字段以 respond.js 为准。
+            ? `${spec.commentGuide}\n${buildRespondTask(key, respondTo)}\n${COMMUNITY_COMMON_RULES}\n${contentRule}\n${dataBlock('post_data', typeof post === 'string' ? post : JSON.stringify(post ?? ''), 3000)}`
+            : `围绕下方帖子生成评论。${spec.commentGuide}\n${spec.commentFields}\n${COMMUNITY_COMMON_RULES}\n${contentRule}\n${dataBlock('post_data', typeof post === 'string' ? post : JSON.stringify(post ?? ''), 3000)}`),
+    };
+    if (!Object.hasOwn(tasks, kind)) throw new Error(`不支持的社区生成类型：${kind}`);
+    const stylePrompt = generatedPrompt || spec.defaultStyle;
+    const common = `平台：${spec.label}\n${dataBlock('style_prompt_data', stylePrompt, 6000)}\n${dataBlock('user_style_data', fencedStyle(styleInput), 2000)}\n${dataBlock('world_context_data', context, 6000)}${worldBookBlockOf(worldBookText)}\n${roster}`;
+    return {
+        systemPrompt: communitySystemPrompt(kind, communityKindAllowsMeta(kind, key)),
+        userPrompt: `${common}\n\n任务：${tasks[kind]()}`,
+    };
 }

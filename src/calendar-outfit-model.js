@@ -85,7 +85,7 @@ export function outfitForDate(profile, date) { return parseCalendarDate(date) ? 
 export function upsertOutfit(profile, { date, text, source = 'manual' } = {}, now = Date.now()) {
     if (!parseCalendarDate(date)) throw new Error('穿搭日期无效');
     const clean = cleanText(text, OUTFIT_LIMITS.text);
-    if (!clean) throw new Error('OOTD 内容不能为空');
+    if (!clean) throw new Error('OOTD内容不能为空');
     const next = normalizeProfile(profile);
     next.days[date] = { text: clean, source: source === 'ai' ? 'ai' : 'manual', updatedAt: timestamp(now) };
     return next;

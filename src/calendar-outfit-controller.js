@@ -23,7 +23,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         const task = tasks.begin(storageId, 'outfit-generate', { replace: false, mode: replaceWindow ? 'outfit-regenerate' : 'outfit-generate' });
         if (!task) throw new Error('当前会话已有穿搭生成任务，或会话不可用');
         const previousStatus = getView(storageId).outfitGenerationTask ? getView(storageId).outfitGenerationPreviousStatus : getStatus(storageId);
-        setBusy(storageId, task, previousStatus); status(storageId, `正在${replaceWindow ? '重新' : ''}生成${window.label} OOTD…`, { persistent: true }); rerender(storageId);
+        setBusy(storageId, task, previousStatus); status(storageId, `正在${replaceWindow ? '重新' : ''}生成${window.label}OOTD…`, { persistent: true }); rerender(storageId);
         let settled = false;
         try {
             const context = await gatherContext(null, { module: 'outfit', signal: task.signal, worldBookMaxChars: 3500, outfitSubject: subject });
@@ -40,7 +40,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
                 return updateOutfitProfile(store, storageId, subject, value => replaceOutfitsInWindow(value, generated, { start, now: Date.now(), days }));
             }, task);
             if (!committed || !tasks.active(task)) return false;
-            status(storageId, `${window.label} OOTD 已${replaceWindow ? '重新生成' : '生成'}。`); settled = true; rerender(storageId); return true;
+            status(storageId, `${window.label}OOTD已${replaceWindow ? '重新生成' : '生成'}。`); settled = true; rerender(storageId); return true;
         } catch (error) { if (error?.outfitRollbackError) throw error; if (!tasks.active(task)) return false; status(storageId, `穿搭生成失败：${generationErrorMessage(error)}`, { duration: 10000 }); settled = true; throw error; }
         finally { tasks.finish(task); const view = getView(storageId); if (view.outfitGenerationTask === task) { if (!settled) status(storageId, previousStatus); setView(storageId, { ...view, outfitGenerating: false, outfitGenerationTask: null, outfitGenerationPreviousStatus: '' }); rerender(storageId); } }
     }
@@ -49,7 +49,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         const subject = getView(storageId).outfitSubject, date = getView(storageId).selectedDate, existing = outfitForDate(getProfile(storageId, subject), date);
         const overlay = makeOverlay(renderOutfitDialog(date, existing)), form = overlay.querySelector('[data-outfit-entry-form]'), errorNode = overlay.querySelector('[data-outfit-entry-error]');
         overlay.querySelector('[data-outfit-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
-        form?.addEventListener('submit', async event => { event.preventDefault(); try { await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => upsertOutfit(value, { date, text: form.elements.text.value, source: 'manual' }))); status(storageId, 'OOTD 已保存。'); closeOverlay?.('saved'); rerender(storageId); } catch (error) { if (errorNode) errorNode.textContent = error.message || 'OOTD 保存失败'; } });
+        form?.addEventListener('submit', async event => { event.preventDefault(); try { await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => upsertOutfit(value, { date, text: form.elements.text.value, source: 'manual' }))); status(storageId, 'OOTD已保存。'); closeOverlay?.('saved'); rerender(storageId); } catch (error) { if (errorNode) errorNode.textContent = error.message || 'OOTD保存失败'; } });
         form?.elements.text?.focus?.({ preventScroll: true });
     }
     async function handleAction(button, app, storageId = getStorageId()) {
@@ -57,7 +57,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         if (action === 'calendar-outfit-generate') return generate(storageId);
         if (action === 'calendar-outfit-regenerate') return generate(storageId, { replaceWindow: true });
         if (action === 'calendar-outfit-edit') { showEditor(storageId); return true; }
-        if (action === 'calendar-outfit-delete') { const subject = getView(storageId).outfitSubject, date = getView(storageId).selectedDate; if (!outfitForDate(getProfile(storageId, subject), date) || !confirmImpl?.('删除当天 OOTD？')) return true; await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => deleteOutfit(value, date).profile)); status(storageId, 'OOTD 已删除。'); rerender(storageId); return true; }
+        if (action === 'calendar-outfit-delete') { const subject = getView(storageId).outfitSubject, date = getView(storageId).selectedDate; if (!outfitForDate(getProfile(storageId, subject), date) || !confirmImpl?.('删除当天OOTD？')) return true; await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => deleteOutfit(value, date).profile)); status(storageId, 'OOTD已删除。'); rerender(storageId); return true; }
         if (action === 'calendar-outfit-preferences-save') { const colorPreference = app?.querySelector('[data-outfit-color-preference]')?.value || '', preference = app?.querySelector('[data-outfit-preference]')?.value || ''; const subject = getView(storageId).outfitSubject; await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => ({ ...value, colorPreference, preference })), null, { refreshInjection: false }); status(storageId, '穿搭偏好已保存。'); rerender(storageId); return true; }
         if (action === 'calendar-outfit-generation-rule-save') { const generationRule = app?.querySelector('[data-outfit-generation-rule]')?.value || ''; if (!generationRule.trim()) throw new Error('穿搭生成规则不能为空'); const subject = getView(storageId).outfitSubject; await commitOutfits(storageId, store => updateOutfitProfile(store, storageId, subject, value => ({ ...value, generationRule })), null, { refreshInjection: false }); status(storageId, '穿搭生成规则已保存。'); rerender(storageId); return true; }
         return false;

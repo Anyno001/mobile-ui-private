@@ -17,7 +17,7 @@ function batchSettingsGroup(scope, assistantCount, generationBusy, generation = 
         ? `第 ${generation.task.batchIndex + 1}/${generation.task.batchCount} 批失败：${String(generation.lastError || '未知错误')}` : '';
     const details = batchEnabled ? `
         <div class="pm-today-trend-batch-stats">
-            <div class="pm-today-trend-batch-stat"><span>当前聊天 AI 回复累计层数</span><b>${count}</b></div>
+            <div class="pm-today-trend-batch-stat"><span>当前聊天AI回复累计层数</span><b>${count}</b></div>
             <div class="pm-today-trend-batch-stat"><span>已成功更新</span><b>${synced}</b></div>
             <div class="pm-today-trend-batch-stat"><span>当前未更新的 AI 回复累计层数</span><b>${pending}</b></div>
         </div>

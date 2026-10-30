@@ -64,6 +64,16 @@ const corrupted = makeHarness({
 });
 assert.deepEqual(await corrupted.storage.load(), { directory: valid });
 
+assert.ok(DESKTOP_ICON_IDS.includes('live') && DESKTOP_ICON_IDS.includes('community'), '桌面图标白名单含社区与直播');
+const legacyCommunity = makeHarness({
+    [DESKTOP_ICON_STORAGE_KEY]: { schemaVersion: 1, icons: { community: { resourceKey: `${DESKTOP_ICON_RESOURCE_PREFIX}community`, mime: 'image/png', width: 256, height: 256, byteLength: 12 } } },
+    [`${DESKTOP_ICON_RESOURCE_PREFIX}community`]: valid,
+});
+assert.deepEqual(await legacyCommunity.storage.load(), { community: valid }, '存储键不变：已有的社区自定义图标照常生效');
+await legacyCommunity.storage.save('live', valid, metadata);
+assert.deepEqual(Object.keys(legacyCommunity.values.get(DESKTOP_ICON_STORAGE_KEY).icons).sort(), ['community', 'live']);
+assert.deepEqual(normalizeDesktopIconBackupPayload({ live: valid, community: valid }), { community: valid, live: valid });
+
 const old = makeHarness();
 await old.storage.save('chat', valid, metadata);
 const oldManifest = structuredClone(old.values.get(DESKTOP_ICON_STORAGE_KEY));
@@ -98,6 +108,10 @@ try {
     assert.match(desktop, /data-app="chat"[\s\S]*?<img [^>]*aria-hidden="true"/);
     assert.match(desktop, /data-action="desktop-community"[\s\S]*?<img [^>]*aria-hidden="true"/);
     assert.match(desktop, /data-app="directory"[\s\S]*?<svg /, '未配置入口必须保留默认 SVG');
+    assert.match(desktop, /data-app="community"[\s\S]*?<img [^>]*aria-hidden="true"/, '旧的社区自定义图标渲染在新的社区图标位');
+    globalThis.window.__pmDesktopIcons.live = runtimeValid;
+    assert.match(renderPhoneDesktop(), /data-app="live"[\s\S]*?<img [^>]*aria-hidden="true"/, '直播图标支持自定义图片');
+    delete globalThis.window.__pmDesktopIcons.live;
     const customIcon = resolveDesktopAppIcon('chat', '<svg id="fallback"></svg>');
     assert.match(customIcon, /<svg id="fallback"><\/svg>[\s\S]*<img /, '图片异常时必须保留默认 SVG 作为回退');
     assert.match(customIcon, /previousElementSibling\.hidden=true/, '图片正常解码后必须隐藏默认 SVG，防止底图透出');
@@ -150,6 +164,10 @@ try {
     await cropOptions.onConfirm(valid);
     assert.deepEqual(savedIcons[0], ['chat', valid, { width: 256, height: 256 }]);
     assert.match(overlayHtml, /pm-desktop-icon-preview is-custom/, '自定义图片预览必须移除默认色块底座');
+    assert.match(overlayHtml, /<b>社区<\/b>/, '社区图标的标签是「社区」');
+    assert.match(overlayHtml, /<b>噼哩噼哩<\/b>/, '直播图标可在图标自定义里设置，标签是「噼哩噼哩」');
+    assert.doesNotMatch(overlayHtml, /发布一条/, '旧标签「发布一条」已取消');
+    assert.match(overlayHtml, /pm-desktop-icon-file-live/);
     assert.equal(refreshCount, 1); assert.ok(overlayCount >= 1, '保存成功后必须重绘设置页');
     await settings.reset('chat');
     assert.deepEqual(removedIcons, ['chat']); assert.equal(refreshCount, 2);

@@ -292,14 +292,17 @@ assert.equal(resolvePhoneSources({
 
 const actorId = deriveInteractiveActorId('story-a', 'story', 'character:alice');
 const scene = {
-    id: 'scene-a', title: '社区', preset: 'weibo', styleInput: '', generatedPrompt: '', createdAt: 1, updatedAt: 2,
+    id: 'scene-a', title: '社区', platform: 'weibo', nsfw: false, preset: 'weibo', styleInput: '', generatedPrompt: '', createdAt: 1, updatedAt: 2,
     posts: [
         { id: 'post-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '帖子正文', tags: [], createdAt: 2, comments: [{ id: 'comment-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '评论正文', createdAt: 3 }], liked: false },
         { id: 'post-new', authorId: actorId, authorNameSnapshot: 'Alice', content: '新帖子正文', tags: [], createdAt: 3, comments: [], liked: false },
     ],
-    live: { title: '直播', status: 'idle', danmaku: [{ id: 'danmaku-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '弹幕正文', createdAt: 4 }] },
 };
-const store = { version: 2, scopes: { 'story-a': { activeSceneId: 'scene-a', sceneOrder: ['scene-a'], actors: { [actorId]: { actorId, type: 'story', displayName: 'Alice', bindingKey: 'character:alice', profile: '', createdAt: 1 } }, scenes: { 'scene-a': scene } } } };
+const liveRoomA = {
+    id: 'live_a', title: '直播', hostIsUser: false, hostNameSnapshot: '社区', category: '', nsfw: false, sourceSceneId: 'scene-a', createdAt: 1, updatedAt: 4,
+    danmaku: [{ id: 'danmaku-a', authorId: actorId, authorNameSnapshot: 'Alice', content: '弹幕正文', createdAt: 4, kind: 'chat' }],
+};
+const store = { version: 3, scopes: { 'story-a': { activeSceneId: 'scene-a', sceneOrder: ['scene-a'], liveRooms: { live_a: liveRoomA }, liveOrder: ['live_a'], actors: { [actorId]: { actorId, type: 'story', displayName: 'Alice', bindingKey: 'character:alice', profile: '', createdAt: 1 } }, scenes: { 'scene-a': scene } } } };
 const community = resolveCommunitySources({ currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a', 'deleted'] }, store });
 assert.equal(community.allowed, true);
 assert.deepEqual(community.sources.map(source => source.sourceId), ['scene-a']);
@@ -308,6 +311,29 @@ assert.match(renderCommunitySource(community.sources[0]), /帖子正文/);
 assert.match(renderCommunitySource(community.sources[0]), /评论正文/);
 assert.match(renderCommunitySource(community.sources[0]), /新帖子正文/);
 assert.match(renderCommunitySource(community.sources[0]), /弹幕正文/);
+assert.equal(community.sources[0].liveRoom.id, 'live_a', '有直播间时必须挂到 source.liveRoom');
+assert.equal(Object.isFrozen(community.sources[0].liveRoom), true);
+{
+    const noRoomScope = { ...store.scopes['story-a'], liveRooms: {}, liveOrder: [] };
+    const noRoom = resolveCommunitySources({ currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a'] }, store: { version: 3, scopes: { 'story-a': noRoomScope } } });
+    assert.equal(noRoom.allowed, true, '没有直播间时不得报错');
+    assert.equal(noRoom.sources[0].liveRoom, null);
+    assert.doesNotMatch(renderCommunitySource(noRoom.sources[0]), /弹幕正文|直播/, '没有直播间时注入文本不含直播段');
+    assert.match(renderCommunitySource(noRoom.sources[0]), /帖子正文/);
+    const otherSceneRoom = resolveCommunitySources({
+        currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a'] },
+        store: { version: 3, scopes: { 'story-a': { ...noRoomScope, liveRooms: { live_x: { ...liveRoomA, id: 'live_x', sourceSceneId: 'scene-other' } }, liveOrder: ['live_x'] } } },
+    });
+    assert.equal(otherSceneRoom.sources[0].liveRoom, null, '只挂载 sourceSceneId 指向该社区的直播间');
+    const brokenRoom = resolveCommunitySources({
+        currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a'] },
+        store: { version: 3, scopes: { 'story-a': { ...noRoomScope, liveRooms: { live_a: { ...liveRoomA, nsfw: 'x' } }, liveOrder: ['live_a'] } } },
+    });
+    assert.equal(brokenRoom.allowed, false, '直播间数据非法时拒绝注入而不是静默吞掉');
+    assert.equal(brokenRoom.reason, 'invalid-live-room');
+    const v2Store = resolveCommunitySources({ currentStorageId: 'story-a', sceneIdsByStorage: { 'story-a': ['scene-a'] }, store: { version: 2, scopes: {} } });
+    assert.equal(v2Store.reason, 'invalid-store-version', '未迁移的 v2 数据不得进入注入');
+}
 
 const selectedCommunity = resolveCommunitySources({
     currentStorageId: 'story-a',
@@ -340,7 +366,7 @@ Object.defineProperty(isolatedScopes, 'story-b', { enumerable: true, get() { cro
 Object.defineProperty(isolatedScopes['story-a'].scenes, 'scene-secret', { enumerable: true, get() { unselectedSceneReads += 1; throw new Error('不得读取未选中 scene'); } });
 const isolatedCommunity = resolveCommunitySources({
     currentStorageId: 'story-a',
-    sceneIdsByStorage: { 'story-a': ['scene-a'] }, store: { version: 2, scopes: isolatedScopes },
+    sceneIdsByStorage: { 'story-a': ['scene-a'] }, store: { version: 3, scopes: isolatedScopes },
 });
 assert.equal(isolatedCommunity.allowed, true);
 assert.deepEqual(isolatedCommunity.sources.map(source => source.sourceId), ['scene-a']);
@@ -361,7 +387,7 @@ Object.defineProperty(pollutedScenes, 'scene-secret', {
 const pollutedCommunity = resolveCommunitySources({
     currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': pollutedSceneSelection },
-    store: { version: 2, scopes: { 'story-a': { ...store.scopes['story-a'], scenes: pollutedScenes } } },
+    store: { version: 3, scopes: { 'story-a': { ...store.scopes['story-a'], scenes: pollutedScenes } } },
 });
 assert.equal(pollutedCommunity.allowed, false);
 assert.deepEqual(pollutedCommunity.sources, []);
@@ -420,7 +446,7 @@ const actorAccessorResult = resolveCommunitySources({
     currentStorageId: 'story-a',
     sceneIdsByStorage: { 'story-a': ['scene-a'] },
     store: {
-        version: 2,
+        version: 3,
         scopes: { 'story-a': { ...store.scopes['story-a'], actors: { [actorId]: accessorActor } } },
     },
 });
@@ -441,10 +467,10 @@ const unicodeCommunity = renderCommunitySource({
             authorId: 'post', authorNameSnapshot: '', content: `${'a'.repeat(3999)}😀`,
             comments: [{ authorId: 'comment', authorNameSnapshot: '', content: `${'b'.repeat(999)}😀` }],
         }],
-        live: {
-            title: `${'l'.repeat(99)}😀`,
-            danmaku: [{ authorId: 'danmaku', authorNameSnapshot: '', content: `${'m'.repeat(199)}😀` }],
-        },
+    },
+    liveRoom: {
+        title: `${'l'.repeat(99)}😀`,
+        danmaku: [{ authorId: 'danmaku', authorNameSnapshot: '', content: `${'m'.repeat(199)}😀` }],
     },
 });
 assertNoUnpairedSurrogates(unicodeCommunity, 'community 全字段边界');

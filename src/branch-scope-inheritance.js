@@ -108,7 +108,10 @@ function remapInteractiveScope(sourceScope, targetId) {
             remapAuthor(post);
             for (const comment of post.comments || []) remapAuthor(comment);
         }
-        for (const danmaku of scene.live?.danmaku || []) remapAuthor(danmaku);
+    }
+    for (const room of Object.values(scope.liveRooms || {})) {
+        if (actorIdMap.has(room.hostActorId)) room.hostActorId = actorIdMap.get(room.hostActorId);
+        for (const danmaku of room.danmaku || []) remapAuthor(danmaku);
     }
     scope.actors = actors;
     return scope;

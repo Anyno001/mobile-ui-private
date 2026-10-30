@@ -17,9 +17,11 @@
       "--pm-calendar-*",
       "--pm-today-trend-*",
       "--pm-scene-*",
+      "--pm-community-*",
       "--pm-chat-director-*",
-      "--scene-accent",
-      "--scene-accent-option"
+      "--pm-desktop-*",
+      "--pm-gallery-*",
+      "--pm-live-*"
     ],
     "compat": [
       "--pm-palette-*",
@@ -106,6 +108,16 @@
     ],
     "today-trend": [
       ".pm-today-trend-shell"
+    ],
+    "gallery": [
+      ".pm-gallery-shell",
+      ".pm-img-card",
+      ".pm-image-viewer",
+      ".pm-image-shot",
+      ".pm-gallery-dna"
+    ],
+    "live": [
+      ".pm-live-shell"
     ]
   },
   "inline": {
@@ -152,11 +164,22 @@
     ],
     "allowedWrites": [
       {
-        "file": "src/today-trend-phone-controller.js",
+        "file": "src/live-views.js",
         "properties": [
-          "--pm-today-trend-head-progress"
+          "--lane",
+          "--delay",
+          "--duration",
+          "--offset"
         ],
-        "reason": "滚动进度写入内容层 CSS 变量，驱动今日风向模块头吸顶压缩插值"
+        "reason": "直播间飘屏弹幕的轨道、延迟、时长与纵向偏移，由每条弹幕的稳定哈希计算，为数据驱动值"
+      },
+      {
+        "file": "src/today-trend-reputation-view.js",
+        "properties": [
+          "--pm-today-trend-graph-x",
+          "--pm-today-trend-graph-y"
+        ],
+        "reason": "个人风评关系图节点与连线标签的百分比坐标，由圈层数量计算"
       },
       {
         "file": "src/emoji-ui.js",
@@ -182,23 +205,11 @@
         "reason": "裁剪画布缩放与拖动几何"
       },
       {
-        "file": "src/interactive-scene-phone.js",
-        "properties": [
-          "--scene-accent"
-        ],
-        "reason": "用户选择的社区主题色"
-      },
-      {
         "file": "src/interactive-scene-views.js",
         "properties": [
-          "--scene-accent",
-          "--scene-accent-option",
-          "--lane",
-          "--delay",
-          "--duration",
-          "--offset"
+          "--pm-community-accent"
         ],
-        "reason": "社区主题色与弹幕运动参数为运行时数据"
+        "reason": "社区与桌面快捷方式的自选主题色，为用户选择的运行时数据"
       },
       {
         "file": "src/messaging.js",
@@ -275,6 +286,8 @@
           "--pm-frost",
           "--pm-color-accent",
           "--pm-color-auxiliary",
+          "--pm-color-wash",
+          "--pm-color-wash-alt",
           "<theme-preset-token>"
         ],
         "reason": "主题控制器注入皮肤变量"
@@ -304,6 +317,15 @@
   },
   "tokenContracts": [
     {
+      "prefix": "--pm-desktop-",
+      "owner": "desktop",
+      "rootSelectors": [
+        ".pm-desktop",
+        ".pm-phone-screen:has(.pm-main-ui[data-page=\"desktop\"])"
+      ],
+      "themeStrategy": "glass tile shadow is light-only; dark theme overrides box-shadow to none"
+    },
+    {
       "prefix": "--pm-calendar-",
       "owner": "calendar",
       "rootSelectors": [
@@ -322,7 +344,7 @@
         ".pm-today-trend-factions",
         ".pm-today-trend-dynamics"
       ],
-      "themeStrategy": "derived from paired public theme tokens; no private dark override is required"
+      "themeStrategy": "derived from paired public theme tokens; rumor hue and tint ratios declare a dark override on .pm-today-trend-shell"
     },
     {
       "prefix": "--pm-scene-",
@@ -335,35 +357,38 @@
       "themeStrategy": "derived from scene owner state and public theme tokens"
     },
     {
+      "prefix": "--pm-community-",
+      "owner": "community",
+      "rootSelectors": [
+        ".pm-scene",
+        "[data-community-platform",
+        ".pm-desktop-pin"
+      ],
+      "themeStrategy": "点缀色、便签色与夜间来信固定暗色均成对声明浅色与 #pm-iphone[data-theme=\"dark\"] 深色值；社区自选主题色只覆盖 --pm-community-accent"
+    },
+    {
+      "prefix": "--pm-gallery-",
+      "owner": "gallery",
+      "rootSelectors": [
+        ".pm-img-card"
+      ],
+      "themeStrategy": "theme-independent geometry; no dark override"
+    },
+    {
+      "prefix": "--pm-live-",
+      "owner": "live",
+      "rootSelectors": [
+        ".pm-live"
+      ],
+      "themeStrategy": "封面五色与封面文字色在 .pm-live-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-live-shell 声明深色值；直播间画面用色（粉、金、叠加层半透明、画面底色）固定深色，不随主题改变；固定几何不随主题改变"
+    },
+    {
       "prefix": "--pm-chat-director-",
       "owner": "chat",
       "rootSelectors": [
         ".pm-director"
       ],
       "themeStrategy": "local accent values declare dark overrides on #pm-iphone[data-theme=\"dark\"] .pm-director"
-    },
-    {
-      "prefix": "--scene-accent",
-      "owner": "community",
-      "rootSelectors": [
-        ".pm-scene",
-        ".pm-live",
-        ".pm-danmaku",
-        ".pm-desktop",
-        ".pm-desktop-pin",
-        ".pm-desktop-template"
-      ],
-      "themeStrategy": "runtime-selected community accent remains scoped to scene and desktop entry roots"
-    },
-    {
-      "prefix": "--scene-accent-option",
-      "owner": "community",
-      "rootSelectors": [
-        ".pm-scene",
-        ".pm-live",
-        ".pm-danmaku"
-      ],
-      "themeStrategy": "runtime-selected community accent option remains scoped to scene roots"
     }
   ],
   "exceptions": [
@@ -480,14 +505,12 @@
       "#fff !important",
       "color-mix(in srgb,currentColor 12%,transparent)",
       "color-mix(in srgb,currentColor 6%,transparent)",
-      "color-mix(in srgb,currentColor 7%,transparent)",
       "color-mix(in srgb,currentColor 8%,transparent)",
       "color-mix(in srgb,currentColor 9%,transparent)",
       "currentColor",
       "currentColor !important",
       "inherit !important",
       "none !important",
-      "rgba(0,0,0,.38)",
       "transparent",
       "transparent !important",
       "color-mix(in srgb,currentColor 8%,transparent) !important",
@@ -592,105 +615,6 @@
         "value": "auto 20px 20px auto !important",
         "owner": "overlay",
         "reason": "宿主断点锚定几何",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-title",
-        "property": "left",
-        "value": "48px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-title",
-        "property": "right",
-        "value": "48px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-live-state-note",
-        "property": "bottom",
-        "value": "28px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-menu",
-        "property": "bottom",
-        "value": "46px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-title",
-        "property": "top",
-        "value": "6px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-title",
-        "property": "bottom",
-        "value": "6px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-control-menu.pm-scene-menu",
-        "property": "bottom",
-        "value": "46px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/community.css",
-        "selector": ".pm-scene-post-author b",
-        "property": "top",
-        "value": "1px",
-        "owner": "community",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/calendar.css",
-        "selector": ".pm-calendar-day>i, .pm-calendar-day::after",
-        "property": "bottom",
-        "value": "3px",
-        "owner": "calendar",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/calendar.css",
-        "selector": ".pm-calendar-status-watermark",
-        "property": "right",
-        "value": "-64px",
-        "owner": "calendar",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
-        "removeWhen": "相关组件布局重构"
-      },
-      {
-        "path": "styles/calendar.css",
-        "selector": ".pm-calendar-status-card-cycle[data-cycle-phase=\"period\"] .pm-calendar-status-watermark",
-        "property": "right",
-        "value": "-72px",
-        "owner": "calendar",
-        "reason": "组件固定定位或装饰对齐，不能由公共 spacing token 替代",
         "removeWhen": "相关组件布局重构"
       }
     ],
@@ -803,33 +727,6 @@
     },
     {
       "path": "styles/calendar.css",
-      "selector": ".pm-calendar-day>b",
-      "property": "line-height",
-      "value": "1",
-      "owner": "calendar",
-      "reason": "固定行盒、图标或展示排版需要精确垂直对齐",
-      "removeWhen": "相关组件布局重构"
-    },
-    {
-      "path": "styles/calendar.css",
-      "selector": ".pm-calendar-nav-center .pm-calendar-today",
-      "property": "line-height",
-      "value": "1",
-      "owner": "calendar",
-      "reason": "固定行盒、图标或展示排版需要精确垂直对齐",
-      "removeWhen": "相关组件布局重构"
-    },
-    {
-      "path": "styles/calendar.css",
-      "selector": ".pm-calendar-view-switch button",
-      "property": "line-height",
-      "value": "1",
-      "owner": "calendar",
-      "reason": "固定行盒、图标或展示排版需要精确垂直对齐",
-      "removeWhen": "相关组件布局重构"
-    },
-    {
-      "path": "styles/calendar.css",
       "selector": ".pm-calendar-status-value",
       "property": "line-height",
       "value": "1",
@@ -847,9 +744,7 @@
       "removeWhen": "相关组件布局重构"
     }
   ],
-  "externallyDefinedTokens": [
-    "--scene-accent-option"
-  ],
+  "externallyDefinedTokens": [],
   "animationExceptions": [
     {
       "path": "styles/core.css",
@@ -870,15 +765,6 @@
       "removeWhen": "语音状态改为静态图形"
     },
     {
-      "path": "styles/community.css",
-      "selector": ".pm-danmaku-float span",
-      "property": "animation",
-      "value": "pm-danmaku 7s linear infinite",
-      "owner": "community",
-      "reason": "弹幕轨道持续时间是舞台运行时视觉数据的固定 CSS 默认值",
-      "removeWhen": "弹幕完全由运行时动画参数控制"
-    },
-    {
       "path": "styles/today-trend.css",
       "selector": ".pm-today-trend-floor-status>i",
       "property": "animation",
@@ -886,6 +772,15 @@
       "owner": "today-trend",
       "reason": "今日风向后台更新期间以标题栏局部细环持续提示同步状态，页面内容仍保持可读",
       "removeWhen": "今日风向生成状态改用无循环动效的等价实时反馈"
+    },
+    {
+      "path": "styles/live.css",
+      "selector": ".pm-live-fly span",
+      "property": "animation",
+      "value": "pm-live-fly var(--duration) linear infinite",
+      "owner": "live",
+      "reason": "直播间飘屏弹幕需要匀速横向飘过，缓动曲线会让弹幕忽快忽慢；时长由每条弹幕的运行时 --duration 决定，prefers-reduced-motion 下取消并改为静态最近三条",
+      "removeWhen": "飘屏弹幕改为静态列表"
     }
   ],
   "frozenSpacingTokens": [],
@@ -904,21 +799,7 @@
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::padding::var(--pm-space-3) !important",
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::resize::vertical !important",
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::width::100% !important",
-    "styles/calendar.css::root::.pm-calendar-data-row .is-primary::background::var(--pm-calendar-accent) !important",
-    "styles/calendar.css::root::.pm-calendar-data-row .is-primary::border-color::var(--pm-calendar-accent) !important",
-    "styles/calendar.css::root::.pm-calendar-data-row .is-primary::color::var(--pm-color-on-dark) !important",
-    "styles/calendar.css::root::.pm-calendar-database-card::display::flex !important",
-    "styles/calendar.css::root::.pm-calendar-database-card::flex-direction::row !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date, .pm-calendar-status-heading::display::flex !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date, .pm-calendar-status-heading::flex-direction::row !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date, .pm-calendar-status-heading::gap::var(--pm-space-2) !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date::display::flex !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date::flex-direction::row !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date::gap::var(--pm-space-2) !important",
-    "styles/calendar.css::root::.pm-calendar-detail-date>span, .pm-calendar-status-date::display::flex !important",
     "styles/calendar.css::root::.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]::display::none !important",
-    "styles/calendar.css::root::.pm-calendar-inline-actions::display::flex !important",
-    "styles/calendar.css::root::.pm-calendar-inline-actions::margin::var(--pm-space-0) !important",
     "styles/calendar.css::root::.pm-calendar-repeat-interval input[name=\"intervalDays\"]::margin::var(--pm-space-0) !important",
     "styles/calendar.css::root::.pm-calendar-repeat-interval input[name=\"intervalDays\"]::padding::var(--pm-space-1-5) var(--pm-space-2) !important",
     "styles/calendar.css::root::.pm-calendar-repeat-interval input[name=\"intervalDays\"]::width::64px !important",
@@ -926,10 +807,6 @@
     "styles/calendar.css::root::.pm-calendar-repeat-interval::flex-direction::row !important",
     "styles/calendar.css::root::.pm-calendar-repeat-interval::gap::var(--pm-space-1-5) !important",
     "styles/calendar.css::root::.pm-calendar-repeat-interval[hidden]::display::none !important",
-    "styles/calendar.css::root::.pm-calendar-title-control>button::display::flex !important",
-    "styles/calendar.css::root::.pm-calendar-title-control>button::height::34px !important",
-    "styles/calendar.css::root::.pm-calendar-title-control>button::padding::var(--pm-space-1-5) var(--pm-space-2) !important",
-    "styles/calendar.css::root::.pm-calendar-title-control>button::width::auto !important",
     "styles/community.css::@media (max-width:600px)::.pm-scene-shell::width::96vw !important",
     "styles/community.css::root::.pm-community-page>.pm-scene-shell, #pm-iphone .pm-scene-shell::border-radius::var(--pm-radius-none) !important",
     "styles/community.css::root::.pm-community-page>.pm-scene-shell, #pm-iphone .pm-scene-shell::border::0 !important",
@@ -944,28 +821,24 @@
     "styles/community.css::root::.pm-scene-accent-custom::font-size::var(--pm-font-size-helper) !important",
     "styles/community.css::root::.pm-scene-accent-custom::font-weight::var(--pm-font-weight-semibold) !important",
     "styles/community.css::root::.pm-scene-comment-composer input::box-shadow::none !important",
-    "styles/community.css::root::.pm-scene-composer .pm-scene-primary::background::var(--scene-accent) !important",
-    "styles/community.css::root::.pm-scene-composer .pm-scene-primary::color::var(--pm-color-on-dark) !important",
     "styles/community.css::root::.pm-scene-composer .pm-scene-primary::border-radius::var(--pm-radius-circle) !important",
     "styles/community.css::root::.pm-scene-composer .pm-scene-primary::padding::var(--pm-space-2) !important",
     "styles/community.css::root::.pm-scene-composer .pm-scene-primary::padding::var(--pm-space-3) var(--pm-space-4) !important",
     "styles/community.css::root::.pm-scene-composer textarea::box-shadow::none !important",
     "styles/community.css::root::.pm-scene-danger::color::var(--pm-color-danger) !important",
-    "styles/community.css::root::.pm-scene-exit::color::var(--pm-color-danger) !important",
     "styles/community.css::root::.pm-scene-post-actions button.pm-scene-danger::color::var(--pm-color-danger) !important",
-    "styles/community.css::root::.pm-scene-primary::background::var(--scene-accent) !important",
+    "styles/community.css::root::.pm-scene-launcher>.pm-scene-primary::border-radius::var(--pm-radius-pill) !important",
     "styles/community.css::root::.pm-scene-primary::border-radius::var(--pm-radius-panel) !important",
     "styles/community.css::root::.pm-scene-primary::border::0 !important",
-    "styles/community.css::root::.pm-scene-primary::color::var(--pm-color-on-dark) !important",
     "styles/community.css::root::.pm-scene-primary::padding::var(--pm-space-3) var(--pm-space-4) !important",
     "styles/community.css::root::.pm-scene-prompt .pm-scene-accent-option::border-radius::var(--pm-radius-circle) !important",
     "styles/community.css::root::.pm-scene-prompt .pm-scene-accent-option::padding::var(--pm-space-1) !important",
     "styles/community.css::root::.pm-scene-prompt-actions button::border-radius::var(--pm-radius-panel) !important",
     "styles/community.css::root::.pm-scene-prompt-actions button::padding::var(--pm-space-3) var(--pm-space-4) !important",
-    "styles/community.css::root::.pm-scene-secondary::background::var(--pm-color-fill) !important",
+    "styles/community.css::root::.pm-scene-secondary::background::var(--pm-color-surface) !important",
     "styles/community.css::root::.pm-scene-secondary::border::0 !important",
     "styles/community.css::root::.pm-scene-secondary::color::var(--pm-color-label) !important",
-    "styles/community.css::root::.pm-scene-shell::background::var(--pm-color-bg-plain) !important",
+    "styles/community.css::root::.pm-scene-shell::background::var(--pm-color-bg-grouped) !important",
     "styles/community.css::root::.pm-scene-shell::border-radius::var(--pm-radius-modal) !important",
     "styles/community.css::root::.pm-scene-shell::max-height::92dvh !important",
     "styles/community.css::root::.pm-scene-shell::width::min(720px,94vw) !important",
@@ -975,12 +848,6 @@
     "styles/community.css::root::.pm-scene-title-poke::padding::var(--pm-space-2) !important",
     "styles/community.css::root::.pm-scene-title-poke::width::var(--pm-size-control-compact) !important",
     "styles/community.css::root::.pm-scene-title-poke:active::background::transparent !important",
-    "styles/community.css::root::.pm-scene-title-poke:active::color::var(--pm-color-on-dark) !important",
-    "styles/community.css::root::.pm-scene-title-tab.is-active::color::var(--scene-accent) !important",
-    "styles/community.css::root::.pm-scene-title-tab::color::var(--pm-color-label-3) !important",
-    "styles/community.css::root::.pm-scene-title-tab::font-size::var(--pm-font-size-label) !important",
-    "styles/community.css::root::.pm-scene-title-tab::font-weight::var(--pm-font-weight-semibold) !important",
-    "styles/community.css::root::.pm-scene-title-tab::padding::var(--pm-space-0) var(--pm-space-0-5) !important",
     "styles/core.css::root::#pm-iphone .pm-calendar-generation-rule::padding::var(--pm-space-2) var(--pm-space-2) !important",
     "styles/core.css::root::#pm-iphone .pm-calendar-generation-rule::resize::vertical !important",
     "styles/core.css::root::#pm-iphone .pm-calendar-management :is(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]):not([type=\"file\"]):not([type=\"button\"]):not([type=\"submit\"]):not([type=\"reset\"]):not([type=\"hidden\"]):not([type=\"image\"]),select)::padding::var(--pm-space-2) !important",
@@ -1069,13 +936,9 @@
     "styles/core.css::root::.pm-bubble::max-width::74% !important",
     "styles/core.css::root::.pm-cancel-btn::background::var(--pm-color-fill) !important",
     "styles/core.css::root::.pm-cancel-btn::color::var(--pm-color-label) !important",
-    "styles/core.css::root::.pm-close-btn::color::var(--pm-color-danger) !important",
     "styles/core.css::root::.pm-confirm-btn::background::var(--pm-color-danger) !important",
     "styles/core.css::root::.pm-confirm-btn::color::var(--pm-color-on-danger) !important",
     "styles/core.css::root::.pm-contact-settings-actions::border-top::0 !important",
-    "styles/core.css::root::.pm-contact-settings-save::background::var(--pm-color-accent) !important",
-    "styles/core.css::root::.pm-contact-settings-save::border-color::var(--pm-color-accent) !important",
-    "styles/core.css::root::.pm-contact-settings-save::color::var(--pm-color-on-accent) !important",
     "styles/core.css::root::.pm-contact-settings-title::font-size::var(--pm-font-size-subtitle) !important",
     "styles/core.css::root::.pm-custom-check::background::var(--pm-color-fill-strong) !important",
     "styles/core.css::root::.pm-custom-check::border-radius::var(--pm-radius-pill) !important",
@@ -1107,7 +970,6 @@
     "styles/core.css::root::.pm-input-bar::background::var(--pm-navbar-bg) !important",
     "styles/core.css::root::.pm-input-bar::display::flex !important",
     "styles/core.css::root::.pm-input-bar::padding::var(--pm-space-2) var(--pm-space-3) var(--pm-space-6) !important",
-    "styles/core.css::root::.pm-input::background::var(--pm-color-fill) !important",
     "styles/core.css::root::.pm-input::background::var(--pm-input-bg) !important",
     "styles/core.css::root::.pm-input::border-radius::var(--pm-radius-round) !important",
     "styles/core.css::root::.pm-input::border::none !important",
@@ -1187,10 +1049,8 @@
     "styles/core.css::root::.pm-typing-bubble::display::flex !important",
     "styles/core.css::root::.pm-typing-bubble::padding::var(--pm-space-3) var(--pm-space-4) !important",
     "styles/core.css::root::.pm-up-btn::align-items::center !important",
-    "styles/core.css::root::.pm-up-btn::background::var(--pm-color-auxiliary) !important",
     "styles/core.css::root::.pm-up-btn::border-radius::var(--pm-radius-circle) !important",
     "styles/core.css::root::.pm-up-btn::border::none !important",
-    "styles/core.css::root::.pm-up-btn::color::var(--pm-color-on-dark) !important",
     "styles/core.css::root::.pm-up-btn::display::flex !important",
     "styles/core.css::root::.pm-up-btn::height::var(--pm-size-control-compact) !important",
     "styles/core.css::root::.pm-up-btn::justify-content::center !important",
@@ -1260,7 +1120,6 @@
     "styles/modal-settings.css::root::#pm-overlay::z-index::var(--pm-z-host) !important",
     "styles/modal-settings.css::root::.pm-bg-del::color::var(--pm-color-danger) !important",
     "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::background::var(--pm-color-fill) !important",
-    "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::border-radius::var(--pm-radius-control) !important",
     "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::border::0 !important",
     "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::color::var(--pm-color-label) !important",
     "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::cursor::pointer !important",
@@ -1280,13 +1139,9 @@
     "styles/modal-settings.css::root::.pm-group-sub::color::var(--pm-color-label-3) !important",
     "styles/modal-settings.css::root::.pm-group-sub::font-size::var(--pm-font-size-helper) !important",
     "styles/modal-settings.css::root::.pm-group-sub::font-weight::var(--pm-font-weight-regular) !important",
-    "styles/modal-settings.css::root::.pm-li > span::color::var(--pm-color-accent) !important",
     "styles/modal-settings.css::root::.pm-li > span::font-size::var(--pm-font-size-body) !important",
     "styles/modal-settings.css::root::.pm-li::align-items::center !important",
     "styles/modal-settings.css::root::.pm-li::display::flex !important",
-    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::background::var(--pm-color-accent) !important",
-    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::border-color::var(--pm-color-accent) !important",
-    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::color::var(--pm-color-on-accent) !important",
     "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-danger::background::var(--pm-color-danger) !important",
     "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-danger::border-color::var(--pm-color-danger) !important",
     "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-danger::color::var(--pm-color-on-danger) !important",
@@ -1335,21 +1190,6 @@
     "styles/modal-settings.css::root::.pm-prof-url::color::var(--pm-color-accent) !important",
     "styles/modal-settings.css::root::textarea.pm-cfg-input::padding::var(--pm-space-3) !important",
     "styles/overrides.css::@media (max-width:320px)::#pm-iphone::border-width::6px !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::appearance::none !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::background::var(--pm-color-fill) !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::border-radius::var(--pm-radius-control) !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::border::0 !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::box-shadow::none !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::box-sizing::border-box !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::color::var(--pm-color-label) !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::font::var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-control) var(--pm-font-family-system) !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::letter-spacing::normal !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::min-height::42px !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::outline::none !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::padding::var(--pm-space-2) var(--pm-space-3) !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input::width::100% !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input:focus-visible::outline-offset::1px !important",
-    "styles/overrides.css::root::.pm-calendar-month-panel input.pm-calendar-base-date-input:focus-visible::outline::2px solid var(--pm-calendar-accent) !important",
     "styles/overrides.css::root::.pm-sub-overlay::align-items::center !important",
     "styles/overrides.css::root::.pm-sub-overlay::background::var(--pm-color-overlay) !important",
     "styles/overrides.css::root::.pm-sub-overlay::border::0 !important",
@@ -1379,16 +1219,6 @@
     "styles/community.css::root::.pm-scene-title-poke::color::var(--pm-color-label-3) !important",
     "styles/community.css::root::.pm-scene-title-poke:hover, .pm-scene-title-poke:focus-visible::background::transparent !important",
     "styles/community.css::root::.pm-scene-title-poke:hover, .pm-scene-title-poke:focus-visible::color::var(--pm-color-label-2) !important",
-    "styles/calendar.css::root::.pm-calendar-editor-actions .is-primary::background::var(--pm-calendar-accent, var(--pm-color-accent)) !important",
-    "styles/calendar.css::root::.pm-calendar-editor-actions .is-primary::color::var(--pm-color-on-dark) !important",
-    "styles/calendar.css::root::.pm-calendar-editor-actions .is-primary::border-color::var(--pm-calendar-accent, var(--pm-color-accent)) !important",
-    "styles/calendar.css::root::.pm-calendar-management:is([data-calendar-management=\"schedule\"],[data-calendar-management=\"recipe\"],[data-calendar-management=\"cycle\"],[data-calendar-management=\"outfit\"]) .pm-calendar-editor-actions .is-primary::background::var(--pm-calendar-accent) !important",
-    "styles/calendar.css::root::.pm-calendar-management:is([data-calendar-management=\"schedule\"],[data-calendar-management=\"recipe\"],[data-calendar-management=\"cycle\"],[data-calendar-management=\"outfit\"]) .pm-calendar-editor-actions .is-primary::border-color::var(--pm-calendar-accent) !important",
-    "styles/today-trend.css::root::.pm-today-trend-home::color::var(--pm-color-on-accent) !important",
-    "styles/today-trend.css::root::.pm-today-trend-home:hover, .pm-today-trend-home:focus-visible::color::var(--pm-color-on-accent) !important",
-    "styles/today-trend.css::root::.pm-today-trend-home:hover, .pm-today-trend-home:focus-visible::background::color-mix(in srgb,var(--pm-color-on-accent) 16%,transparent) !important",
-    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::background::var(--pm-color-accent) !important",
-    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::border-color::var(--pm-color-accent) !important",
     "styles/overrides.css::root::#pm-iphone summary, #pm-overlay summary, #pm-overlay-sub summary::background::transparent !important",
     "styles/overrides.css::root::#pm-iphone summary, #pm-overlay summary, #pm-overlay-sub summary::border::none !important",
     "styles/overrides.css::root::#pm-iphone summary, #pm-overlay summary, #pm-overlay-sub summary::box-shadow::none !important",
@@ -1396,6 +1226,21 @@
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]:focus-visible::border-color::var(--pm-color-accent) !important",
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]:focus-visible::outline-offset::var(--pm-space-0-5) !important",
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]:focus-visible::outline::var(--pm-space-0-5) solid var(--pm-color-accent) !important",
+    "styles/community.css::root::.pm-scene-composer .pm-scene-primary::background::var(--pm-color-ink) !important",
+    "styles/community.css::root::.pm-scene-composer .pm-scene-primary::color::var(--pm-color-on-ink) !important",
+    "styles/community.css::root::.pm-scene-primary::background::var(--pm-color-ink) !important",
+    "styles/community.css::root::.pm-scene-primary::color::var(--pm-color-on-ink) !important",
+    "styles/community.css::root::.pm-scene-title-poke:active::color::var(--pm-color-on-ink) !important",
+    "styles/core.css::root::#pm-iphone .pm-input::background-color::var(--pm-color-surface) !important",
+    "styles/core.css::root::#pm-iphone .pm-input::box-shadow::var(--pm-shadow-card) !important",
+    "styles/core.css::root::.pm-close-btn::color::var(--pm-color-label-3) !important",
+    "styles/core.css::root::.pm-contact-settings-save::background::var(--pm-color-ink) !important",
+    "styles/core.css::root::.pm-contact-settings-save::border-color::var(--pm-color-ink) !important",
+    "styles/core.css::root::.pm-contact-settings-save::color::var(--pm-color-on-ink) !important",
+    "styles/core.css::root::.pm-input::background::var(--pm-color-surface) !important",
+    "styles/core.css::root::.pm-main-ui:is([data-page=\"chat\"],[data-page=\"story-oracle\"]) .pm-input-bar::background::transparent !important",
+    "styles/core.css::root::.pm-up-btn::background::var(--pm-color-ink) !important",
+    "styles/core.css::root::.pm-up-btn::color::var(--pm-color-on-ink) !important",
     "styles/core.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) :is(#pm-behavior-private,#pm-behavior-group,#pm-group-random-npc-prompt,#pm-scene-style,#pm-scene-prompt,.pm-calendar-generation-rule,.pm-today-trend-rule-editor textarea)::font-size::var(--pm-font-size-compact) !important",
     "styles/core.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]):not([type=\"file\"]):not([type=\"button\"]):not([type=\"submit\"]):not([type=\"reset\"]):not([type=\"hidden\"]):not([type=\"image\"]),textarea,select,[contenteditable=\"true\"]):focus-visible::border-color::var(--pm-color-accent) !important",
     "styles/core.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]):not([type=\"file\"]):not([type=\"button\"]):not([type=\"submit\"]):not([type=\"reset\"]):not([type=\"hidden\"]):not([type=\"image\"]),textarea,select,[contenteditable=\"true\"]):focus-visible::outline-offset::var(--pm-space-0-5) !important",
@@ -1404,32 +1249,20 @@
     "styles/core.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]):not([type=\"file\"]):not([type=\"button\"]):not([type=\"submit\"]):not([type=\"reset\"]):not([type=\"hidden\"]):not([type=\"image\"]),textarea,select,[contenteditable=\"true\"]):focus::outline-offset::var(--pm-space-0-5) !important",
     "styles/core.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown) :where(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]):not([type=\"file\"]):not([type=\"button\"]):not([type=\"submit\"]):not([type=\"reset\"]):not([type=\"hidden\"]):not([type=\"image\"]),textarea,select,[contenteditable=\"true\"]):focus::outline::var(--pm-space-0-5) solid var(--pm-color-accent) !important",
     "styles/modal-settings.css::root::.pm-directory-actions>button::font-weight::var(--pm-font-weight-regular) !important",
-    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-dark) !important",
     "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::border-color::var(--pm-color-accent) !important",
     "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::outline-offset::var(--pm-space-0-5) !important",
     "styles/core.css::root:::is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus, :is(#pm-overlay .pm-contact-settings-scroll textarea.pm-cfg-input,#pm-overlay .pm-group-settings-scroll textarea.pm-cfg-input):focus-visible::outline::var(--pm-space-0-5) solid var(--pm-color-accent) !important",
-    "styles/core.css::root::.pm-story-oracle-tab::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-tab::border-radius::var(--pm-radius-compact) !important",
-    "styles/core.css::root::.pm-story-oracle-tab::box-shadow::none !important",
-    "styles/core.css::root::.pm-story-oracle-plan-bubble::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-plan-bubble::border-radius::var(--pm-radius-card) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-bubble::box-shadow::none !important",
-    "styles/core.css::root::.pm-story-oracle-plan-toggle::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-plan-toggle::border-radius::var(--pm-radius-card) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-toggle::box-shadow::none !important",
-    "styles/core.css::root::.pm-story-oracle-plan-more::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-plan-more::border-radius::var(--pm-radius-circle) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-more::box-shadow::none !important",
-    "styles/core.css::root::.pm-story-oracle-plan-menu::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-plan-menu::border-radius::var(--pm-radius-card) !important",
-    "styles/core.css::root::.pm-story-oracle-tab.is-selected::color::var(--pm-color-label) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-toggle::color::var(--pm-color-label) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status::border-radius::var(--pm-radius-circle) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status::border::0 !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status::box-shadow::none !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status::color::var(--pm-color-label-2) !important",
-    "styles/core.css::root::.pm-story-oracle-plan-status.is-active::color::var(--pm-color-accent) !important",
-    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-accent,.is-api-test,.pm-contact-add-primary,.pm-contact-add-ai,.pm-contact-settings-save,.pm-scene-primary), #pm-iphone :is(.pm-contact-switcher-actions button.is-primary,.pm-quick-reply-actions button:not(.is-danger),.pm-desktop-community-dock button,.pm-today-trend-form-actions button[type=\"submit\"],.pm-today-trend-primary-action,.pm-calendar-editor-actions .is-primary)::color::var(--pm-color-on-dark) !important"
+    "styles/modal-settings.css::root::.pm-btn-group, .pm-btn-add::border-radius::var(--pm-radius-pill) !important",
+    "styles/modal-settings.css::root::.pm-li > span::color::var(--pm-color-label) !important",
+    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::background::var(--pm-color-ink) !important",
+    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::border-color::var(--pm-color-ink) !important",
+    "styles/modal-settings.css::root::.pm-modal-add .pm-action-button.is-accent::color::var(--pm-color-on-ink) !important",
+    "styles/modal-settings.css::root:::is(.pm-settings-modal,.pm-conversation-injection-modal) :is(.pm-settings-section,.pm-conversation-injection-group) .pm-cfg-input::background-color::var(--pm-color-fill) !important",
+    "styles/modal-settings.css::root:::is(.pm-settings-modal,.pm-conversation-injection-modal), :is(.pm-settings-modal,.pm-conversation-injection-modal)>.pm-modal-header, :is(.pm-settings-modal,.pm-conversation-injection-modal)>.pm-modal-add::background::var(--pm-color-bg-grouped) !important",
+    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-api-test,.pm-scene-primary), #pm-iphone :is(.pm-today-trend-form-actions button[type=\"submit\"],.pm-today-trend-primary-action)::color::var(--pm-color-on-dark) !important",
+    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::background::var(--pm-color-ink) !important",
+    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::border-color::var(--pm-color-ink) !important",
+    "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-ink) !important"
   ],
   "incrementalHardcodeBaseline": [
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::min-height::72px !important",
@@ -1539,8 +1372,6 @@
     "styles/community.css::root::.pm-desktop-app svg::width::23px",
     "styles/community.css::root::.pm-desktop-app-icon::height::46px",
     "styles/community.css::root::.pm-desktop-app-icon::width::46px",
-    "styles/community.css::root::.pm-desktop-community-dock svg::height::20px",
-    "styles/community.css::root::.pm-desktop-community-dock svg::width::20px",
     "styles/community.css::root::.pm-desktop-toolbar button::line-height::1",
     "styles/community.css::root::.pm-desktop-toolbar::min-height::28px",
     "styles/community.css::root::.pm-live-play-btn svg::height::42px",
@@ -1574,8 +1405,6 @@
     "styles/community.css::root::.pm-scene-post-metric svg::width::17px",
     "styles/community.css::root::.pm-scene-post-metric::line-height::1",
     "styles/community.css::root::.pm-scene-post-time::font-weight::400",
-    "styles/community.css::root::.pm-scene-preset>span::height::12px",
-    "styles/community.css::root::.pm-scene-preset>span::width::12px",
     "styles/community.css::root::.pm-scene-prompt .pm-scene-accent-option::height::30px",
     "styles/community.css::root::.pm-scene-prompt .pm-scene-accent-option::min-height::30px",
     "styles/community.css::root::.pm-scene-prompt .pm-scene-accent-option::min-width::30px",

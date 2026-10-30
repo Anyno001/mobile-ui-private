@@ -10,6 +10,7 @@ import { createApiDraftMode } from './settings-api-mode.js';
 import { createAppearanceController } from './settings-appearance-controller.js';
 import { createAppearancePackController } from './settings-appearance-pack.js';
 import { createBackupController } from './settings-backup-controller.js';
+import { loadRollbackFloors, normalizeRollbackFloors, saveRollbackFloors } from './phone-floor-rollback.js';
 import { createBackgroundSettings, runBackgroundTransaction } from './settings-background.js';
 import { createDesktopIconSettings } from './settings-desktop-icons.js';
 import { createBudgetController } from './settings-budget-controller.js';
@@ -121,6 +122,8 @@ export function installSettingsUi(deps) {
     window.__pmToggleWordyLimit = () => wordySettings.toggle();
     window.__pmToggleGalBubble = () => galBubbleSettings.toggle();
     window.__pmSetDarkMode = mode => appearanceSettings.setDarkMode(mode);
+    window.__pmSetIconStyle = style => appearanceSettings.setIconStyle(style);
+    window.__pmSetWallpaper = style => appearanceSettings.setWallpaper(style);
     window.__pmSetPreset = preset => appearanceSettings.setPreset(preset);
     window.__pmSetCustomAccent = () => appearanceSettings.setCustomAccent();
     window.__pmSetCustomColor = () => appearanceSettings.setCustomColor();
@@ -148,6 +151,17 @@ export function installSettingsUi(deps) {
     window.__pmResetBudgetConfig = () => budgetSettings.reset();
 
 
+    window.__pmSaveRollbackFloors = input => {
+        const value = normalizeRollbackFloors(input?.value);
+        if (input) input.value = String(value);
+        if (!saveRollbackFloors(value)) {
+            alert('保留层数保存失败：浏览器存储不可用。');
+            return false;
+        }
+        deps.pruneRollback?.();
+        return true;
+    };
+
     window.__pmShowConfig = async (page = 'home') => {
         if (page !== 'worldbook') worldBookSettings.cancelPendingPage();
         loadProfiles(); loadTheme(); loadBudgetConfig(); loadGalBubbleEnabled();
@@ -156,7 +170,9 @@ export function installSettingsUi(deps) {
             return;
         }
         if (page === 'backup') {
-            makeOverlay(renderSettingsModal({ title: '数据备份', content: renderBackupSettings() }));
+            makeOverlay(renderSettingsModal({
+                title: '数据备份', content: renderBackupSettings({ rollbackFloors: loadRollbackFloors() }),
+            }));
             return;
         }
         if (page === 'appearance-pack') {

@@ -36,6 +36,10 @@
 - IndexedDB 数据库：`PhoneModeDB`
 - IndexedDB store：`kv`
 - 历史主键：`ST_SMS_DATA_V2`
+- 社区副本：酒馆 `user/files/tianyin-community-<编号>.json`（每个聊天一份，编号由 storageId 哈希，文件内另存 storageId 核对）与 `tianyin-community-templates.json`（共享模板），不进聊天记录；本地改动时间记在 localStorage `ST_SMS_COMMUNITY_FILE_STAMPS_V1`，对账规则同聊天元数据。
+- 删楼回退：手机消息带 `floor`（发送时主线 chat.length）与 `floorAnchor`（该楼最后一条消息的 is_user/send_date/name）；最近 N 层（localStorage `ST_SMS_ROLLBACK_FLOORS`，默认 30，0 为不保留）内编辑、删除、重新生成的旧版本存于 `chatMetadata.tianyin_phone.rollback`，按层数与每层约 3.4KB 封顶。
+- 聊天元数据副本：`chatMetadata.tianyin_phone`（当前聊天的联系人记录与群聊元信息，每个联系人最近 2000 条）是 IndexedDB 之外的第二份副本，不替代 IndexedDB；本地改动时间记在 localStorage `ST_SMS_CHAT_METADATA_STAMPS_V1`，对账时两边都有且不同则 `updatedAt` 新的整份为准。
+- 生图：图片本体存酒馆 `user/images/tianyin-phone/`，不存浏览器。`PhoneModeDB/kv` 里存目录 `ST_SMS_IMAGE_CATALOG_V1`、手机自建的角色形象 `ST_SMS_IMAGE_DNA_V1` 和缩略图 `ST_SMS_IMAGE_THUMB_<id>`；设置存 localStorage `ST_SMS_IMAGE_SETTINGS_V1`（version 2：全局方案、至多 12 个预设方案、聊天/社区/视频各自选用的方案；内置 NAI 的 Key 与手机聊天 API 的 Key 一样存在本机，不写进聊天文件；v1 的比例读入时并进全局方案）。当前聊天的目录（不含提示词与缩略图）另存 `chatMetadata.tianyin_phone_images`，打开相册或渲染图片卡时把本机缺的记录补回。角色形象（DNA）由手机独立保存，不读写其他插件的资料。
 - Today Trend v2 主键：`ST_SMS_TODAY_TREND_V2`；authority key：`ST_SMS_TODAY_TREND_V2_AUTHORITY_V1`；二者不得与 v1 key 混用。
 - v2 authority 与 store 的 guard compare / writes 必须在同一个 `readwrite` 事务内完成；冲突事务不得留下部分写入。
 - authority 存在 active owner 时，其他标签不得通过 `acquire` 接管；必须由当前 owner 显式 `release` 后再竞争获取，阶段 1 不提供 lease、超时或 takeover。

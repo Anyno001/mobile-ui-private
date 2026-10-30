@@ -15,7 +15,7 @@ function applySubOverlayTheme(overlay) {
     const defaultLeft = interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left;
     const rightBackground = theme.customRight || defaultRight;
     const rightText = theme.customRight || (theme.preset === 'custom' && customAccent)
-        ? contrastText(rightBackground) : preset.rightText;
+        ? contrastText(rightBackground) : interfaceMode === 'dark' ? preset.rightTextDark || preset.rightText : preset.rightText;
     const uiTokens = interfaceMode === 'dark' ? preset.uiDark || {} : preset.ui || {};
     overlay.style.setProperty('--pm-r-bg', rightBackground);
     overlay.style.setProperty('--pm-r-txt', rightText);

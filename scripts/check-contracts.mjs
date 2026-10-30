@@ -14,6 +14,8 @@ const CSS_MODULE_FILES = [
   'styles/community.css',
   'styles/calendar.css',
   'styles/today-trend.css',
+  'styles/gallery.css',
+  'styles/live.css',
   'styles/overrides.css',
 ];
 const [srcEntries, bundle, cssEntry, manifestText, packageText, lockText, readme, projectText, baselineText, cssTokensText, lifecycleResourcesText, governanceRegistryText, ...cssModules] = await Promise.all([
@@ -787,6 +789,8 @@ const ALLOWED_FONT_FAMILY_VALUES = new Set([
   'var(--pm-font-family-system)',
   'var(--pm-font-family-mono)',
   'var(--mainFontFamily)',
+  // 今日风向标题与引文的宋体字栈，私有 token，只在 .pm-today-trend-shell 内声明与消费。
+  'var(--pm-today-trend-serif)',
   'inherit',
 ]);
 function collectFontFamilyIssues(rules) {
@@ -798,7 +802,7 @@ function collectFontFamilyIssues(rules) {
       ? value
       : value === 'inherit'
         ? 'inherit'
-        : value.match(/(?:^|\s)(var\(--pm-font-family-[\w-]+\))$/)?.[1];
+        : value.match(/(?:^|\s)(var\(--pm-(?:font-family-[\w-]+|today-trend-serif)\))$/)?.[1];
     if (!family || !ALLOWED_FONT_FAMILY_VALUES.has(family)) {
       issues.push(`${rule.path}:${rule.line}: ${rule.selectors.join(', ')} must express ${property === 'font' ? 'font shorthand family' : 'font-family'} with an approved font-family token or inherit, received ${rawValue}`);
     }
@@ -2407,6 +2411,7 @@ const PHONE_ENTRY_OWNERS = {
     '__pmDeletePending', '__pmClearPending', '__pmResetPendingEditor',
   ],
   'interactive-scenes.js': ['__pmReturnToCommunityDataSource', '__pmOpenForumMode'],
+  'live-app.js': ['__pmOpenLiveApp'],
   'calendar.js': ['__pmReturnToCalendarDataSource'],
   'phone-directory.js': [
     '__pmToggleContactSwitcher', '__pmSaveAndCloseGroupEdit',
@@ -2547,7 +2552,7 @@ for (const expected of [
   'runtime.hostEventRegistrations', 'runtime.visibilityTimer', 'createAmbientStatusController',
   'quoteHighlightTimer', 'state.generationTask', 'runtime.automaticTasks', 'runtime.historyLoadPromise',
   '## 缓存边界', 'runtime.pendingMessages', 'PENDING_MESSAGE_LIMIT = 50',
-  'SAVE_LIMIT = 60', 'runtime.trackedExtensionPromptKeys',
+  'HISTORY_RENDER_LIMIT = 200', 'runtime.trackedExtensionPromptKeys',
   '阶段 0 的真实宿主重复回归已由助手基于当前已测试版本明确豁免',
 ]) requireText('docs/LIFECYCLE-RESOURCES.md', lifecycleResourcesText, expected);
 requireText('behavior-config.js', sourceModuleByName.get('behavior-config.js')?.code || '', 'normalizeCharacterBehaviorStore');
@@ -2567,13 +2572,12 @@ requireText('budget.js', sourceModuleByName.get('budget.js')?.code || '', 'DEFAU
 requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolvePhoneSources');
 requireText('permissions.js', sourceModuleByName.get('permissions.js')?.code || '', 'resolveCommunitySources');
 requireText('phone-injection.js', sourceModuleByName.get('phone-injection.js')?.code || '', 'applyContextInjections');
-requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '控制本插件写入主提示词的内容量，不限制模型输出。');
 for (const expected of [
   'pm-settings-home', "__pmShowConfig('api')", "__pmShowConfig('look')",
   "__pmShowConfig('backup')", "__pmShowConfig('budget')", "__pmShowConfig('quick-reply')",
   'pm-indep-profile-fields', 'pm-indep-config-fields', 'pm-independent-api-fields', 'pm-cfg-temperature',
-  'renderQuickReplySettings', '快捷回复', '/phone', '手机开关', '创建或清除开关入口',
-  '默认使用酒馆 API 预设', '范围 0–2；数值越高，回复越随机。默认 1.2。', 'BACK_ICON_SVG', 'pm-action-button is-danger',
+  'renderQuickReplySettings', '快捷回复', '手机开关',
+  '默认使用酒馆API预设', '范围 0–2；数值越高，回复越随机。默认 1.2。', 'BACK_ICON_SVG', 'pm-action-button is-danger',
 ]) requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 for (const expected of [
   'PHONE_QR_SET_NAME', 'PHONE_QR_AUTOMATION_ID', "PHONE_QR_MESSAGE = '/phone'", "PHONE_QR_LABEL_DEFAULT = '天音'",
@@ -2744,7 +2748,9 @@ for (const forbidden of ['pm-group-injection-position', 'pm-group-injection-dept
 const contactCode = sourceModuleByName.get('contact-generator.js')?.code || '';
 const interactiveCode = sourceModuleByName.get('interactive-scenes.js')?.code || '';
 const interactiveUtilsCode = sourceModuleByName.get('interactive-scenes-utils.js')?.code || '';
-const interactiveViewsCode = sourceModuleByName.get('interactive-scene-views.js')?.code || '';
+// 社区视图按版式拆在 src/community-views/ 下：契约按整体检查。
+const interactiveViewsCode = ['interactive-scene-views.js', 'view-shared.js', 'view-weibo.js', 'view-douban.js', 'view-review.js', 'view-confess.js', 'view-night.js', 'view-compose.js']
+  .map(name => sourceModuleByName.get(name)?.code || '').join('\n');
 const interactivePhoneCode = sourceModuleByName.get('interactive-scene-phone.js')?.code || '';
 const interactiveSchedulerCode = sourceModuleByName.get('interactive-scene-scheduler.js')?.code || '';
 const foundationCode = sourceModuleByName.get('phone-foundation.js')?.code || '';
@@ -2919,7 +2925,9 @@ if (!createSceneCode.includes('if (runtime.openSceneId === createdSceneId) runti
 }
 if (createSceneCode.includes("request('feed_batch'")) failures.push('interactive-scenes.js: createScene must not bypass the shared runner for initial feed');
 if (/feed_batch[\s\S]*?current\(\)/.test(createSceneCode)) failures.push('interactive-scenes.js: createScene late feed must not reselect a target with current()');
-verifyGuardedRequestOrder('interactive-scenes.js: createScene', createSceneCode, 'style_prompt');
+// 新建社区直接取所选平台的默认风格，不再向 AI 请求风格提示词；重新生成只在风格页触发。
+if (createSceneCode.includes("request('style_prompt'")) failures.push('interactive-scenes.js: createScene must use the platform default style instead of requesting style_prompt');
+if (!createSceneCode.includes('COMMUNITY_PLATFORM_PROMPTS[platform].defaultStyle')) failures.push('interactive-scenes.js: createScene must seed generatedPrompt from the platform default style');
 const generateCommentsCode = interactiveAnalysis.functionSource.get('generateComments') || '';
 if (!generateCommentsCode.includes("request('comment_batch'")) {
   failures.push('interactive-scenes.js: explicit generateComments path must retain comment_batch');
@@ -2943,13 +2951,13 @@ for (const expected of ['syncStore = null', 'await syncStore?.()', '补偿持久
   requireText('interactive-scenes-utils.js', interactiveUtilsCode, expected);
 }
 for (const expected of [
-  'INTERACTIVE_STORE_VERSION = 2', 'authorId', 'authorNameSnapshot', 'shareCount', 'shared',
+  'INTERACTIVE_STORE_VERSION = 3', 'authorId', 'authorNameSnapshot', 'shareCount', 'shared',
   'toggleScenePostLike', 'incrementScenePostShare',
   'if (post.shared === true) return false', 'post.shared = true',
   'assertV2Keys', 'appendScenePosts', 'deriveInteractiveActorId',
   'PHONE_UI_STATE_VERSION = 1', 'normalizePhoneUiState', 'normalizeAmbientStatus',
   'patchPhoneUiScope', 'toggleScenePin',
-  "assertV2Keys(value, ['activeSceneId', 'sceneOrder', 'scenes', 'actors']",
+  "const scopeKeys = ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder'] : [])]",
 ]) requireText('interactive-scene-model.js', interactiveModelCode, expected);
 for (const expected of ['ST_SMS_PHONE_UI_STATE', 'loadPhoneUiState', 'savePhoneUiState', 'savePhoneUiScope', 'const current = loadPhoneUiState(interactiveStore)']) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 if ((source.match(/ST_SMS_PHONE_UI_STATE/g) || []).length !== 1) failures.push('source: phone UI state must retain exactly one storage-key definition');
@@ -3057,7 +3065,6 @@ for (const expected of [
   'calendar-month-jump', 'calendar-prev-month', 'calendar-next-month', 'calendar-today', 'rawLatestChatText || context.latestChatText',
   'goToReferenceDate', 'moveCalendarMonth', 'jumpToMonth', 'showEntryEditor',
   'calendar-toggle-detail-edit', 'calendar-edit-entry', 'calendar-delete-entry', 'removeEntry',
-  'managementOpenByMode',
   'statusTimerByStorage', 'createCalendarRecipeController', 'getCalendarRecipeStore', 'createCalendarOutfitController', 'getCalendarOutfitStore',
   'setTimeoutImpl', 'clearTimeoutImpl', '{ persistent: true }', '{ duration: 10000 }',
 ]) requireText('calendar.js', calendarCode, expected);
@@ -3066,13 +3073,11 @@ for (const expected of [
 ]) requireText('calendar-weather-controller.js', calendarWeatherControllerCode, expected);
 
 for (const expected of [
-  'calendarMonthCells', 'shiftCalendarMonth', 'BACK_ICON_SVG', 'FORWARD_ICON_SVG', 'HOME_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'RECIPE_ICON_SVG',
-  'calendar-month-panel', 'pm-calendar-header-side is-left', 'pm-calendar-header-side is-right',
+  'calendarMonthCells', 'shiftCalendarMonth', 'BACK_ICON_SVG', 'FORWARD_ICON_SVG', 'HOME_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG',
+  'calendar-month-panel',
   'data-calendar-month-navigation tabindex="0"', 'calendar-prev-month', 'calendar-next-month',
-  'pm-calendar-title-control', 'pm-calendar-title-chevron',
   'relativeCalendarLabel(today, selectedDate)', 'calendar-recipe-generate', 'recipeScope', 'calendarWindowDescription(today, 7)',
-  '`AI 生成${recipeWindow.label}菜谱`',
-  "container?.querySelector?.('[data-calendar-management]')", 'managementOpen: view.managementOpenByMode?.[viewMode]',
+  '`AI生成${recipeWindow.label}菜谱`',
   "viewMode === 'weather' ? view.weatherRefreshing === true",
   "const statusBusy = viewMode === 'recipe'",
   "const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG",
@@ -3149,37 +3154,32 @@ for (const expected of [
   'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周（同星期）', '每两周（同星期）', '每月（同日）', '自定义', '每年重复',
   'data-calendar-interval-days', 'name="intervalDays"',
   'data-action="calendar-holiday-country"',
-  'data-action="calendar-add-date"', 'data-action="calendar-toggle-detail-edit"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
-  'renderCalendarMonthPanel', 'data-calendar-month-panel', 'data-action="calendar-today"',
+  'data-calendar-month-panel', 'data-action="calendar-today"',
   '该国家在当前年代无外部数据源', 'EDIT_ICON_SVG', 'MORE_ICON_SVG',
   'data-action="calendar-recipe-edit"', 'data-action="calendar-recipe-delete"', 'pm-calendar-entry-dialog',
-  'pm-calendar-scan-card', '<h3>正文日期</h3>', '保存并识别',
+  'pm-calendar-scan-card', '保存并识别',
   'role="switch"', 'aria-checked="${scope.autoAdjust}"', '自动跟随正文日期', "label: '<user>'",
-  '<time datetime="${selectedDate}">${escapeHtml(detailDate.format(parsed))}</time>', 'detailWeekday.format(parsed)',
   "period: { label: '经期'", "ovulatory: { label: '易孕期'",
   'resolveWeatherForDate(weatherStore, date, {\n        storyWeatherEvent: scope.weatherEvent, storyWeatherEventEnabled: scope.weatherEventEnabled,\n    })',
-  'CYCLE_PERIOD_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG', 'WEATHER_ICON_SVG', 'LOCATION_ICON_SVG', 'WEATHER_PARTLY_CLOUDY_ICON_SVG',
-  'weatherStatusIcon', 'statusCard', 'pm-calendar-status-card', 'pm-calendar-status-watermark', 'pm-calendar-panel-section',
-  'pm-calendar-status-heading', 'pm-calendar-status-context', 'pm-calendar-status-relative', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context', 'pm-calendar-status-date', 'data-cycle-phase="${escapeAttr(phase)}"',
-  'value: `${resolved.day.tempMin}°–${resolved.day.tempMax}°`', "'天气记录'", '每两周重复',
+  'pm-calendar-status-card', 'pm-calendar-panel-section',
+  'pm-calendar-status-heading', 'pm-calendar-status-weather-context', 'pm-calendar-status-cycle-context',
+  "'天气记录'", '每两周重复',
   'intervalDays = 1', 'occasionTypeLabel(occasion.type, occasion.repeat, occasion.intervalDays)',
-  'relativeLabel, context, value, icon, parsed, date, kind, phase = \'\'',
   "? '是特殊的日子 &gt; &lt; ！要注意保重身体呀'",
-  '当前故事日期', 'placeholder="例如 3726-08-17"', '可直接输入日期，或跳转月份后点击下方日期。',
+  '当前故事日期', 'placeholder="例如 3726-08-17"',
   '开启后，角色回复时会参考当前会话中的相关信息。', '预报外日期使用气候推演', '无法推演',
   'DEFAULT_CALENDAR_GENERATION_RULE', 'DEFAULT_RECIPE_GENERATION_RULE', 'data-calendar-generation-rule', 'data-recipe-generation-rule',
-  'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save', 'escapeHtml(generationRule)',
+  'calendar-generation-rule-save', 'calendar-recipe-generation-rule-save',
   'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"',
   'data-calendar-interval-days ${custom ? \'\' : \'hidden aria-hidden="true"\'}',
-  '<b>OOTD</b>',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 if (calendarViewCode.includes('${OUTFIT_ICON_SVG} OOTD')) failures.push('calendar-view.js: OOTD detail title must not render the outfit SVG');
-if (!calendarPageViewCode.includes('data-action="calendar-mode-outfit"') || !calendarPageViewCode.includes('${OUTFIT_ICON_SVG}</button>')) {
-  failures.push('calendar-page-view.js: outfit mode entry must retain the outfit SVG');
+if (!calendarPageViewCode.includes("['outfit', '穿搭', '显示穿搭']") || !calendarPageViewCode.includes('aria-pressed="${viewMode === mode}">${label}</button>')) {
+  failures.push('calendar-page-view.js: calendar modes must render as a labelled segmented control');
 }
 if (calendarViewCode.includes('<h3>上下文注入</h3>')) failures.push('calendar-view.js: calendar management cards must not repeat the context-injection heading');
-if (!/<h3>正文日期<\/h3>[\s\S]*<h3>节假日数据<\/h3>[\s\S]*<h3>生成规则<\/h3>/.test(calendarViewCode)) {
+if (!/group\('正文日期'[\s\S]*group\('数据来源'[\s\S]*group\('生成规则'/.test(calendarViewCode)) {
   failures.push('calendar-view.js: schedule generation rule card must remain last');
 }
 for (const forbidden of ['<span>已选日期</span>', '>${escapeHtml(selectedDate)}</time>', '>编辑</button>', 'calendar-editor-kind', 'pm-calendar-editor-switch']) if (calendarViewCode.includes(forbidden)) failures.push(`calendar-view.js: calendar UI remains: ${forbidden}`);
@@ -3195,7 +3195,6 @@ for (const forbidden of ['相对低风险期', '不能作为避孕依据', '预�
 }
 for (const expected of [
   "addEventListener('change'", "input[data-action],select[data-action]", "button.tagName === 'SELECT' || button.tagName === 'INPUT'",
-  'export function selectScenePreset', "button.dataset?.accent", "app.style?.setProperty?.('--scene-accent', accent)",
   'export function syncSceneAccentControls', 'export function handleSceneAccentAction', "action === 'scene-accent'", "action === 'scene-accent-custom'", "option.setAttribute('aria-pressed'",
 ]) {
   requireText('interactive-scene-phone.js', interactivePhoneActionsCode, expected);
@@ -3234,7 +3233,7 @@ if (directoryTemplate.includes('pm-forum-entry') || directoryTemplate.includes('
 if (controlCenterTemplate.includes('makeOverlay') || controlCenterTemplate.includes('<span')) {
   failures.push('phone-control-center.js: compact control menu must not use the full overlay or explanatory subtitles');
 }
-for (const title of ['编辑消息', '角色设置', '群聊设置', '自动发消息', '表情包管理', '日历', '删除消息']) {
+for (const title of ['编辑消息', '角色设置', '群聊设置', '自动发消息', '表情包', '日历', '删除消息']) {
   if (!controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu missing title ${title}`);
 }
 for (const expected of [
@@ -3275,26 +3274,62 @@ for (const expected of [
 }
 if (interactiveCode.includes('document.getElementById(`pm-comment-input-${button.dataset.postId}`)')) failures.push('interactive-scenes.js: reply submission must stay scoped to the clicked composer');
 for (const expected of [
-  'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'REPLY_ICON_SVG', 'SEND_ICON_SVG', 'CONTROL_ICON_SVG', 'COMMUNITY_ICON_SVG', 'EDIT_ICON_SVG', 'TRASH_ICON_SVG',
-  'pm-scene-nav-actions', 'pm-header-icon-button pm-scene-title-poke', 'pm-header-icon-button pm-scene-exit', 'pm-scene-view-actions', 'pm-scene-title-tab', 'aria-label="子社区视图"',
-  'class="pm-scene-home" data-action="desktop"', '<span>直播</span>',
-  'style="--scene-accent:${escapeAttr(defaultAccent)}"', 'data-preset="${escapeAttr(key)}" data-accent="${escapeAttr(preset.accent)}"',
+  'HEART_ICON_SVG', 'SHARE_ICON_SVG', 'REPLY_ICON_SVG', 'SEND_ICON_SVG', 'MORE_ICON_SVG', 'COMMUNITY_ICON_SVG', 'EDIT_ICON_SVG', 'TRASH_ICON_SVG',
+  'pm-scene-nav-actions', 'pm-header-icon-button pm-scene-title-poke', '<button type="button" role="menuitem" data-action="exit">${CLOSE_ICON_SVG}<span>退出手机</span></button>', 'pm-scene-view-actions', 'class="pm-scene-title"',
+  'class="pm-scene-home" data-action="desktop"',
+  'data-community-platform="${platform}"', 'data-action="pick-platform" data-platform="${platform}"', 'aria-pressed="${platform === selected}"',
+  'data-action="toggle-nsfw"', 'role="switch"', 'aria-checked="${enabled}"',
   'data-action="tab" data-tab="prompt"', '风格提示词', 'data-action="context-inject"', '上下文注入', 'pm-scene-post-more', 'data-action="post-actions"',
   'aria-label="拍一拍本帖，只生成本帖评论"', "class=\"pm-scene-share ${post.shared ? 'is-shared' : ''}\"", 'aria-pressed="${post.shared}"', "post.shared ? '已分享本帖' : '分享本帖'", "renderPostMetric(SHARE_ICON_SVG, shares, '转发', 'is-share')",
-  'pm-scene-reply-toggle', 'data-action="toggle-reply"', 'aria-controls="pm-comment-composer-${escapeAttr(post.id)}"', 'aria-expanded="false"',
-  "renderPostMetric(REPLY_ICON_SVG, post.comments.length, '回复', 'is-reply')", 'class="pm-scene-comment-content"', 'class="pm-scene-comment-composer" hidden', 'placeholder="发表你的想法吧"',
+  'pm-scene-reply-toggle', 'data-action="${action}"', 'aria-controls="pm-comment-composer-${escapeAttr(post.id)}"', "aria-expanded=\"${expanded}\"",
+  "renderPostMetric(icon ? REPLY_ICON_SVG : '', count, label, 'is-reply')", 'class="pm-scene-comment-content"', 'class="pm-scene-comment-composer"${hidden ? \' hidden\' : \'\'}', 'placeholder="发表你的想法吧"',
   'class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden',
   'class="pm-scene-comment-actions" hidden', 'data-action="edit-comment"', 'aria-label="编辑评论"', 'data-action="delete-comment"', 'aria-label="删除评论"',
-  'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${preset.accent === selectedAccent}"',
-  'placeholder="分享此刻……"',
-  "const liveState = ['idle', 'starting', 'active', 'error'].includes(state.liveState) ? state.liveState : 'idle'", 'const warmupStarted = liveState === \'active\' && scene.live.warmupStarted === true',
-  'data-action="start-warmup"', '${PLAY_ICON_SVG}', 'aria-label="发送弹幕"', '设置社区内容的表达风格与氛围。',
-  "isSubpage || tab === 'context-inject' ? ''", 'pm-live-stage', 'pm-live-details', 'data-live-state=', 'pm-danmaku-float',
-  'data-action="toggle-danmaku-actions"', 'aria-pressed="false"', 'aria-label="修改弹幕"', '修改弹幕', 'data-action="edit-danmaku"', 'data-action="delete-danmaku"', 'placeholder="发个弹幕见证当下"',
+  'pm-scene-accent-options', 'data-action="scene-accent"', 'data-action="scene-accent-custom"', 'aria-pressed="${COMMUNITY_PLATFORM_ACCENTS[platform] === selected}"',
+  'placeholder="回复楼主"', 'id="pm-scene-post-input"', 'data-action="reply-owner"', '设置社区内容的表达风格与氛围。',
+  'function renderThreadReplyBar', 'const FEED_RENDERERS', 'renderWeiboFeed', 'renderDoubanFeed', 'renderReviewFeed', 'renderConfessFeed', 'renderNightFeed',
+  // 发布入口按平台区分，点开都进同一个整页编辑页。
+  'renderComposeSheet', 'renderComposeFloat', 'renderComposeDock', 'renderComposePill', 'data-action="open-compose"', 'data-action="close-compose"', 'data-action="insert-topic"',
+  'pm-scene-fab', 'pm-scene-float-pill', 'pm-scene-dock-button', 'pm-scene-sheet-cancel', '投一封信', '投进信箱', '说出你的心事', 'aria-label="发微博"',
+  // 微博评论区：小头像 + 名字 + 作者标签 + 时间 + 内容 + 小赞数，「查看全部 N 条评论 ›」。
+  'function renderCommentRow', 'pm-scene-comment-main', 'pm-scene-comment-head', 'pm-scene-comment-like', '>作者</span>', '条评论 ›',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
-for (const expected of ['.pm-live-room{display:flex;flex-direction:column;gap:var(--pm-space-5)}', '.pm-live-play-btn{width:48px', '.pm-live-details{display:flex;flex-direction:column;gap:var(--pm-space-3)}', '.pm-danmaku-list{height:210px;overflow-y:auto;background:transparent;border:0', '.pm-danmaku-row{--pm-scene-danmaku-row-blue:#1769aa;--pm-scene-danmaku-row-pink:#a6265e;--pm-scene-danmaku-row-cyan:#0b6b6b;--pm-scene-danmaku-row-gold:#8a5a00;padding:var(--pm-space-3) var(--pm-space-1-5);font-size:11px;line-height:var(--pm-line-height-body)}', '.pm-danmaku-row .pm-scene-comment-actions[hidden]{display:none}']) {
-  requireText('style.css', css, expected);
+// 顶栏统一为 [主页/返回] 标题 [拍一拍, ⋯]：关闭键只在 ⋯ 菜单里，旧的 has-menu/has-pill 变体与关闭键类名不得回来。
+for (const forbidden of ['pm-scene-exit', 'topbarKind', 'has-pill', 'has-menu', 'middleAction']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed topbar variant remains: ${forbidden}`);
 }
+// 底栏去重复：工具菜单收进顶栏 ⋯，旧的魔法棒底栏、首行作标题与展开式附加输入都不得回来。
+for (const forbidden of ['data-action="focus-compose"', 'pm-scene-compose-extras', 'pm-scene-extra-input', 'is-mini', 'pm-scene-group-post', 'PLACEHOLDERS', 'renderComposer(']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community bottom-composer markup remains: ${forbidden}`);
+}
+// 直播已拆成独立 App：社区页不得再保留直播 tab、弹幕与热场的视图代码。
+for (const forbidden of ['pm-live-', 'pm-danmaku', 'data-tab="live"', 'start-warmup', 'send-danmaku', 'toggle-danmaku-actions', 'pm-scene-title-tab', 'data-action="preset"']) {
+  if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community live/preset markup remains: ${forbidden}`);
+}
+const communityCss = cssModules[CSS_MODULE_FILES.indexOf('styles/community.css')];
+for (const forbidden of ['.pm-live-', '.pm-danmaku', '.pm-scene-title-tab', '.pm-scene-preset', '--scene-accent']) {
+  if (communityCss.includes(forbidden)) failures.push(`style.css: removed community live/preset rule remains: ${forbidden}`);
+}
+// 五种版式特有元素：热搜卡、标题列表与楼层、书架与星级、便签与心情胶囊、信箱卡与落款。
+for (const expected of [
+  'pm-scene-hot', 'pm-scene-repost', 'pm-scene-comments-more',
+  'pm-scene-thread-list', 'pm-scene-floor-no', 'pm-scene-quote', 'pm-scene-owner', 'data-action="open-thread"', 'data-action="set-segment"',
+  'pm-scene-shelf', 'pm-scene-dist', 'data-action="open-book"', 'data-action="pick-rating"', 'summarizeBookRatings',
+  'pm-scene-moods', 'data-action="filter-mood"', 'data-action="pick-mood"', 'pm-scene-note-body',
+  'pm-scene-mailbox', 'pm-scene-postmark', 'pm-scene-sign', 'nightClock',
+]) requireText('community-views', interactiveViewsCode, expected);
+for (const expected of [
+  '[data-community-platform="weibo"]{--pm-community-accent:#e0806a;}', '[data-community-platform="douban"]{--pm-community-accent:#5f9a86;}',
+  '[data-community-platform="review"]{--pm-community-accent:#e08e55;}', '[data-community-platform="confess"]{--pm-community-accent:#8f86c6;}',
+  '[data-community-platform="night"]{--pm-community-accent:#6f7fc4;}',
+  '#pm-iphone[data-theme="dark"] [data-community-platform="weibo"]{--pm-community-accent:#e8957f;}', '#pm-iphone[data-theme="dark"] [data-community-platform="douban"]{--pm-community-accent:#78b29e;}',
+  '#pm-iphone[data-theme="dark"] [data-community-platform="review"]{--pm-community-accent:#e8a06d;}', '#pm-iphone[data-theme="dark"] [data-community-platform="confess"]{--pm-community-accent:#a59dd6;}',
+  '#pm-iphone[data-theme="dark"] [data-community-platform="night"]{--pm-community-accent:#aeb8ec;}',
+  '--pm-community-accent-soft:color-mix(in srgb,var(--pm-community-accent) 14%,var(--pm-color-surface))',
+  '--pm-community-note-1:#ecebf7;--pm-community-note-2:#f9e8ee;--pm-community-note-3:#e6f1ed;--pm-community-note-4:#fdf3e2;--pm-community-note-5:#e7eef8;',
+  '--pm-community-note-1:#2a2838;--pm-community-note-2:#33262c;--pm-community-note-3:#22302b;--pm-community-note-4:#332d22;--pm-community-note-5:#232c38;',
+  '--pm-community-night-card:#262a45;--pm-community-night-stamp:#3a4170;--pm-community-night-avatar:#2c3150;',
+]) requireText('style.css', css, expected);
 for (const forbidden of ['data-action="back"', 'pm-scene-back']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: removed community back control remains: ${forbidden}`);
 }
@@ -3313,14 +3348,14 @@ for (const forbidden of ['生成更多评论', '>喜欢</button>', '>已喜欢</
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: obsolete community post action remains: ${forbidden}`);
 }
 for (const expected of [
-  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'selectScenePreset', 'toggleSceneReplyComposer',
+  'persistSceneBudgetRemoval', 'deleteSceneAndFinalize', 'finalizeDeletedScene', 'bindPhonePageActions', 'runDeleteSceneAction', 'toggleSceneMenu', 'toggleSceneReplyComposer',
   'deleteScene: deleteInteractiveScene', 'persistSceneBudgetRemoval({',
   "['手机页面状态保存失败', persistPhoneUi]", "['运行时场景清理失败', clearOpenScene]",
   "['社区页面刷新失败', renderLauncher]", "dataset.sceneUiBound === 'true'", "event.key === 'ArrowLeft'", "event.key === 'Escape'",
   "addEventListener('touchstart'", "addEventListener('touchend'", 'Math.abs(dx) < 48',
   ".pm-scene-post-actions:not([hidden])", 'closePostActions', '[data-action="post-actions"]', 'postFocusTarget', 'menuFocusTarget',
   "closest?.('.pm-scene-post')?.querySelectorAll?.('.pm-scene-comment-actions')", 'commentActions.hidden = !opening',
-  "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', 'toggleDanmakuActions', "app?.querySelector?.('.pm-danmaku-list')", "button.querySelector?.('span')?.replaceChildren?.(label)", "focus?.({ preventScroll: true })",
+  "app.querySelectorAll?.('.pm-scene-comment-composer')", "composers.find(composer => composer.id === targetId)", '[data-action="toggle-reply"]', "focus?.({ preventScroll: true })",
 ]) requireText('interactive-scene-phone.js', interactivePhoneCode, expected);
 for (const expected of [
   'runDeleteSceneAction(scopeId, sceneId, {', 'clearOpenScene:', 'renderLauncher:',
@@ -3344,8 +3379,8 @@ for (const expected of [
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
 for (const expected of [
   'COMMUNITY_TEMPLATE_ICON_SVG', 'pm-desktop-template', 'desktop-import-community-template',
-  'dismiss-community-template', 'publish-community-template', 'unpublish-community-template', 'style="--scene-accent:${escapeAttr(sceneAccent(template))}"',
-  'style="--scene-accent:${escapeAttr(accent)}"', '<b>${escapeHtml(template.title)}</b></button><button type="button" data-action="dismiss-community-template"',
+  'dismiss-community-template', 'publish-community-template', 'unpublish-community-template', 'data-community-platform="${platformOf(template)}"${accentStyleOf(template)}',
+  'data-community-platform="${platformOf(scene)}"${accentStyleOf(scene)}', '<b>${escapeHtml(template.title)}</b></span><button type="button" data-action="desktop-import-community-template"',
 ]) requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 for (const forbidden of ['pm-desktop-template-icon', '<small>导入社区模板</small>']) {
   if (interactiveViewsCode.includes(forbidden)) failures.push(`interactive-scene-views.js: cross-window desktop pin still has divergent template markup: ${forbidden}`);
@@ -3368,9 +3403,15 @@ for (const forbidden of ['toggle-community-template', 'toggle-scene-share', 'des
   if (bundle.includes(forbidden)) failures.push(`index.js: removed cross-window community identifier remains: ${forbidden}`);
 }
 for (const expected of [
-  "isCurrent: () => isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live'",
-  "isTargetActive(target) && phoneScope(target.storageId).lastTab === 'live'",
+  'buildCommunityRequest({ kind, platform, nsfw: scene.nsfw === true', 'parseCommunityResponse(raw, kind, platform)', 'applyFeedMeta(scene, items.meta)',
+  "if (action === 'reply-owner')", "if (action === 'pick-platform')", "if (action === 'toggle-nsfw')",
+  "action === 'open-compose' || action === 'close-compose'", "if (action === 'insert-topic')", 'syncComposeDraft', 'readComposeDraft', 'insertTopicMark',
+  "Object.assign(view, { compose: false, draft: null", 'compose: false, draft: null, feedScroll: 0',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
+// 直播已拆成独立 App：社区接线不得再保留直播 tab 与热场的动作和状态。
+for (const forbidden of ['runLiveWarmup', 'start-warmup', 'send-danmaku', 'edit-danmaku', 'delete-danmaku', 'liveWarmupError', 'appendDanmaku', "activeCommunityTab"]) {
+  if (interactiveCode.includes(forbidden)) failures.push(`interactive-scenes.js: removed community live wiring remains: ${forbidden}`);
+}
 for (const expected of [
   'createCommunityTaskController', 'createCommunityGenerationRunner', "request('feed_batch', {}, target)", "request('danmaku_batch', {}, target)",
   'createCommunityTurnSnapshot(chat)', 'registerResolvedHostEvent', 'resolveHostEvent', 'runtime.communityTask', 'resetObservation',
@@ -3522,7 +3563,7 @@ if (!overlayThemeDirectSyncPattern.test(applyThemeSource)
   failures.push('phone-theme.js: applyTheme must synchronize data-theme to an existing pm-overlay');
 }
 for (const expected of [
-  "const rightText = theme.customRight || (theme.preset === 'custom' && customAccent) ? contrastText(rightBackground) : preset.rightText",
+  "const rightText = theme.customRight || (theme.preset === 'custom' && customAccent) ? contrastText(rightBackground) : interfaceMode === 'dark' ? preset.rightTextDark || preset.rightText : preset.rightText",
   "element.style.setProperty('--pm-r-txt', rightText)",
 ]) requireText('phone-theme.js right bubble foreground', applyThemeSource, expected);
 for (const [name, code, cancelMarker, primaryMarker] of [
@@ -3629,12 +3670,11 @@ for (const expected of [
   '--pm-color-surface-page:', '--pm-color-surface-card:', '--pm-color-surface-elevated:', '--pm-color-surface-control:', '--pm-color-surface-input:', '--pm-color-surface-inverse:',
   '--pm-color-border-subtle:', '--pm-color-border-default:', '--pm-color-border-strong:', '--pm-color-control-off:',
   '--pm-color-accent:', '--pm-color-focus-ring:', '--pm-color-success:', '--pm-color-warning:', '--pm-color-danger:', '--pm-color-on-success:', '--pm-color-on-warning:', '--pm-color-on-danger:', '--pm-color-overlay:', '--pm-color-on-dark:', '--pm-color-on-light:',
-  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill);color:var(--pm-color-label)',
-  '.pm-global-setting{border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill);color:var(--pm-color-label)',
+  '.pm-settings-home button{min-height:var(--pm-size-control-default);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface);',
+  '.pm-global-setting{border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);color:var(--pm-color-label)',
   '.pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-label-3)}',
   '.pm-settings-home button .pm-settings-home-hint{font-size:11px;line-height:var(--pm-line-height-body);color:var(--pm-color-label-3)}',
-  '.pm-scene-header{display:grid;grid-template-columns:var(--pm-size-control-default) 1fr var(--pm-size-control-default);align-items:center;padding:var(--pm-space-3) var(--pm-space-2);background:var(--pm-color-fill);border-bottom:0}',
-  '.pm-scene-comments{margin-top:var(--pm-space-2);background:var(--pm-color-fill)',
+  '.pm-scene-comments{margin-top:var(--pm-space-2);background:transparent;box-shadow:none',
   '.pm-scene-comment-composer input{flex:1;min-width:0;border:0;border-radius:10px;padding:var(--pm-space-2);background:var(--pm-color-fill);color:var(--pm-color-label)}',
   '.pm-theme-chip:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '#pm-model-arrow:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
@@ -3658,13 +3698,13 @@ for (const expected of [
   '.pm-cfg-input{box-sizing:border-box;width:100%;min-height:var(--pm-size-control);',
   'padding:var(--pm-space-0) var(--pm-space-3) !important;font-size:var(--pm-font-size-body) !important;',
   '.pm-action-button{min-height:var(--pm-size-control);',
-  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:10px;background:var(--pm-color-accent);color:var(--pm-color-on-accent);min-height:var(--pm-size-control-default);',
+  '.pm-contact-add-primary,.pm-contact-add-ai{border:0;border-radius:999px;background:var(--pm-color-ink);color:var(--pm-color-on-ink);min-height:var(--pm-size-control-default);',
   '.pm-cfg-label.pm-ambient-setting,.pm-cfg-label.pm-check-setting{flex-direction:row;gap:var(--pm-space-3);}',
   '.pm-contact-settings-save{flex:0 1 210px;min-height:var(--pm-size-control-default);',
   '.pm-calendar-entry-dialog form{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:flex;flex-direction:column;gap:var(--pm-space-2)}',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-fill)!important;',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-emoji-action{border:0;border-radius:var(--pm-radius-control);background:color-mix(in srgb,var(--pm-color-accent) 12%,transparent);color:var(--pm-color-accent);',
+  '.pm-emoji-action{border:0;border-radius:var(--pm-radius-pill);background:color-mix(in srgb,var(--pm-color-accent) 12%,transparent);color:var(--pm-color-accent);',
   '.pm-emoji-action:focus-visible,.pm-emoji-upload:focus-visible,.pm-emoji-image-delete:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}',
   '.pm-model-opt{display:block;width:100%;padding:var(--pm-space-2) var(--pm-space-3);font:inherit;font-size:13px;text-align:left;background:transparent;color:var(--pm-color-label);',
   '.pm-model-empty{padding:var(--pm-space-4);text-align:center;font-size:var(--pm-font-size-label);color:var(--pm-color-label-3);}',
@@ -3676,46 +3716,51 @@ for (const forbidden of [
   ':where(#pm-iphone,#pm-overlay,#pm-overlay-sub,.pm-model-dropdown)',
   ':where(#pm-iphone,#pm-overlay,#pm-overlay-sub,#pm-model-dropdown)',
 ]) if (css.includes(forbidden)) failures.push(`style.css: obsolete dark-mode component override remains: ${forbidden}`);
+// 社区新建页顶栏已改用 .pm-scene-topbar 三栏网格，旧的 .pm-scene-header 规则不得残留。
+if (css.includes('.pm-scene-header')) failures.push('style.css: obsolete .pm-scene-header rule remains; the launcher uses .pm-scene-topbar');
+if (css.includes('pm-scene-platform-dot')) failures.push('style.css: obsolete .pm-scene-platform-dot rule remains; platform cards use .pm-scene-platform-icon');
 if (css.includes('pm-forum-entry')) failures.push('style.css: removed directory community entry styles must not remain');
-requireText('style.css', css, 'top:calc(18px + var(--lane)*31px + var(--offset))');
 if (css.includes('translateY(var(--offset))')) failures.push('style.css: danmaku offset must not be applied twice');
 requireText('style.css', css, '.pm-control-menu{position:absolute;left:var(--pm-space-3);');
 requireText('style.css', css, '.pm-pending-manager{min-height:180px;}');
 for (const expected of [
-  '.pm-calendar-shell[data-calendar-view-mode="weather"] .pm-calendar-header-action.is-loading svg{animation:pm-spin var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
-  '.pm-calendar-shell[data-calendar-view-mode="schedule"] .pm-calendar-header-action.is-loading svg,.pm-calendar-shell[data-calendar-view-mode="recipe"] .pm-calendar-header-action.is-loading svg{animation:pm-calendar-sparkle-pulse var(--pm-motion-normal) var(--pm-motion-ease) infinite}',
   '@keyframes pm-calendar-sparkle-pulse{50%{opacity:.45}}',
-  '.pm-calendar-cycle-input:checked+.pm-custom-check{background:var(--pm-calendar-accent)}',
   '.pm-calendar-cycle-input:focus-visible+.pm-custom-check{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
-  '.pm-scene-topbar{position:relative;display:flex;align-items:center;gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-2)}',
+  '.pm-scene-topbar{position:relative;min-height:var(--pm-scene-topbar-height);display:grid;grid-template-columns:var(--pm-scene-topbar-side) minmax(0,1fr) var(--pm-scene-topbar-side);align-items:center;column-gap:var(--pm-space-1);padding:var(--pm-space-1-5) var(--pm-space-2)}',
+  '--pm-scene-topbar-side:calc(var(--pm-size-control-compact) * 2 + var(--pm-space-0-5))', '--pm-scene-sheet-side:calc(var(--pm-size-control-lg) * 2)',
+  '.pm-scene-nav-actions{display:flex;align-items:center;justify-self:start;', '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--pm-space-0-5);margin-left:var(--pm-space-auto);justify-self:end}',
+  '.pm-scene-sheet-bar{grid-template-columns:var(--pm-scene-sheet-side) minmax(0,1fr) var(--pm-scene-sheet-side);padding-inline:var(--pm-space-4)}',
+  '.pm-scene-title{min-width:0;text-align:center}',
   '.pm-scene-home{color:var(--pm-color-label-3) !important',
   '.pm-scene-pin-action{color:var(--pm-color-label-3)}',
-  '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--scene-accent)}',
-  '.pm-scene-title{position:absolute;left:50%;top:6px;bottom:6px;transform:translateX(-50%);display:flex',
-  '.pm-scene-title-tab.is-active span{text-decoration-line:underline;text-decoration-color:var(--scene-accent);text-decoration-thickness:2px;text-underline-offset:4px}',
+  '.pm-scene-pin-action[aria-pressed="true"],.pm-scene-pin-action[aria-pressed="true"]:hover,.pm-scene-pin-action[aria-pressed="true"]:focus-visible{background:transparent;color:var(--pm-community-accent)}',
   '.pm-scene-title-poke{position:relative;width:var(--pm-size-control-compact) !important;height:var(--pm-size-control-compact) !important;padding:var(--pm-space-2) !important',
   '.pm-scene-title-poke::before{content:',
   'width:var(--pm-size-icon-lg);height:var(--pm-size-icon-lg);border-radius:50%;background:transparent',
   '@media(max-width:320px){.pm-scene-topbar{padding-inline:var(--pm-space-1-5)}',
   '.pm-scene-view-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--pm-space-0-5);margin-left:var(--pm-space-auto)',
   '.pm-scene-bottom-bar{position:relative;z-index:var(--pm-z-menu)',
-  '.pm-contact-switcher{position:absolute;left:50%;z-index:var(--pm-z-popover);width:min(300px,calc(100% - 20px));max-height:min(304px,calc(100% - 72px));display:flex',
+  '.pm-contact-switcher{position:absolute;left:50%;z-index:var(--pm-z-popover);width:calc(100% - var(--pm-space-4) - var(--pm-space-1));max-height:calc(100% - var(--pm-size-control-default) - var(--pm-space-5) - var(--pm-space-1));display:flex',
   'transform:translateX(-50%)',
   '.pm-contact-switcher-row{display:grid;grid-template-columns:22px minmax(0,1fr) 40px 40px;align-items:center;column-gap:var(--pm-space-1)',
-  '.pm-control-menu.pm-scene-menu{left:0;right:auto;top:auto;bottom:46px;z-index:var(--pm-z-menu);width:148px;max-height:none;overflow-y:visible',
+  '.pm-control-menu.pm-scene-menu{left:auto;right:0;top:calc(100% + var(--pm-space-1));bottom:auto;z-index:var(--pm-z-menu);width:148px;max-height:none;overflow-y:visible',
   '.pm-control-menu.pm-scene-menu[hidden]{display:none}',
   '.pm-scene-composer textarea{height:var(--pm-size-control-compact);min-height:var(--pm-size-control-compact);max-height:88px;box-shadow:none !important;appearance:none}',
-  '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-dark) !important;transition-duration:var(--pm-motion-fast)}',
-  '.pm-scene-title-poke:active::before{background:var(--scene-accent);transition-duration:var(--pm-motion-fast)}',
-  '.pm-scene-bottom-bar .pm-scene-more:hover,.pm-scene-bottom-bar .pm-scene-more:focus-visible,.pm-scene-bottom-bar .pm-scene-more[aria-expanded="true"]{background:transparent;outline:none;color:var(--pm-color-label-2)}',
+  '.pm-scene-title-poke:active{background:transparent !important;color:var(--pm-color-on-ink) !important;transition-duration:var(--pm-motion-fast)}',
+  '.pm-scene-title-poke:active::before{background:var(--pm-color-ink);transition-duration:var(--pm-motion-fast)}',
+  '.pm-scene-more:hover,.pm-scene-more[aria-expanded="true"]{color:var(--pm-color-label-2);background:color-mix(in srgb,currentColor 8%,transparent)}',
+  '.pm-scene-more:focus-visible{color:var(--pm-color-label-2);outline:2px solid var(--pm-color-focus-ring);outline-offset:2px}',
+  '--pm-scene-star-size-large:28px', '.pm-scene-sheet-rating .pm-scene-star{min-width:var(--pm-size-control);height:var(--pm-size-control);font-size:var(--pm-scene-star-size-large)}',
+  '.pm-scene-shell .pm-scene-pill{flex:0 0 auto;', '.pm-scene-fab{display:grid;', '.pm-scene-float-pill{display:inline-flex;', '.pm-scene-dock-button{display:block;',
+  '.pm-scene-sheet{display:flex;flex:1;flex-direction:column;', '.pm-scene-sheet-text.is-large{flex:1;',
   '.pm-scene-share.is-shared .pm-scene-post-metric,.pm-scene-share:active .pm-scene-post-metric{color:var(--pm-color-success)}',
   '.pm-scene-share.is-shared svg circle{fill:currentColor}',
-  '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--scene-accent)}',
+  '.pm-scene-reply-toggle[aria-expanded="true"] .pm-scene-post-metric{color:var(--pm-community-accent)}',
   '.pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--pm-color-label-2) 10%,transparent);outline:2px solid var(--pm-color-label-2);outline-offset:2px}',
   '.pm-scene-post-actions-wrap{position:relative;display:flex;flex-direction:row-reverse',
   '.pm-scene-post-actions{display:flex;align-items:center;gap:var(--pm-space-0-5);margin-right:var(--pm-space-1)}',
   '.pm-scene-post-actions[hidden]{display:none}',
-  '.pm-scene-post-author{min-width:0;flex:1;gap:var(--pm-space-0-5);padding-top:var(--pm-space-0-5)}',
+  '.pm-scene-post-author{min-width:0;flex:1;justify-content:center;gap:var(--pm-space-0-5);padding-top:var(--pm-space-0)}',
   '.pm-scene-post footer{align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}',
   '.pm-scene-post footer>*{flex:1 1 0;min-width:0;justify-content:center}',
   '.pm-scene-shell{--pm-scene-hero-title-size:25px;--pm-scene-topbar-height:38px;--pm-scene-body-letter-spacing:.01em;--pm-scene-post-body-font-size:var(--pm-font-size-compact);--pm-scene-post-body-letter-spacing:.03em;--pm-scene-comment-font-size:var(--pm-font-size-label);--pm-scene-comment-letter-spacing:.02em',
@@ -3728,7 +3773,7 @@ for (const expected of [
   '.pm-scene-post-actions button:focus-visible{background:color-mix(in srgb,var(--pm-color-label-2) 10%,transparent);outline:2px solid var(--pm-color-label-2);outline-offset:2px}',
   '.pm-scene-like.is-liked svg{fill:currentColor}',
   '.pm-scene-composer .pm-scene-primary svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
-  '.pm-scene-title-poke svg,.pm-scene-exit svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
+  '.pm-scene-title-poke svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md)}',
   '.pm-reply-card{box-sizing:border-box;width:100%',
   '.pm-quote-preview{display:flex;align-items:center',
   '.pm-quote-target{animation:pm-quote-highlight',
@@ -3738,73 +3783,22 @@ for (const expected of [
   '@media(prefers-reduced-motion:reduce){.pm-name-trigger{transition:none}}',
   '@media(prefers-reduced-motion:reduce){.pm-typing-bubble span{animation:none}.pm-voice-wave i{animation:none}}',
   '@media(prefers-reduced-motion:reduce){.pm-director{animation:none}.pm-voice-card{transition:none}.pm-contact-switcher-icon{transition:none}}',
-  '.pm-calendar-view-switch{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-1-5);width:auto;margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-1-5)',
-  '.pm-calendar-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);padding:var(--pm-space-3) var(--pm-space-3)}',
-  '.pm-calendar-header .pm-calendar-header-action{width:28px;height:28px;padding:var(--pm-space-1-5);background:transparent}',
-  '.pm-calendar-header button[data-action="calendar-home"]{color:var(--pm-color-label-3)',
-  '.pm-calendar-header-action svg{width:15px;height:15px}',
-  '.pm-calendar-title-row{display:flex;align-items:center;justify-content:center;min-width:0',
-  '.pm-calendar-title-control{position:relative;display:flex;min-width:0;justify-content:center}',
-  '.pm-calendar-title-chevron{position:absolute;left:100%;top:50%',
-  '.pm-calendar-month-panel{margin:var(--pm-space-0) var(--pm-space-3) var(--pm-space-2);padding:var(--pm-space-3);border:0;border-radius:var(--pm-radius-card);background:var(--pm-color-fill)',
-  '.pm-calendar-panel-section{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-2) var(--pm-space-0)}',
-  '.pm-calendar-month-panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-2);padding-top:var(--pm-space-2)}',
   '.pm-calendar-shell>*{flex:0 0 auto}',
-  '.pm-calendar-selected-detail.is-status-card{overflow:hidden;padding:var(--pm-space-0);background:color-mix(in srgb,var(--pm-calendar-accent,var(--pm-color-accent)) 14%,var(--pm-color-bg-plain))}',
-  '.pm-calendar-status-card{--pm-calendar-status-value-size:28px;--pm-calendar-status-value-offset:9.35px;position:relative;isolation:isolate;min-height:126px;padding:var(--pm-space-3) var(--pm-space-3);overflow:hidden}',
-  '.pm-calendar-status-content{position:relative;z-index:var(--pm-z-content);display:flex;min-width:0;min-height:96px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:var(--pm-space-1-5)}',
-  '.pm-calendar-status-heading{display:flex;align-items:baseline;gap:var(--pm-space-2);min-width:0}',
-  '.pm-calendar-status-relative{color:var(--pm-calendar-accent);font-size:17px;line-height:var(--pm-line-height-tight);font-weight:var(--pm-font-weight-semibold);white-space:nowrap}',
-  '.pm-calendar-status-context{display:flex;align-items:center;gap:var(--pm-space-1);width:100%;min-width:0;margin-top:var(--pm-space-auto)}',
-  '.pm-calendar-status-weather-context,.pm-calendar-status-cycle-context{color:var(--pm-color-label-2);font-size:13px;font-weight:500;line-height:var(--pm-line-height-tight);opacity:.86}',
-  '.pm-calendar-status-context .pm-calendar-status-weather-context{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '.pm-calendar-status-location{display:inline-grid;place-items:center;flex:0 0 auto;color:var(--pm-color-label-3);opacity:.86}.pm-calendar-status-location svg{width:13px;height:13px}',
-  '.pm-calendar-status-card-weather .pm-calendar-status-value,.pm-calendar-status-card-cycle .pm-calendar-status-value{color:color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light));font-weight:600;letter-spacing:.01em}',
-  '.pm-calendar-status-date time{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold)}',
-  '.pm-calendar-status-date em{color:var(--pm-color-label-3);font-style:normal;font-weight:500}',
-  '.pm-calendar-status-watermark{position:absolute;z-index:var(--pm-z-base);top:50%;right:-64px;width:202px;height:173px',
-  '.pm-calendar-status-watermark svg{width:173px;height:173px;stroke-width:1.75}',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%)',
-  '.pm-calendar-status-card-cycle[data-cycle-phase="period"] .pm-calendar-status-watermark{top:50%;right:-72px;left:auto;width:190px;height:150px;opacity:.18;transform:translateY(-50%);}',
 
-  '.pm-calendar-shell[data-calendar-view-mode="recipe"]{--pm-calendar-accent:#C77A32}',
-  '.pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#7563C6}',
-  '#pm-iphone[data-theme="dark"] .pm-calendar-shell[data-calendar-view-mode="outfit"]{--pm-calendar-accent:#B8A8FF}',
-  '.pm-calendar-day.has-recipe>span,.pm-calendar-day.has-outfit>span{color:var(--pm-calendar-accent)}',
-  '.pm-calendar-event.is-recipe b,.pm-calendar-event.is-outfit b{color:var(--pm-calendar-accent)}',
   '.pm-navbar{position:relative;display:grid !important;grid-template-columns:var(--pm-size-control-compact) minmax(0,1fr) var(--pm-size-control-compact)',
   '.pm-name-wrap{position:relative !important;display:flex;align-items:center;justify-content:center',
-  '.pm-calendar-status.is-generating{color:var(--pm-color-danger)}',
   '.pm-calendar-date-tags-row{grid-template-columns:minmax(0,1fr) auto}',
-  '.pm-calendar-detail-date{display:flex!important;flex-direction:row!important;align-items:baseline',
-  '.pm-calendar-detail-date>strong{color:var(--pm-calendar-accent);font-size:17px;line-height:var(--pm-line-height-tight);font-weight:var(--pm-font-weight-semibold)',
-  '.pm-calendar-detail-date>span{display:flex;align-items:baseline;gap:0;min-width:0}',
-  '.pm-calendar-detail-date time{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold)}',
-  '.pm-calendar-detail-date em{color:var(--pm-color-label-3);font-style:normal;font-weight:500}',
-  '.pm-calendar-detail-actions{position:absolute;top:var(--pm-space-2);right:var(--pm-space-2)',
-  '.pm-calendar-detail-more{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0',
-  '.pm-calendar-inline-actions button{display:grid;place-items:center;width:28px;height:28px;padding:var(--pm-space-1-5);border:0;border-radius:0;background:transparent',
-  '.pm-calendar-detail-edit-actions{display:flex;align-items:center;justify-content:center;gap:var(--pm-space-2);margin-top:var(--pm-space-2);flex-wrap:wrap}',
-  '.pm-calendar-inline-add,.pm-calendar-inline-regenerate{display:inline-flex;align-items:center;justify-content:center;gap:var(--pm-space-1-5);width:max-content;margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border:0;border-radius:var(--pm-radius-control)',
-  '.pm-calendar-management:is([data-calendar-management="schedule"],[data-calendar-management="recipe"],[data-calendar-management="cycle"],[data-calendar-management="outfit"]) .pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent)!important;border-color:var(--pm-calendar-accent)!important',
-  '.pm-calendar-editor-actions .is-primary{background:var(--pm-calendar-accent, var(--pm-color-accent))!important;color:var(--pm-color-on-dark)!important;border-color:var(--pm-calendar-accent, var(--pm-color-accent))!important',
-  '.pm-calendar-management .pm-calendar-data-tools h3{font-size:12px}',
-  '.pm-calendar-injection-card .pm-calendar-auto-switch{padding:var(--pm-space-0-5) var(--pm-space-0)}',
   '#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="schedule"] .pm-calendar-scan-card .pm-calendar-auto-switch small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="weather"] .pm-calendar-attribution,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="cycle"] .pm-calendar-cycle-editor small,#pm-iphone[data-theme="dark"] .pm-calendar-management[data-calendar-management="recipe"] .pm-calendar-attribution{color:var(--pm-color-label-2)}',
-  '.pm-calendar-data-row select,.pm-calendar-data-row input,.pm-calendar-data-row button,.pm-calendar-database-card>button',
   '.pm-calendar-auto-switch{display:flex;align-items:center;justify-content:space-between',
   '.pm-calendar-entry-dialog [data-calendar-occasion-fields][hidden]{display:none!important}',
   '.pm-calendar-entry-dialog{width:min(330px,calc(100vw - 28px))}',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]{box-sizing:border-box!important;width:100%!important;min-height:72px!important;border:0!important;border-radius:var(--pm-radius-control)!important;background:var(--pm-color-fill)!important;color:var(--pm-color-label)!important;font:var(--pm-font-weight-regular) var(--pm-font-size-body)/var(--pm-line-height-body) var(--pm-font-family-system)',
   '#pm-overlay .pm-calendar-entry-dialog textarea[name="note"]:focus-visible{border-color:var(--pm-color-accent)!important;outline:var(--pm-space-0-5) solid var(--pm-color-accent)!important;outline-offset:var(--pm-space-0-5)!important}',
   '.pm-calendar-entry-actions button{min-height:var(--pm-size-control-default);border:0',
-  '.pm-calendar-view-switch button[aria-pressed="true"]{background:color-mix(in srgb,var(--pm-calendar-accent) 14%,transparent);color:var(--pm-calendar-accent);box-shadow:none',
-  '@media(prefers-reduced-motion:reduce){.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-header-action.is-loading svg{animation:none}}',
-  '.pm-scene-preset>span{box-sizing:border-box;width:12px;height:12px;flex:0 0 12px;border-radius:50%',
   '.pm-scene-prompt .pm-scene-accent-option{box-sizing:border-box;width:30px;height:30px;min-width:30px;min-height:30px;aspect-ratio:1;flex:0 0 30px;padding:var(--pm-space-1) !important',
   '.pm-scene-accent-custom input[type="color"]{box-sizing:border-box;width:32px;height:28px;flex:0 0 32px;padding:var(--pm-space-0);border:0;border-radius:6px',
-  '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--scene-accent-option)',
-  '.pm-scene-accent-option:focus-visible{outline:2px solid var(--scene-accent-option)',
+  '.pm-scene-accent-option[aria-pressed="true"]{border-color:var(--pm-community-accent)',
+  '.pm-scene-accent-option:focus-visible{outline:2px solid var(--pm-color-focus-ring)',
   '.pm-scene-comment-composer[hidden]{display:none}',
   '.pm-scene-comment-composer input{font-size:14px}',
   '.pm-scene-empty{font-size:12px;line-height:var(--pm-line-height-body)}',
@@ -3818,8 +3812,6 @@ for (const expected of [
   '.pm-today-trend-retention-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2)',
   '.pm-today-trend-shell input.pm-today-trend-input:invalid{outline:var(--pm-space-0-5) solid var(--pm-color-danger)',
   '.pm-today-trend-diagnostic button:focus-visible{outline:var(--pm-today-trend-focus-offset) solid var(--pm-color-focus-ring)',
-  '.pm-today-trend-stage-date{display:block;margin-bottom:var(--pm-space-1);color:var(--pm-color-label-3)',
-  '@media(max-width:320px){.pm-today-trend-content{padding:var(--pm-space-3)',
 ]) requireText('style.css', css, expected);
 for (const [file, expected] of [
   ['today-trend.js', 'saveTodayTrendRetentionSettings: saveRetentionSettings'],
@@ -3852,51 +3844,35 @@ requireCssDeclarations(cssRules, '.pm-scene-post p', {
   'letter-spacing': 'var(--pm-scene-post-body-letter-spacing)',
 });
 requireCssDeclarations(cssRules, '.pm-scene-comment-content', { 'letter-spacing': 'var(--pm-scene-comment-letter-spacing)' });
-requireCssDeclarations(cssRules, '.pm-calendar-status-relative', {
-  color: 'var(--pm-calendar-accent)', 'font-size': 'var(--pm-font-size-subtitle)', 'line-height': 'var(--pm-line-height-tight)', 'font-weight': 'var(--pm-font-weight-semibold)',
-});
 requireCssDeclarations(cssRules, '.pm-calendar-status-value', {
   'font-size': 'var(--pm-calendar-status-value-size)', 'line-height': '1', 'font-variant-numeric': 'tabular-nums',
 });
-requireCssDeclarations(cssRules, '.pm-calendar-status-date', {
-  display: 'flex!important', 'align-items': 'baseline', gap: '0', 'min-width': '0',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-status-context', {
-  display: 'flex', 'align-items': 'center', gap: 'var(--pm-space-1)', width: '100%', 'min-width': '0', 'margin-top': 'var(--pm-space-auto)',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-status-context .pm-calendar-status-weather-context', {
-  'min-width': '0', overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-management>summary', {
-  display: 'flex', gap: 'var(--pm-space-2)', 'min-height': 'var(--pm-size-control-default)',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-management-chevron svg', {
-  width: 'var(--pm-size-icon-sm)', height: 'var(--pm-size-icon-sm)',
-  transition: 'transform var(--pm-motion-normal) var(--pm-motion-ease)',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-management[open] .pm-calendar-management-chevron svg', {
-  transform: 'rotate(180deg)',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-management-content', {
-  display: 'flex', 'flex-direction': 'column', 'padding-top': 'var(--pm-space-2)',
-});
-for (const selector of ['.pm-calendar-title-chevron svg', '.pm-calendar-management-chevron svg']) {
+requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather', { height: 'var(--pm-calendar-scene-height)', background: 'var(--pm-calendar-sky)' });
+requireCssDeclarations(cssRules, '.pm-calendar-status-art', { position: 'absolute', inset: '0', 'z-index': 'var(--pm-z-base)' });
+requireCssDeclarations(cssRules, '.pm-calendar-status-content', { position: 'relative', 'z-index': 'var(--pm-z-content)' });
+requireCssDeclarations(cssRules, '.pm-calendar-ring-art path', { fill: 'none', 'stroke-width': 'var(--pm-calendar-ring-stroke)' });
+requireCssDeclarations(cssRules, '.pm-calendar-day.is-selected>b', { color: 'var(--pm-r-txt)' });
+requireCssDeclarations(cssRules, '.pm-calendar-day.is-today>b', { color: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-calendar-view-switch', { background: 'var(--pm-color-surface)', 'box-shadow': 'var(--pm-shadow-card)' });
+requireCssDeclarations(cssRules, '.pm-calendar-view-switch button[aria-pressed="true"]', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
+requireCssDeclarations(cssRules, '.pm-calendar-primary-action', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)', 'border-radius': 'var(--pm-radius-pill)' });
+requireCssDeclarations(cssRules, '.pm-calendar-dock', { position: 'sticky', bottom: 'var(--pm-space-0)' });
+requireCssDeclarations(cssRules, '.pm-calendar-setting-group>h3', { color: 'var(--pm-color-label-3)', 'font-size': 'var(--pm-font-size-helper)' });
+for (const selector of ['.pm-calendar-round.is-loading svg', '.pm-calendar-shell[data-calendar-view-mode] .pm-calendar-primary-action.is-loading svg']) {
   const reducedMotionRule = cssRules.find(rule => rule.selectors.includes(selector) && rule.parent.includes('@media (prefers-reduced-motion:reduce)'));
-  if (!reducedMotionRule || reducedMotionRule.declarations.get('transition') !== 'none') {
-    failures.push(`style.css: ${selector} must disable transition under prefers-reduced-motion`);
+  if (!reducedMotionRule || reducedMotionRule.declarations.get('animation') !== 'none') {
+    failures.push(`style.css: ${selector} must stop animating under prefers-reduced-motion`);
   }
 }
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-module-head:not(.is-expanded)', {
-  'align-items': 'center', 'min-height': 'calc(var(--pm-size-control-default) + var(--pm-space-2))', 'padding-bottom': 'var(--pm-space-3)',
-});
-for (const selector of ['.pm-today-trend-content.is-world', '.pm-today-trend-content.is-reputation', '.pm-today-trend-content.is-faction', '.pm-today-trend-content.is-dynamics']) {
-  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-accent)' });
-}
-// 视觉 v2：组件规则禁止可见描边与渐变；毛玻璃只允许三处。功能性边框（手机外壳、裁剪框、勾选笔画）与桌面壁纸压暗层为精确例外。
+// 视觉 v2：组件规则禁止可见描边与渐变；毛玻璃只允许磨砂气泡、桌面置顶条、今日风向标签栏、桌面图标与桌面发布按钮。功能性边框（手机外壳、裁剪框、勾选笔画）为精确例外；渐变只用于桌面底图与聊天底图的柔光层。
 {
   const visualV2BorderAllowed = new Set(['#pm-iphone', '.pm-crop-mask', '.pm-today-trend-first-use .pm-today-trend-book-input:checked+.pm-today-trend-book-check::after']);
-  const visualV2GradientAllowed = new Set(['.pm-desktop-page']);
-  const visualV2BackdropAllowed = selector => selector.includes('--pm-frost') || selector === '.pm-desktop-pin' || selector === '.pm-today-trend-tabs';
+  const visualV2GradientAllowed = new Set(['.pm-phone-screen:has(.pm-main-ui[data-page="desktop"])', '.pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="calendar"]))']);
+  // 奶油渐层图标是用户在设置中主动选择的图标风格，渐变只作用于桌面图标底块。
+  const visualV2CreamIcon = selector => selector.startsWith('#pm-iphone[data-icon-style="cream"]') && selector.endsWith('.pm-desktop-app-icon');
+  // 直播间评论区与横飞区边缘的渐隐遮罩只改透明度、不产生色彩渐变，仅限 mask-image。
+  const visualV2LiveFadeMask = (selector, property) => /^(-webkit-)?mask-image$/.test(property) && (selector === '.pm-live-chat' || selector === '.pm-live-fly');
+  const visualV2BackdropAllowed = selector => selector.includes('--pm-frost') || selector === '.pm-today-trend-tabs' || selector === '.pm-desktop-app-icon';
   for (const rule of cssRules) {
     for (const [property, rawValue] of rule.declarations) {
       const value = String(rawValue).replace(/\s*!important$/, '').trim();
@@ -3904,251 +3880,37 @@ for (const selector of ['.pm-today-trend-content.is-world', '.pm-today-trend-con
         if (/^border(-top|-right|-bottom|-left)?$/.test(property) && !/^(0|none)$/.test(value) && !value.includes('transparent') && !visualV2BorderAllowed.has(selector)) {
           failures.push(`style.css:${rule.line}: ${selector} must not declare a visible ${property} (${value}); visual v2 separates layers by surface color`);
         }
-        if (/gradient\(/.test(value) && !visualV2GradientAllowed.has(selector)) {
+        if (/gradient\(/.test(value) && !visualV2GradientAllowed.has(selector) && !visualV2CreamIcon(selector) && !visualV2LiveFadeMask(selector, property)) {
           failures.push(`style.css:${rule.line}: ${selector} must not use gradients in ${property}`);
         }
         if (/^(-webkit-)?backdrop-filter$/.test(property) && value !== 'none' && !visualV2BackdropAllowed(selector)) {
-          failures.push(`style.css:${rule.line}: ${selector} backdrop-filter is only allowed on frost bubbles, desktop pins and today-trend tabs`);
+          failures.push(`style.css:${rule.line}: ${selector} backdrop-filter is only allowed on frost bubbles, desktop pins, today-trend tabs and desktop glass tiles`);
         }
       }
     }
   }
 }
 
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-floor', { gap: 'var(--pm-space-0-5)' });
-requireCssDeclarations(cssRules, '.pm-today-trend-header', {
-  position: 'sticky', top: '0', display: 'flex', 'justify-content': 'space-between',
-});
-if (cssRules.some(rule => rule.selectors.includes('.pm-today-trend-header h2'))) {
-  failures.push('style.css: today-trend global header must not restore the redundant page title');
-}
-for (const selector of [
-  '.pm-today-trend-content.is-world .pm-today-trend-module-head.is-expanded',
-  '.pm-today-trend-content.is-reputation .pm-today-trend-module-head.is-expanded',
-  '.pm-today-trend-content.is-faction .pm-today-trend-module-head.is-expanded',
-  '.pm-today-trend-content.is-dynamics .pm-today-trend-module-head.is-expanded',
-]) requireCssDeclarations(cssRules, selector, {
-  position: 'sticky', top: 'var(--pm-space-0)', 'z-index': 'var(--pm-z-content)',
-  'flex-direction': 'column', padding: 'var(--pm-space-2) var(--pm-space-4) var(--pm-space-0)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-head-tools', {
-  position: 'absolute', top: 'var(--pm-space-2)', right: 'var(--pm-space-4)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head.is-expanded .pm-today-trend-floor', { 'align-items': 'flex-end' });
-requireCssDeclarations(cssRules, '.pm-today-trend-module-actions', {
-  display: 'flex', 'align-items': 'center', 'justify-content': 'center',
-  gap: 'var(--pm-space-2)', transform: 'translateY(50%)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-actions .pm-today-trend-icon-button', {
-  background: 'var(--pm-color-surface)', color: 'var(--pm-color-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-actions .pm-today-trend-icon-button:not(.is-danger) svg', {
-  color: 'var(--pm-color-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-body>.pm-today-trend-world-signals', { display: 'contents' });
-const todayTrendModuleHeadAccentRules = cssRules.filter(rule => (
-  rule.declarations.has('background')
-  && rule.declarations.has('color')
-  && rule.declarations.has('border-radius')
-));
-for (const selector of [
-  '.pm-today-trend-world>.pm-today-trend-module-head',
-  '.pm-today-trend-reputation>.pm-today-trend-module-head',
-  '.pm-today-trend-factions>.pm-today-trend-module-head',
-  '.pm-today-trend-dynamics>.pm-today-trend-module-head',
-]) requireCssDeclarations(todayTrendModuleHeadAccentRules, selector, {
-  color: 'var(--pm-color-on-accent)',
-  'border-radius': 'var(--pm-radius-none)',
-});
-for (const selector of ['.pm-today-trend-world>.pm-today-trend-module-head','.pm-today-trend-reputation>.pm-today-trend-module-head','.pm-today-trend-factions>.pm-today-trend-module-head','.pm-today-trend-dynamics>.pm-today-trend-module-head']) {
-  const rule = todayTrendModuleHeadAccentRules.find(r => r.selectors.includes(selector)); if (!rule || !rule.declarations.get('background')?.includes('var(--pm-color-accent)')) failures.push(`style.css: ${selector} background must include var(--pm-color-accent) as base layer`);
-}
-for (const selector of [
-  '.pm-today-trend-world>.pm-today-trend-module-head h2',
-  '.pm-today-trend-reputation>.pm-today-trend-module-head h2',
-  '.pm-today-trend-factions>.pm-today-trend-module-head h2',
-  '.pm-today-trend-dynamics>.pm-today-trend-module-head h2',
-]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-on-accent)' });
-for (const selector of ['.pm-today-trend-module-head .pm-today-trend-meter', '.pm-today-trend-module-head .pm-today-trend-floor']) {
-  requireCssDeclarations(cssRules, selector, { color: 'color-mix(in srgb,var(--pm-color-on-accent) 70%,transparent)' });
-}
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head :is(.pm-today-trend-meter-v,.pm-today-trend-floor-value)', {
-  color: 'var(--pm-color-on-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:not(.is-danger) svg', {
-  color: 'var(--pm-color-on-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-menu-close', {
-  color: 'var(--pm-color-on-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-head .pm-today-trend-icon-button:focus-visible', {
-  'outline-color': 'var(--pm-color-on-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="today-trend"])', {
-  'border-radius': 'var(--pm-phone-inner-radius)',
-  background: 'var(--pm-color-accent)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-module-body', {
-  background: 'var(--pm-color-bg-grouped)',
-  'border-radius': 'var(--pm-radius-large) var(--pm-radius-large) var(--pm-radius-none) var(--pm-radius-none)',
-  padding: 'calc(var(--pm-space-5) + var(--pm-size-control-compact) / 2) var(--pm-space-5) calc(var(--pm-space-5) + var(--pm-space-6))',
-  display: 'flex',
-  'flex-direction': 'column',
-});
-const todayTrendLayerRootRules = cssRules.filter(rule => (
-  rule.declarations.has('gap') && rule.declarations.has('padding')
-));
-for (const selector of ['.pm-today-trend-world', '.pm-today-trend-reputation', '.pm-today-trend-factions', '.pm-today-trend-dynamics']) {
-  requireCssDeclarations(todayTrendLayerRootRules, selector, {
-    gap: 'var(--pm-space-0)',
-    padding: 'var(--pm-space-0) var(--pm-space-0) var(--pm-space-0)',
-  });
-}
-const todayTrendCompactBodyRule = cssRules.find(rule => (
-  /@media\s*\(max-width:320px\)/.test(rule.parent)
-  && rule.selectors.includes('.pm-today-trend-module-body')
-));
-if (todayTrendCompactBodyRule?.declarations.get('padding-inline') !== 'var(--pm-space-3)') {
-  failures.push('style.css: 320px today-trend content layer must tighten padding-inline on .pm-today-trend-module-body');
-}
-for (const rule of cssRules) {
-  if (!/@media\s*\(max-width:320px\)/.test(rule.parent)) continue;
-  if (!rule.selectors.some(selector => [
-    '.pm-today-trend-world', '.pm-today-trend-reputation', '.pm-today-trend-factions', '.pm-today-trend-dynamics', '.pm-today-trend-module-head',
-  ].includes(selector))) continue;
-  if (['padding-inline', 'padding-left', 'padding-right'].some(property => rule.declarations.has(property))) {
-    failures.push(`style.css:${rule.line}: 320px today-trend module roots and heads must keep full-width horizontal boundaries`);
-  }
-}
-const relationNodeTokenRule = cssRules.find(rule => rule.selectors.includes('.pm-today-trend-shell')
-  && rule.declarations.get('--pm-today-trend-relation-node-size') === 'var(--pm-space-5)');
-if (!relationNodeTokenRule) {
-  failures.push('style.css: .pm-today-trend-shell must define --pm-today-trend-relation-node-size with --pm-space-5');
-}
-const relationStatusTokens = {
-  hostile: { surface: '--pm-today-trend-relation-hostile', foreground: '--pm-today-trend-relation-hostile-foreground', expectedSurface: '#e8566c', expectedForeground: '#fff' },
-  dislike: { surface: '--pm-today-trend-relation-dislike', foreground: '--pm-today-trend-relation-dislike-foreground', expectedSurface: '#cc7a42', expectedForeground: '#fff' },
-  neutral: { surface: '--pm-today-trend-relation-neutral', foreground: '--pm-today-trend-relation-neutral-foreground', expectedSurface: '#e8eef8', expectedForeground: 'var(--pm-color-label)' },
-  like: { surface: '--pm-today-trend-relation-like', foreground: '--pm-today-trend-relation-like-foreground', expectedSurface: 'var(--pm-color-accent)', expectedForeground: 'var(--pm-color-on-accent)' },
-  trust: { surface: '--pm-today-trend-relation-trust', foreground: '--pm-today-trend-relation-trust-foreground', expectedSurface: '#2d9e84', expectedForeground: '#fff' },
-};
-for (const [status, relation] of Object.entries(relationStatusTokens)) {
-  if (normalizeCssValue(relationNodeTokenRule?.declarations.get(relation.surface)) !== relation.expectedSurface) {
-    failures.push(`style.css: ${status} relation surface must remain ${relation.expectedSurface}`);
-  }
-  if (normalizeCssValue(relationNodeTokenRule?.declarations.get(relation.foreground)) !== relation.expectedForeground) {
-    failures.push(`style.css: ${status} relation foreground must remain ${relation.expectedForeground}`);
-  }
-}
-requireCssDeclarations(cssRules, '.pm-today-trend-home', { color: 'var(--pm-color-on-accent) !important' });
-requireCssDeclarations(cssRules, '.pm-today-trend-tabs button', { color: 'var(--pm-color-label-3)' });
+// 今日风向 v3（晨报版面）：白底、墨色字头与主按钮、关系色由 hue 派生；只校验结构性约束，不锁具体视觉数值。
+requireCssDeclarations(cssRules, '.pm-today-trend-shell', { background: 'var(--pm-color-bg-plain)' });
+requireCssDeclarations(cssRules, '.pm-phone-screen:has(.pm-main-ui[data-page="today-trend"])', { 'border-radius': 'var(--pm-phone-inner-radius)', background: 'var(--pm-color-bg-plain)' });
+requireCssDeclarations(cssRules, '.pm-today-trend-header', { position: 'sticky', top: '0', display: 'flex' });
 requireCssDeclarations(cssRules, '.pm-today-trend-tabs button[aria-pressed="true"] svg', { color: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-today-trend-tabs .pm-today-trend-fab', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
+for (const [status, hue] of Object.entries({ hostile: 'var(--pm-color-danger)', dislike: 'var(--pm-color-warning)', like: 'var(--pm-color-accent)', trust: 'var(--pm-color-success)' })) {
+  const rule = cssRules.find(candidate => candidate.selectors.some(selector => selector.includes(`[data-relation="${status}"]`)) && candidate.declarations.has('--pm-today-trend-hue'));
+  if (normalizeCssValue(rule?.declarations.get('--pm-today-trend-hue')) !== hue) failures.push(`style.css: today-trend ${status} relation hue must derive from ${hue}`);
+}
 for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-tabs') && selector.includes('svg'))) {
   if (rule.declarations.has('stroke-width')) failures.push(`style.css:${rule.line}: today-trend tabs SVG must inherit the shared icon stroke width`);
-  if (rule.declarations.has('transform')) failures.push(`style.css:${rule.line}: today-trend tabs SVG must not use an independent transform`);
 }
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-entry-head .pm-today-trend-relation-slot>.pm-today-trend-faction-node', {
-  background: 'transparent', border: '0', 'box-shadow': 'none', color: 'inherit',
-});
-for (const selector of [
-  '.pm-today-trend-world-signal-marker',
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-symbol',
-]) requireCssDeclarations(cssRules, selector, {
-  width: 'var(--pm-today-trend-relation-node-size)',
-  height: 'var(--pm-today-trend-relation-node-size)',
-});
-for (const selector of ['.pm-today-trend-relation-slot', '.pm-today-trend-reputation-mark']) {
-  requireCssDeclarations(cssRules, selector, {
-    width: 'var(--pm-today-trend-relation-node-size)',
-    height: 'var(--pm-today-trend-relation-node-size)',
-  });
-}
-for (const selector of ['.pm-today-trend-reputation', '.pm-today-trend-factions']) {
-  requireCssDeclarations(cssRules, selector, { overflow: 'visible' });
-}
-const todayTrendEntryRail = 'var(--pm-today-trend-relation-node-size) var(--pm-space-2) minmax(0,1fr)';
-for (const selector of ['.pm-today-trend-world-hero', '.pm-today-trend-world-brief']) {
-  requireCssDeclarations(cssRules, selector, {
-    display: 'grid',
-    'grid-template-columns': todayTrendEntryRail,
-    'row-gap': 'var(--pm-space-2)',
-    padding: 'var(--pm-space-4)',
-  });
-}
-for (const selector of ['.pm-today-trend-world-hero>.pm-today-trend-world-item-head', '.pm-today-trend-world-brief>.pm-today-trend-world-item-head']) {
-  requireCssDeclarations(cssRules, selector, { 'grid-column': '1 / -1' });
-}
-for (const selector of ['.pm-today-trend-world-hero p', '.pm-today-trend-world-brief p']) {
-  requireCssDeclarations(cssRules, selector, { 'grid-column': '3', margin: 'var(--pm-space-0)' });
-}
-for (const selector of ['.pm-today-trend-reputation-entry-body', '.pm-today-trend-faction-entry-body']) {
-  requireCssDeclarations(cssRules, selector, {
-    display: 'grid',
-    'grid-template-columns': todayTrendEntryRail,
-    'row-gap': 'var(--pm-space-2)',
-  });
-}
-for (const selector of ['.pm-today-trend-reputation-entry-body>p', '.pm-today-trend-faction-summary']) {
-  requireCssDeclarations(cssRules, selector, { 'grid-column': '3', margin: 'var(--pm-space-0)' });
-}
-for (const selector of ['.pm-today-trend-reputation-rating', '.pm-today-trend-faction-detail', '.pm-today-trend-faction-rating']) {
-  requireCssDeclarations(cssRules, selector, { 'grid-column': '1 / -1' });
-}
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-relation-slot> :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)', {
-  position: 'absolute',
-  width: 'var(--pm-size-control-default)', height: 'var(--pm-size-control-default)',
-  'min-width': 'var(--pm-size-control-default)', 'min-height': 'var(--pm-size-control-default)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-world-signal-marker svg', {
-  width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-event-marker svg', {
-  width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)',
-});
-if (css.includes('.pm-today-trend-world-signal-marker>i')) {
-  failures.push('style.css: world signal marker must render an SVG instead of the legacy <i> core');
-}
-for (const selector of [
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-reputation-entry',
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-faction-card',
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-body',
-]) requireCssDeclarations(cssRules, selector, { 'row-gap': 'var(--pm-space-2)' });
-for (const selector of [
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-hero p',
-  '.pm-today-trend-content.is-minimal-ui .pm-today-trend-world-brief p',
-]) requireCssDeclarations(cssRules, selector, {
-  margin: 'var(--pm-space-0)',
-});
-requireCssDeclarations(cssRules, '.pm-today-trend-content.is-minimal-ui .pm-today-trend-event-facts', { 'margin-block-start': 'var(--pm-space-0)' });
-for (const [status, relation] of Object.entries(relationStatusTokens)) {
-  const colors = { background: `var(${relation.surface})`, color: `var(${relation.foreground})` };
-  requireCssDeclarations(cssRules, `.pm-today-trend-content.is-minimal-ui :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"] .pm-today-trend-relation-symbol`, colors);
-  requireCssDeclarations(cssRules, `.pm-today-trend-content:not(.is-minimal-ui) :is(.pm-today-trend-reputation-mark,.pm-today-trend-faction-node)[data-status="${status}"]`, colors);
-}
-const relationVisualClasses = ['.pm-today-trend-reputation-mark', '.pm-today-trend-faction-node'];
-for (const rule of cssRules) for (const selector of rule.selectors) {
-  if (!relationVisualClasses.some(className => selector.includes(className))) continue;
-  const status = selector.match(/\[data-status=["'](hostile|dislike|neutral|like|trust)["']\]/)?.[1];
-  if (!status) continue;
-  const relation = relationStatusTokens[status];
-  for (const property of ['background', 'background-color']) {
-    const value = rule.declarations.get(property);
-    if (value && normalizeCssValue(value) !== `var(${relation.surface})`) {
-      failures.push(`style.css:${rule.line}: ${selector} must use var(${relation.surface}) for ${property}`);
-    }
-  }
-  const foreground = rule.declarations.get('color');
-  if (foreground && normalizeCssValue(foreground) !== `var(${relation.foreground})`) {
-    failures.push(`style.css:${rule.line}: ${selector} must use var(${relation.foreground}) instead of ${foreground}`);
-  }
-}
-for (const rule of cssRules) if (rule.selectors.some(selector => selector.includes('.pm-today-trend-reputation-meter') || selector.includes('.pm-today-trend-faction-meter'))) {
-  for (const [property, value] of rule.declarations) {
-    if (value.includes('--pm-today-trend-relation-')) {
-      failures.push(`style.css:${rule.line}: meter selector ${rule.selectors.join(', ')} must not consume relation token through ${property}`);
-    }
-  }
-}
+for (const [file, expected] of [
+  ['today-trend-view.js', 'data-action="today-trend-generate-all"'],
+  ['today-trend-view.js', 'data-today-trend-ui-action="home"'],
+  ['today-trend-ui.js', 'role="radiogroup"'],
+  ['today-trend-dynamics-view.js', 'role="tablist"'],
+  ['today-trend-actions.js', "'today-trend-close-detail'"],
+]) if (!sourceModuleByName.get(file)?.code.includes(expected)) failures.push(`${file}: today-trend v3 contract missing ${expected}`);
 requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'function trendRelationIcon(status)');
 requireText('today-trend-ui.js relation icon', todayTrendUiCode, 'stroke="currentColor"');
 for (const selector of [
@@ -4158,13 +3920,6 @@ for (const selector of [
 ]) if (cssRules.find(candidate => candidate.selectors.includes(selector))?.declarations.has('order')) {
   failures.push(`style.css: ${selector} must not use flex order to change status-card reading order`);
 }
-requireCssDeclarations(cssRules, '.pm-calendar-status-location svg', { width: '13px', height: '13px' });
-requireCssDeclarations(cssRules, '.pm-calendar-status-card-weather .pm-calendar-status-value', {
-  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light))', 'font-weight': '600', 'letter-spacing': '.01em',
-});
-requireCssDeclarations(cssRules, '.pm-calendar-status-card-cycle .pm-calendar-status-value', {
-  color: 'color-mix(in srgb,var(--pm-calendar-accent) 82%,var(--pm-color-on-light))', 'font-weight': '600', 'letter-spacing': '.01em',
-});
 for (const forbidden of [
   '.pm-calendar-status-weather-context{color:var(--pm-color-label);font-size:13px;font-weight:750;line-height:1.2}',
   '.pm-calendar-status-value{color:color-mix(in srgb,var(--pm-color-label) 88%,var(--pm-color-label-2));font-size:30px;line-height:1;font-weight:700',
@@ -4208,7 +3963,7 @@ requireCssDeclarations(cssRules, '.pm-nav-btn.pm-nav-left-btn', {
 });
 requireCssDeclarations(cssRules, '.pm-up-btn', {
   width: 'var(--pm-size-control-compact) !important', height: 'var(--pm-size-control-compact) !important',
-  background: 'var(--pm-color-auxiliary) !important', color: 'var(--pm-color-on-dark) !important',
+  background: 'var(--pm-color-ink) !important', color: 'var(--pm-color-on-ink) !important',
 });
 requireCssDeclarations(cssRules, '.pm-expand-btn:hover', {
   color: 'var(--pm-color-label-2) !important',
@@ -4283,19 +4038,6 @@ if (css.includes('.pm-phone-resize-handle::after')) {
 }
 requireCssDeclarations(cssRules, '.pm-control-menu', { background: 'var(--pm-color-surface-raised)' });
 requireCssDeclarations(cssRules, '.pm-control-menu.pm-scene-menu', { background: 'var(--pm-color-surface-raised)' });
-for (const selector of ['.pm-story-oracle-menu', '.pm-story-oracle-mode-menu']) {
-  requireCssDeclarations(cssRules, selector, { background: 'var(--pm-color-bg-plain)', 'box-shadow': 'var(--pm-shadow-floating)' });
-}
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { padding: 'var(--pm-space-1) var(--pm-space-0) var(--pm-space-1) var(--pm-space-1)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle>b', { 'font-size': 'var(--pm-font-size-compact)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status svg', { width: 'var(--pm-size-icon-md)', height: 'var(--pm-size-icon-md)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status.is-active', { background: 'transparent', color: 'var(--pm-color-accent) !important' });
-if (css.includes('.pm-story-oracle-plan-status svg{width:var(--pm-size-icon-sm)')) {
-  failures.push('style.css: Story Oracle route status icon must not remain at the small icon size');
-}
-if (css.includes('.pm-story-oracle-plan-status.is-active{background:var(--pm-color-accent)')) {
-  failures.push('style.css: Story Oracle route status must not retain an oversized filled circle');
-}
 const resizeHandleRule = cssRules.find(rule => rule.selectors.includes('.pm-phone-resize-handle'));
 if (resizeHandleRule?.declarations.get('background')?.includes('linear-gradient')) {
   failures.push('style.css: phone resize handle must not draw diagonal lines inside the phone frame');
@@ -4333,8 +4075,7 @@ requireText('package.json', packageText, '"check:emoji": "node scripts/check-emo
 requireText('package.json', packageText, 'npm run check:emoji');
 requireText('package.json', packageText, '"check:calendar": "node scripts/check-calendar.mjs"');
 requireText('package.json', packageText, 'npm run check:calendar');
-requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', '仅显示设备本地时间。');
-for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历模块占比 (%)', '今日风向占比 (%)', '日历模块包含生活日历、菜谱和穿搭。', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
+for (const expected of ['手机会话占比 (%)', '互动社区占比 (%)', '日历模块占比 (%)', '今日风向占比 (%)', '四项合计 100%。', 'pm-custom-check', 'role="checkbox"', "event.key==='Enter'"]) {
   requireText('settings-templates.js', sourceModuleByName.get('settings-templates.js')?.code || '', expected);
 }
 const settingsApiControllerCode = sourceModuleByName.get('settings-api-controller.js')?.code || '';
@@ -4427,7 +4168,7 @@ if (bundle.includes('pm-forum-entry')) failures.push('bundle: removed directory 
 for (const iconName of [
   'MENU_ICON_SVG', 'CLOSE_ICON_SVG', 'HOME_ICON_SVG', 'CONTROL_ICON_SVG', 'SEND_ICON_SVG',
   'POKE_ICON_SVG', 'CHAT_ICON_SVG', 'CONTACTS_ICON_SVG', 'CHARACTER_ICON_SVG', 'SETTINGS_ICON_SVG', 'COMMUNITY_ICON_SVG',
-  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'RECIPE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CYCLE_FERTILE_ICON_SVG',
+  'EDIT_ICON_SVG', 'EMOJI_ICON_SVG', 'TRASH_ICON_SVG', 'REMOVE_ICON_SVG', 'MOON_ICON_SVG', 'BOOK_ICON_SVG',
 ]) {
   requireText('icons.js', sourceModuleByName.get('icons.js')?.code || '', `export const ${iconName}`);
 }
@@ -4484,151 +4225,114 @@ for (const [label, marker, accessibleName] of [
   if (button.includes('SPARKLES_ICON_SVG')) failures.push(`interactive-scene-views.js: ${label} must preserve poke semantics instead of generic AI sparkles`);
 }
 const iconsCode = sourceModuleByName.get('icons.js')?.code || '';
-for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'CYCLE_PERIOD_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
+for (const expected of ['REMOVE_ICON_SVG', 'UNLINK_ICON_SVG', 'SPARKLES_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'EYE_ICON_SVG', 'MOON_ICON_SVG', 'BOOK_ICON_SVG', 'CHECK_ICON_SVG']) requireText('icons.js', iconsCode, expected);
 const storyOracleCode = sourceModuleByName.get('story-oracle.js')?.code || '';
+const storyOracleViewsCode = sourceModuleByName.get('story-oracle-views.js')?.code || '';
+const storyOracleAllCode = `${storyOracleCode}\n${storyOracleViewsCode}`;
 const userGenerationSupportCode = sourceModuleByName.get('user-generation-support.js')?.code || '';
+// 页面骨架：顶层页共用底栏，中间主按钮回到对话；对话页标题切模式；详情页承载路线与 User 成品操作
 for (const expected of [
-  'CONTROL_ICON_SVG', 'BOOK_ICON_SVG', 'SEND_ICON_SVG', 'CLOSE_ICON_SVG', 'CHEVRON_DOWN_ICON_SVG', 'MORE_ICON_SVG', 'PLAY_ICON_SVG', 'PAUSE_ICON_SVG', 'SETTINGS_ICON_SVG',
-  'class="pm-expand-btn pm-story-oracle-menu-toggle"',
-  'class="pm-control-menu pm-story-oracle-menu"',
-  'role="menu" aria-label="剧情助手工具"',
-  'class="pm-name-trigger pm-story-oracle-mode-trigger"',
-  'class="pm-control-menu pm-story-oracle-mode-menu"',
-  'role="menuitemradio"',
-  'class="pm-nav-btn pm-nav-left-btn"',
-  'class="pm-header-icon-button pm-nav-btn pm-close-btn"',
-  'class="pm-msg-list pm-story-oracle-message-list"',
-  'class="pm-story-oracle-tabs',
-  'role="tablist" aria-label="剧情助手内容"',
-  'data-story-oracle-action="view"',
-  'class="pm-story-oracle-plan-bubble',
-  'data-story-oracle-action="toggle-plan-details"',
-  'data-story-oracle-action="toggle-plan-menu"',
-  'data-story-oracle-action="toggle-plan"',
-]) requireText('story-oracle.js UI contract', storyOracleCode, expected);
+  'class="pm-story-oracle-tabbar"', 'class="pm-story-oracle-fab" data-story-oracle-action="open-conversation"',
+  'class="pm-name-trigger pm-story-oracle-mode-trigger"', 'role="menuitemradio"', 'aria-label="剧情助手模式"',
+  'class="pm-msg-list pm-story-oracle-message-list"', 'role="tablist" aria-label="路线筛选"', 'role="tabpanel"',
+  'data-story-oracle-action="open-plan"', 'data-story-oracle-action="toggle-plan"', 'data-story-oracle-action="toggle-more"',
+  'data-story-oracle-action="back"', 'data-story-oracle-action="home"', 'aria-label="返回桌面"', 'MORE_ICON_SVG', 'PLAY_ICON_SVG', 'PAUSE_ICON_SVG',
+]) requireText('story-oracle-views.js UI contract', storyOracleViewsCode, expected);
 for (const expected of ['<StoryPlan>...</StoryPlan>', '每个区块必须包含“标题：”和“目标：”', '不要把多条路线合并到同一个区块']) requireText('story-oracle.js advisor output contract', storyOracleCode, expected);
-
 for (const expected of [
   'renderSafeMarkdown', 'splitMarkdownBubbles',
   "const bubbles = assistant ? splitMarkdownBubbles(content)",
   "assistant ? renderSafeMarkdown(bubble) : renderBoldText(bubble)",
-]) requireText('story-oracle.js multi-bubble markdown contract', storyOracleCode, expected);
-if (storyOracleCode.includes('输入问题，剧情助手会基于当前聊天上下文回答')) failures.push('story-oracle.js: empty message hint must not occupy the message list; use the textarea placeholder instead');
-
-if (storyOracleCode.includes('pm-scene-header')) failures.push('story-oracle.js: session UI must not retain the old scene header');
-if (storyOracleCode.includes('data-story-oracle-mode-select') || storyOracleCode.includes('pm-story-oracle-mode-row')) failures.push('story-oracle.js: mode switching must use the compact title trigger, not a standalone select row');
-if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: cancel button must precede the icon send button');
+]) requireText('story-oracle-views.js multi-bubble markdown contract', storyOracleViewsCode, expected);
+if (storyOracleAllCode.includes('输入问题，剧情助手会基于当前聊天上下文回答')) failures.push('story-oracle: empty message hint must not occupy the message list; use the textarea placeholder instead');
+if (storyOracleAllCode.includes('pm-scene-header')) failures.push('story-oracle: session UI must not retain the old scene header');
+if (storyOracleAllCode.includes('data-story-oracle-mode-select') || storyOracleAllCode.includes('pm-story-oracle-mode-row')) failures.push('story-oracle: mode switching must use the title trigger, not a standalone select row');
+if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleViewsCode)) {
+  failures.push('story-oracle-views.js: cancel button must precede the icon send button');
 }
-if (!/pm-story-oracle-plan-bubble[\s\S]*开始引导/.test(storyOracleCode)) failures.push('story-oracle.js: each StoryPlan must expose the upstream-style start-guidance action');
-for (const expected of ['pm-story-oracle-plan-workbench', 'enabledPlanCount', 'planScrollTop', '本轮生成 ${parsedResult.plans.length} 条路线，已加入路线工作台。', '本轮已保存，但没有识别到可操作路线。', '本轮文本已保存，路线格式未识别。']) {
-  requireText('story-oracle.js route workbench contract', storyOracleCode, expected);
+if (!/function renderPlanToggle[\s\S]*?'开始引导'/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: each StoryPlan must expose the start-guidance action');
+// 参谋回复下方挂出本轮路线，按 sourceMessageId 对应到具体回复，并可直接开始引导
+if (!/function renderMessages[\s\S]*?renderReceipt\(plansBySource\.get\(storyOracleMessageId\(message\)\)/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: advisor replies must render their own route receipt bound by sourceMessageId');
+if (!/function renderReceipt[\s\S]*?renderPlanToggle[\s\S]*?查看路线/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: route receipt must allow starting guidance and jumping to the route page');
+for (const expected of ['本轮生成 ${parsedResult.plans.length} 条路线，已加入路线页。', '本轮已保存，但没有识别到可操作路线。', '本轮文本已保存，路线格式未识别。']) {
+  requireText('story-oracle.js route receipt contract', storyOracleCode, expected);
 }
-if (storyOracleCode.includes('renderPlansForMessage')) failures.push('story-oracle.js: route cards must be rendered by the independent workbench, not message binding');
-if (storyOracleCode.includes('pm-story-oracle-plans-summary')) failures.push('story-oracle.js: route tab must carry the compact count instead of a redundant workbench summary');
-if (storyOracleCode.includes('renderStoryOracleActivePlans') || storyOracleCode.includes('pm-story-oracle-active-plans')) {
-  failures.push('story-oracle.js: active StoryPlan strip must not remain as a permanent top-level region');
+for (const forbidden of ['pm-story-oracle-plan-source', 'pm-story-oracle-plan-chevron', '生成于 ${generatedAt}', '第 ${sourceRound} 轮', 'pm-story-oracle-plans-summary']) {
+  if (storyOracleViewsCode.includes(forbidden)) failures.push(`story-oracle-views.js: route cards must not expose obsolete metadata (${forbidden})`);
 }
-if (!storyOracleCode.includes('role="tabpanel"') || !storyOracleCode.includes('查看路线')) failures.push('story-oracle.js: conversation and route views must expose tab panels and a route receipt action');
-for (const forbidden of ['pm-story-oracle-plan-source', 'pm-story-oracle-plan-chevron', '生成于 ${generatedAt}', '第 ${sourceRound} 轮']) {
-  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: route cards must not expose obsolete metadata or faux dropdown affordances (${forbidden})`);
+if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear" data-story-oracle-mode=/.test(storyOracleViewsCode)) {
+  failures.push('story-oracle-views.js: route and per-mode history clear actions must remain distinct');
 }
-if (!/pm-story-oracle-plan-more[\s\S]*MORE_ICON_SVG/.test(storyOracleCode)) failures.push('story-oracle.js: route actions must use the neutral more menu icon, not the magic-wand control icon');
-if (!/data-story-oracle-action="clear-plans"[\s\S]*?data-story-oracle-action="clear"/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: route and history clear actions must remain distinct');
+for (const action of ['delete-plan', 'clear-plans', 'delete-user']) {
+  if (!new RegExp(`action === '${action}' && !confirmAction`).test(storyOracleCode)) failures.push(`story-oracle.js: ${action} must ask for confirmation before writing`);
 }
+if (!/const clearHistory = mode => \{[\s\S]*?confirmAction\(CLEAR_CONFIRMS\[mode\]\)/.test(storyOracleCode)) failures.push('story-oracle.js: clearing history must ask for confirmation');
 for (const expected of [
-  'data-story-oracle-action="edit-plan-injection"', 'showStoryOraclePlanInjectionEditor',
-  'data-story-oracle-plan-intensity', 'storyOraclePlanIntensityLine(selectedIntensity)',
-  'setStoryOraclePlanIntensity', 'setStoryOraclePlanCustomInjection', 'resetStoryOraclePlanInjection',
-  'storyOraclePlanIntensityControllable', '实际写入主聊天的引导文本',
+  'data-story-oracle-action="edit-plan-injection"', 'data-story-oracle-action="plan-intensity"', 'storyOraclePlanIntensityControllable', 'STORY_ORACLE_INTENSITIES',
+]) requireText('story-oracle-views.js route intensity contract', storyOracleViewsCode, expected);
+for (const expected of [
+  'showStoryOraclePlanInjectionEditor', 'data-story-oracle-plan-intensity', 'storyOraclePlanIntensityLine(selectedIntensity)',
+  'setStoryOraclePlanIntensity', 'setStoryOraclePlanCustomInjection', 'resetStoryOraclePlanInjection', '实际写入主聊天的引导文本',
 ]) requireText('story-oracle.js route intensity contract', storyOracleCode, expected);
 for (const forbidden of ['settings.pace', 'name="pace"']) {
-  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: route intensity must not restore obsolete global settings (${forbidden})`);
+  if (storyOracleAllCode.includes(forbidden)) failures.push(`story-oracle: route intensity must not restore obsolete global settings (${forbidden})`);
 }
 const storyOracleModelCode = sourceModuleByName.get('story-oracle-model.js')?.code || '';
 for (const expected of ['STORY_ORACLE_INTENSITIES', 'storyOraclePlanIntensityLine', 'buildStoryOraclePlanDefaultInjection', 'customInjectionText', 'setStoryOraclePlanIntensity', 'resetStoryOraclePlanInjection']) {
   requireText('story-oracle-model.js route intensity contract', storyOracleModelCode, expected);
 }
-for (const expected of ['剧情助手可阅读的范围', 'name="systemPrompt"', 'DEFAULT_STORY_ORACLE_SYSTEM_PROMPT', 'ADVISOR_OUTPUT_CONTRACT']) {
-  requireText('story-oracle.js settings contract', storyOracleCode, expected);
-}
+for (const expected of ['name="systemPrompt"', 'DEFAULT_STORY_ORACLE_SYSTEM_PROMPT', 'ADVISOR_OUTPUT_CONTRACT']) requireText('story-oracle.js settings contract', storyOracleCode, expected);
 for (const forbidden of ['只影响剧情助手后续请求，不修改宿主世界书正文。', '剧情助手设置（${PACE_LABELS', 'name="breakLimit"', 'name="customPrompt"']) {
-  if (storyOracleCode.includes(forbidden)) failures.push(`story-oracle.js: obsolete Story Oracle settings or developer-facing copy remains (${forbidden})`);
+  if (storyOracleAllCode.includes(forbidden)) failures.push(`story-oracle: obsolete Story Oracle settings or developer-facing copy remains (${forbidden})`);
 }
-
-if (!/class="pm-control-menu pm-story-oracle-menu"[\s\S]*data-story-oracle-action="world-books"/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: world-book entry must remain inside the magic-wand menu');
-}
-if (!/<form class="pm-input-bar pm-story-oracle-composer"[\s\S]*renderStoryOracleTools/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: magic-wand tools must be anchored in the composer');
-}
-if (!/class="pm-name-trigger pm-story-oracle-mode-trigger"[\s\S]*CHEVRON_DOWN_ICON_SVG/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: mode title must expose the compact chevron trigger');
-}
+// 世界书阅读范围只在设置页逐本开关，输入框上方的标签只跳转到设置页，不再保留第二套选择弹窗
+if (!/function renderSettings[\s\S]*?role="switch"[\s\S]*?data-story-oracle-action="toggle-world-book"/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: world books must be toggled inline on the settings page');
+if (!/class="pm-story-oracle-chip" data-story-oracle-action="view" data-story-oracle-view="settings"/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: composer world-book chip must open the settings page');
+if (storyOracleAllCode.includes('pm-story-oracle-world-book-modal')) failures.push('story-oracle: world-book selection must not keep a duplicate modal');
+if (!/class="pm-name-trigger pm-story-oracle-mode-trigger"[\s\S]*CHEVRON_DOWN_ICON_SVG/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: mode title must expose the chevron trigger');
 for (const expected of [
-  "'user-generation': 'User 生成'", 'USER_GENERATION_SYSTEM_PROMPT', 'parseUserGenerationResponse',
-  "const secondaryView = userMode ? 'users' : 'plans'", 'data-story-oracle-action="copy-user"',
-  'data-story-oracle-action="save-user"', 'data-story-oracle-action="revise-user"',
-  'data-story-oracle-action="delete-user"', 'data-story-oracle-action="toggle-user-details"',
-  'aria-expanded="${expanded ? \'true\' : \'false\'}"', '保存到 User 库', '全局共享库',
+  "'user-generation': 'User 生成'", 'data-story-oracle-action="copy-user"', 'data-story-oracle-action="save-user"',
+  'data-story-oracle-action="revise-user"', 'data-story-oracle-action="delete-user"', 'data-story-oracle-action="open-user"', '保存到 User 库',
+]) requireText('story-oracle-views.js User generation contract', storyOracleViewsCode, expected);
+for (const expected of [
+  'USER_GENERATION_SYSTEM_PROMPT', 'parseUserGenerationResponse', '全局共享库',
   'copyUserGenerationContent', 'loadUserGenerationStore', 'saveUserGenerationStore', 'revisionTarget',
 ]) requireText('story-oracle.js User generation contract', storyOracleCode, expected);
 for (const expected of ['USER_GENERATION_SYSTEM_PROMPT', "documentRef.execCommand('copy')", '复制失败，请展开后手动选择', '未成年人参与成人内容时，拒绝该部分']) {
   requireText('user-generation-support.js contract', userGenerationSupportCode, expected);
 }
-if (!/userMode \? '' : `<button[^`]*data-story-oracle-action="clear-plans"/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: User mode must omit the route clear action');
-}
-if (!/pm-story-oracle-user-card[\s\S]*copy-user[\s\S]*toggle-user-details[\s\S]*revise-user[\s\S]*delete-user/.test(storyOracleCode)) {
-  failures.push('story-oracle.js: User cards must expose copy, expand, revise and delete without route controls');
-}
-const userCardRenderer = storyOracleCode.match(/function renderUserGenerationCard[\s\S]*?\n}\n\nfunction renderUserGenerationLibrary/)?.[0] || '';
-for (const forbidden of ['toggle-plan', 'edit-plan-injection', 'data-story-oracle-plan-intensity', '开始引导', '停止引导']) {
-  if (userCardRenderer.includes(forbidden)) failures.push(`story-oracle.js: User cards must not expose route semantics (${forbidden})`);
+const userCardRenderer = storyOracleViewsCode.match(/function renderUserCard[\s\S]*?\n}\n/)?.[0] || '';
+if (!/copy-user[\s\S]*open-user|open-user[\s\S]*copy-user/.test(userCardRenderer)) failures.push('story-oracle-views.js: User cards must expose copy and open-detail actions');
+for (const forbidden of ['toggle-plan', 'edit-plan-injection', 'plan-intensity', '开始引导', '停止引导']) {
+  if (userCardRenderer.includes(forbidden)) failures.push(`story-oracle-views.js: User cards must not expose route semantics (${forbidden})`);
 }
 for (const expected of ["'user-generation'", 'parseUserGenerationResponse', 'USER_GENERATION_PROTOCOL_LIMITS', 'collecting', 'complete', 'revision']) {
   requireText('story-oracle-model.js User generation protocol', storyOracleModelCode, expected);
 }
 requireCssDeclarations(cssRules, '.pm-story-oracle-shell', { height: '100%', 'min-height': '0', display: 'flex', 'flex-direction': 'column' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-menu', { left: '0', bottom: 'calc(100% + var(--pm-space-1))', 'box-shadow': 'var(--pm-shadow-floating)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-mode-menu', { left: '50%', top: 'calc(100% - var(--pm-space-1))', transform: 'translateX(-50%)', 'box-shadow': 'var(--pm-shadow-floating)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-scroll', { 'min-height': '0', 'overflow-y': 'auto' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-message-list', { 'min-height': '0' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-content', { display: 'flex', 'min-height': '0', overflow: 'hidden' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-list', { flex: '1 1 auto', 'min-height': '0', 'overflow-y': 'auto' });
-requireText('style.css Story Oracle route surface contract', css, '.pm-story-oracle-plan-list{background:var(--pm-color-bg-grouped);}');
-requireCssDeclarations(cssRules, '.pm-story-oracle-tab', { 'min-height': 'var(--pm-size-control-sm)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-tab.is-selected', { color: 'var(--pm-color-label) !important' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-tab.is-selected::after', {  });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-bubble', { display: 'flex', width: '100%', 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-toggle', { color: 'var(--pm-color-label)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status', { display: 'grid', width: 'var(--pm-size-control-compact)', height: 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-circle)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-head', { position: 'relative' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-plan-menu', { position: 'absolute', top: 'calc(100% + var(--pm-space-1))', bottom: 'auto', 'min-width': 'calc(var(--pm-size-control-default) * 3)', 'box-shadow': 'var(--pm-shadow-floating)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls', { display: 'grid', 'grid-template-columns': 'repeat(3,minmax(0,1fr))', gap: 'var(--pm-space-2)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-intensity-controls button', { width: '100%', 'min-height': 'var(--pm-size-control-compact)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-user-list', { background: 'var(--pm-color-bg-grouped)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-user-card.is-pending', { margin: 'var(--pm-space-3)', width: 'auto' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-user-copy', { 'min-width': 'var(--pm-size-control-compact)', 'min-height': 'var(--pm-size-control-compact)', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-fill)', color: 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-card.is-featured', { background: 'var(--pm-color-accent-soft)', color: 'var(--pm-color-on-accent-soft)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-plan-status.is-active', { background: 'var(--pm-color-accent-strong)', color: 'var(--pm-color-on-accent)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-fab', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-sheet-layer', { position: 'absolute', 'z-index': 'var(--pm-z-modal)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-scrim', { background: 'var(--pm-color-overlay)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-more-menu', { 'box-shadow': 'var(--pm-shadow-floating)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-user-content', { 'overflow-wrap': 'anywhere', 'white-space': 'normal', color: 'var(--pm-color-label)' });
-requireCssDeclarations(cssRules, '.pm-story-oracle-user-save', { 'align-self': 'stretch', 'min-height': 'var(--pm-size-control-default)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-library-hint', { background: 'transparent', color: 'var(--pm-color-label-2)' });
-for (const selector of ['.pm-story-oracle-user-copy:focus-visible', '.pm-story-oracle-user-save:focus-visible']) requireCssDeclarations(cssRules, selector, { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
-for (const selector of ['.pm-story-oracle-world-book-modal .pm-modal-scroll', '.pm-story-oracle-settings-modal .pm-modal-scroll']) {
-  requireCssDeclarations(cssRules, selector, { gap: 'var(--pm-space-3)', padding: 'var(--pm-space-4)' });
-}
-requireCssDeclarations(cssRules, '.pm-story-oracle-world-book-modal .pm-cfg-tip', { 'margin-bottom': 'var(--pm-space-1)', 'text-align': 'left' });
+for (const selector of ['.pm-story-oracle-shell button:focus-visible', '.pm-story-oracle-shell textarea:focus-visible']) requireCssDeclarations(cssRules, selector, { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
+requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-modal-scroll', { gap: 'var(--pm-space-3)', padding: 'var(--pm-space-4)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-settings-modal .pm-settings-field', { gap: 'var(--pm-space-2)' });
-requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px)');
+requireText('style.css Story Oracle responsive contract', css, '@media(max-width:320px){.pm-story-oracle-scroll');
 for (const [selector, declarations] of [
-  ['.pm-global-setting', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
-  ['.pm-settings-home button', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-global-setting', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface)' }],
+  ['.pm-settings-home button', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-surface)' }],
   ['.pm-session-behavior-section', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
   ['.pm-member-behavior-list button', { 'border-radius': 'var(--pm-radius-panel)', background: 'var(--pm-color-fill)' }],
   ['.pm-conversation-injection-group', { 'border-radius': 'var(--pm-radius-panel)' }],
-  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
-  ['.pm-calendar-editor', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
-  ['.pm-calendar-month-panel', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
+  ['.pm-calendar-data-tools', { 'border-radius': 'var(--pm-radius-large)', background: 'var(--pm-color-surface)' }],
+  ['.pm-calendar-card', { 'border-radius': 'var(--pm-radius-large)', background: 'var(--pm-color-surface)' }],
+  ['.pm-calendar-month', { 'border-radius': 'var(--pm-radius-modal)', background: 'var(--pm-color-surface)' }],
   ['.pm-quick-reply-settings section', { 'border-radius': 'var(--pm-radius-card)' }],
   ['.pm-worldbook-column', { 'border-radius': 'var(--pm-radius-card)', background: 'var(--pm-color-fill)' }],
 ]) {
@@ -4636,7 +4340,7 @@ for (const [selector, declarations] of [
 }
 requireCssDeclarations(cssRules, '.pm-story-oracle-message', { 'flex-direction': 'column', gap: 'var(--pm-space-2)' });
 requireCssDeclarations(cssRules, '.pm-story-oracle-message .pm-bubble', { 'white-space': 'normal', 'overflow-wrap': 'anywhere' });
-requireCssDeclarations(cssRules, '.pm-calendar-management-content', { display: 'flex', 'flex-direction': 'column', gap: 'var(--pm-space-2)' });
+requireCssDeclarations(cssRules, '.pm-calendar-management', { display: 'flex', 'flex-direction': 'column', gap: 'var(--pm-space-4)' });
 requireCssDeclarations(cssRules, '.pm-settings-home button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
 requireCssDeclarations(cssRules, '.pm-member-behavior-list button:focus-visible', { outline: 'var(--pm-space-0-5) solid var(--pm-color-focus-ring)' });
 for (const expected of [
@@ -4657,14 +4361,14 @@ if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\
 if (!/pm-contact-switcher-current[\s\S]*?pm-contact-switcher-main[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
   failures.push('phone-directory.js: current-conversation checkmark must stay before the name and action buttons');
 }
-requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': 'var(--pm-radius-control) var(--pm-radius-control) var(--pm-radius-none) var(--pm-radius-none)', 'background': 'var(--pm-color-fill)' });
+requireCssDeclarations(cssRules, '.pm-name-trigger[aria-expanded="true"]', { 'border-radius': 'var(--pm-radius-control) var(--pm-radius-control) var(--pm-radius-none) var(--pm-radius-none)', 'background': 'var(--pm-color-surface-raised)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', {
   'border-top-left-radius': 'var(--pm-radius-none)', 'border-top-right-radius': 'var(--pm-radius-none)',
   'border-bottom-left-radius': 'var(--pm-radius-card)', 'border-bottom-right-radius': 'var(--pm-radius-card)',
 });
 requireCssDeclarations(cssRules, '.pm-name-trigger', { 'z-index': 'calc(var(--pm-z-popover) + 1)' });
 requireCssDeclarations(cssRules, '.pm-contact-switcher', { 'z-index': 'var(--pm-z-popover)' });
-requireCssDeclarations(cssRules, '.pm-contact-switcher', { left: '50%', transform: 'translateX(-50%)', 'max-height': 'min(304px,calc(100% - 72px))' });
+requireCssDeclarations(cssRules, '.pm-contact-switcher', { left: '50%', transform: 'translateX(-50%)', 'max-height': 'calc(100% - var(--pm-size-control-default) - var(--pm-space-5) - var(--pm-space-1))' });
 requireText('phone-directory.js contact switcher positioning', directoryCode,
   'switcher.style.top = `${Math.max(0, triggerRect.bottom - phoneRect.top - 2)}px`;');
 requireText('phone-directory.js contact switcher responsive positioning', directoryCode, 'contactSwitcherResizeObserver = new ResizeObserver');
@@ -4706,7 +4410,7 @@ requireCssDeclarations(cssRules, '.pm-contact-switcher-current', {
 });
 const settingsTemplatesCode = sourceModuleByName.get('settings-templates.js')?.code || '';
 requireText('settings-templates.js wordy-limit copy', settingsTemplatesCode, '除话痨人设外，每条消息不超过 35 字');
-requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span>');
+requireText('settings-templates.js shared settings-home hint class', settingsTemplatesCode, 'class="pm-settings-home-hint">写入酒馆全局正则');
 requireText('settings-templates.js wordy-limit shared settings-home hint class', settingsTemplatesCode, 'span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span>');
 for (const expected of ['data-theme-mode="light"', 'data-theme-mode="dark"', 'id="pm-custom-accent"']) requireText('settings-templates.js theme synchronization controls', settingsTemplatesCode, expected);
 requireText('settings-templates.js shared custom theme picker class', settingsTemplatesCode, 'id="pm-custom-accent" type="color"');
@@ -4718,7 +4422,7 @@ for (const id of ['pm-custom-accent', 'pm-custom-right', 'pm-custom-left']) {
   }
 }
 requireCssDeclarations(cssRules, '.pm-color-pick', {
-  width: '32px', height: '28px', border: '0', 'border-radius': 'var(--pm-radius-compact)',
+  width: '32px', height: '28px', border: '0', 'border-radius': 'var(--pm-radius-pill)',
   'box-sizing': 'border-box', flex: '0 0 32px',
 });
 if (css.includes('.pm-theme-custom')) failures.push('style.css: obsolete theme-only color picker rule must not remain');
@@ -4782,7 +4486,7 @@ if (/\bis-(?:accent|danger)\b/.test(injectionClearButton)) {
 if (injectionSaveCode.indexOf('window.__pmClearConversationInjection()') > injectionSaveCode.indexOf('window.__pmSaveConversationInjection()')) {
   failures.push('phone-context-injection.js: clear injection button must precede save and apply');
 }
-requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-accent)!important', color: 'var(--pm-color-on-accent)!important', 'border-color': 'var(--pm-color-accent)!important' });
+requireCssDeclarations(cssRules, '.pm-contact-settings-save', { background: 'var(--pm-color-ink)!important', color: 'var(--pm-color-on-ink)!important', 'border-color': 'var(--pm-color-ink)!important' });
 requireText('phone-chat-poke.js: save character settings uses dedicated save action', phoneChatPokeCode, 'class="pm-contact-settings-save" onclick="window.__pmSaveContactConfig');
 for (const [label, marker] of [
   ['save recipe region', 'calendar-recipe-region-save'],
@@ -4793,7 +4497,6 @@ for (const marker of ['calendar-weather-search', 'calendar-weather-refresh', 'ca
     failures.push(`calendar-view.js: ${marker} must not be styled as a primary save action`);
   }
 }
-requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent)!important', color: 'var(--pm-color-on-dark)!important', 'border-color': 'var(--pm-calendar-accent)!important' });
 requireCssDeclarations(cssRules, '.pm-calendar-setting-hint', {
   color: 'var(--pm-color-label-3)', 'font-size': 'var(--pm-font-size-helper)', 'line-height': 'var(--pm-line-height-body)',
 });
@@ -4819,8 +4522,8 @@ for (const expected of [
   '.pm-emoji-image-delete{position:absolute;top:-6px;right:-8px;border:0;background:var(--pm-color-danger);color:var(--pm-color-on-danger)',
   '.pm-quick-reply-actions button.is-danger{background:var(--pm-color-danger);color:var(--pm-color-on-danger)}',
   '.pm-contact-add-choices{',
-  '.pm-calendar-view-switch button{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;padding:var(--pm-space-0);border:0;border-radius:50%',
-  '.pm-calendar-header{position:sticky', 'grid-template-columns:72px minmax(0,1fr) 72px',
+  '.pm-calendar-view-switch{margin-top:var(--pm-space-1);display:grid;grid-template-columns:repeat(5,minmax(0,1fr))',
+  '.pm-calendar-header.is-sub{display:grid;grid-template-columns:var(--pm-size-control) minmax(0,1fr) var(--pm-size-control)}',
 ]) requireText('style.css', css, expected);
 for (const forbidden of ['.pm-session-behavior-links', '.pm-session-auto-poke-interval', '.pm-injection-entry', '.pm-conversation-settings-injection']) {
   if (css.includes(forbidden)) failures.push(`style.css: obsolete flattened-menu selector remains ${forbidden}`);
@@ -4864,7 +4567,7 @@ for (const expected of [
 ]) requireText('phone-injection-controller.js', foundationInjectionSource, expected);
 for (const expected of [
   'class="pm-calendar-cycle-input" name="enabled" type="checkbox"',
-  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-card', 'pm-calendar-status-watermark',
+  'class="pm-custom-check" aria-hidden="true"', 'pm-calendar-status-card',
 ]) requireText('calendar-view.js', calendarViewCode, expected);
 for (const forbidden of ['pm-calendar-base-menu', 'TIME_ORIGIN_ICON_SVG', 'calendar-base-edit', 'pm-calendar-base-dialog']) {
   if (calendarCode.includes(forbidden)) failures.push(`calendar.js: obsolete title control remains: ${forbidden}`);
@@ -4896,9 +4599,6 @@ for (const expected of [
   'usesExtendedOccasionWindow', 'days: 10', 'Number(occasion.intervalDays) >= 30',
   'cycleSubjectKeys', 'predictCycleRange', 'relativeCalendarLabel', "facts.join('；')", 'resolveWeatherForDate',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
-for (const expected of [
-  "period: '经期'", "follicular: ''", "ovulatory: '易孕期'", "luteal: ''",
-]) requireText('calendar-page-view.js', calendarPageViewCode, expected);
 for (const expected of [
   "period: '经期'", "follicular: '相对安全期'", "ovulatory: '易孕期'", "luteal: '安全期'", 'fitCompleteLines',
 ]) requireText('phone-injection.js', phoneInjectionCode, expected);
@@ -4969,12 +4669,12 @@ requireCssDeclarations(cssRules, '.pm-emoji-image-delete', { background: 'var(--
 requireCssDeclarations(cssRules, '.pm-emoji-action:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-upload:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-emoji-image-delete:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
-requireCssDeclarations(cssRules, '.pm-action-button', { border: '0', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-fill)', color: 'var(--pm-color-label)', padding: 'var(--pm-space-2) var(--pm-space-3)', 'font-size': 'var(--pm-font-size-body)', 'font-weight': 'var(--pm-font-weight-semibold)', 'line-height': 'var(--pm-line-height-tight)' });
+requireCssDeclarations(cssRules, '.pm-action-button', { border: '0', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-accent-soft)', color: 'var(--pm-color-on-accent-soft)', padding: 'var(--pm-space-2) var(--pm-space-3)', 'font-size': 'var(--pm-font-size-body)', 'font-weight': 'var(--pm-font-weight-semibold)', 'line-height': 'var(--pm-line-height-tight)' });
 requireCssDeclarations(cssRules, '.pm-action-button:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)', 'outline-offset': '2px' });
 requireCssDeclarations(cssRules, '.pm-action-button:disabled', { cursor: 'not-allowed', opacity: 'var(--pm-opacity-disabled)' });
-requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background: 'var(--pm-color-fill)', color: 'var(--pm-color-label)', 'border-color': 'transparent' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-secondary', { background: 'var(--pm-color-accent-soft)', color: 'var(--pm-color-on-accent-soft)', 'border-color': 'transparent' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-success', { background: 'var(--pm-color-success)', color: 'var(--pm-color-on-success)', 'border-color': 'var(--pm-color-success)' });
-requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-accent)', color: 'var(--pm-color-on-accent)', 'border-color': 'var(--pm-color-accent)' });
+requireCssDeclarations(cssRules, '.pm-action-button.is-accent', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)', 'border-color': 'var(--pm-color-ink)' });
 requireCssDeclarations(cssRules, '.pm-action-button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)', 'border-color': 'var(--pm-color-danger)' });
 requireCssDeclarations(cssRules, '.pm-action-pair', { display: 'grid', 'grid-template-columns': 'repeat(2,minmax(0,1fr))', gap: 'var(--pm-space-2)', width: '100%', 'min-width': '0' });
 requireCssDeclarations(cssRules, '.pm-action-pair>button', { 'min-width': '0' });
@@ -5006,7 +4706,8 @@ const exactTwoButtonTemplateContracts = [
   ['worldbook config actions', worldBookSettingsCode, 'pm-modal-add pm-worldbook-actions', 'window.__pmSaveWorldBookConfig()', ['window.__pmResetWorldBookConfig()', 'window.__pmSaveWorldBookConfig()']],
   ['cropper actions', cropperSourceCode, 'pm-modal-add pm-crop-actions', 'pm-crop-confirm', ['pm-crop-cancel', 'pm-crop-confirm']],
   ['calendar cycle actions', calendarViewCode, 'pm-calendar-editor-actions', 'calendar-cycle-save', ['calendar-cycle-clear', 'calendar-cycle-save']],
-  ['calendar detail actions', calendarViewCode, 'pm-calendar-detail-edit-actions', 'calendar-outfit-regenerate', ['calendar-outfit-edit', 'calendar-outfit-regenerate']],
+  ['calendar card actions', calendarViewCode, 'pm-calendar-card-actions', 'calendar-recipe-delete', ['calendar-recipe-edit', 'calendar-recipe-delete']],
+  ['calendar month dialog actions', calendarViewCode, 'pm-calendar-entry-actions', 'data-action="calendar-month-jump"', ['data-calendar-month-close', 'data-action="calendar-month-jump"']],
   ['calendar repeat delete actions', calendarViewCode, 'pm-calendar-entry-actions', 'data-calendar-repeat-delete="all"', ['data-calendar-repeat-delete="day"', 'data-calendar-repeat-delete="all"']],
   ['scene injection toolbar', interactiveViewsCode, 'pm-scene-injection-toolbar', 'context-clear', ['context-select-all', 'context-clear']],
   ['scene injection actions', interactiveViewsCode, 'pm-scene-injection-actions', 'context-save', ['context-cancel', 'context-save']],
@@ -5018,8 +4719,6 @@ const exactTwoButtonTemplateContracts = [
 for (const [label, text, className, marker, orderedMarkers] of exactTwoButtonTemplateContracts) {
   requireExactTwoButtonContainer(label, text, className, marker, orderedMarkers);
 }
-requireDirectButtonCount('calendar single-button generation action', calendarViewCode, 'pm-calendar-editor-actions', 'calendar-generation-rule-save', 1);
-requireDirectButtonCount('calendar three-button month actions', calendarViewCode, 'pm-calendar-month-panel-actions', 'calendar-base-save', 3);
 for (const rule of cssRules.filter(candidate => candidate.selectors.some(selector => exactTwoButtonContainers.some(container => selector.startsWith(`${container}:has(`))))) {
   if (rule.declarations.has('order')) failures.push(`style.css:${rule.line}: exact-two-button layout must not reorder DOM controls`);
 }
@@ -5027,21 +4726,20 @@ requireDirectButtonCount('contact switcher has three entry buttons', directoryCo
 requireDirectButtonCount('directory footer has three entry buttons', directoryCode, 'pm-modal-add pm-directory-actions', 'window.__pmShowAddContact', 3);
 const accentSaveRule = cssRules.find(rule => rule.selectors.includes(':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*="save"],[onclick*="__pmSave"])'));
 if (!accentSaveRule
-  || accentSaveRule.declarations.get('background') !== 'var(--pm-color-accent) !important'
-  || accentSaveRule.declarations.get('color') !== 'var(--pm-color-on-dark) !important'
-  || accentSaveRule.declarations.get('border-color') !== 'var(--pm-color-accent) !important') {
-  failures.push('style.css: theme-accent save buttons must keep the existing accent background and use white on-dark text');
+  || accentSaveRule.declarations.get('background') !== 'var(--pm-color-ink) !important'
+  || accentSaveRule.declarations.get('color') !== 'var(--pm-color-on-ink) !important'
+  || accentSaveRule.declarations.get('border-color') !== 'var(--pm-color-ink) !important') {
+  failures.push('style.css: save buttons must use the ink primary surface with on-ink text; theme accent only marks selection');
 }
 for (const selector of [
-  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-accent,.is-api-test,.pm-contact-add-primary,.pm-contact-add-ai,.pm-contact-settings-save,.pm-scene-primary)',
-  '#pm-iphone :is(.pm-contact-switcher-actions button.is-primary,.pm-quick-reply-actions button:not(.is-danger),.pm-desktop-community-dock button,.pm-today-trend-form-actions button[type="submit"],.pm-today-trend-primary-action,.pm-calendar-editor-actions .is-primary)',
+  ':is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is(.is-api-test,.pm-scene-primary)',
+  '#pm-iphone :is(.pm-today-trend-form-actions button[type="submit"],.pm-today-trend-primary-action)',
 ]) requireCssDeclarations(cssRules, selector, { color: 'var(--pm-color-on-dark) !important' });
-requireCssDeclarations(cssRules, '.pm-scene-primary', { background: 'var(--scene-accent) !important', color: 'var(--pm-color-on-dark) !important' });
-requireCssDeclarations(cssRules, '.pm-scene-comment-composer button', { background: 'var(--scene-accent)', color: 'var(--pm-color-on-dark)' });
-requireCssDeclarations(cssRules, '.pm-calendar-editor-actions .is-primary', { color: 'var(--pm-color-on-dark) !important' });
-requireCssDeclarations(cssRules, '.pm-calendar-month-panel-actions .is-primary', { background: 'var(--pm-calendar-accent)', color: 'var(--pm-color-on-dark)' });
-requireCssDeclarations(cssRules, '.pm-calendar-entry-actions .is-primary', { background: 'var(--pm-calendar-accent)', color: 'var(--pm-color-on-dark)' });
-requireCssDeclarations(cssRules, '.pm-calendar-data-row .is-primary', { background: 'var(--pm-calendar-accent) !important', color: 'var(--pm-color-on-dark) !important' });
+requireCssDeclarations(cssRules, '.pm-scene-primary', { background: 'var(--pm-color-ink) !important', color: 'var(--pm-color-on-ink) !important' });
+requireCssDeclarations(cssRules, '.pm-scene-comment-composer button', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
+// 日历主操作统一墨色实底 + on-ink 前景（7:2:1 中的 2），主题色只表示选中。
+requireCssDeclarations(cssRules, '.pm-calendar-editor-actions .is-primary', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
+requireCssDeclarations(cssRules, '.pm-calendar-entry-actions .is-primary', { background: 'var(--pm-color-ink)', color: 'var(--pm-color-on-ink)' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { color: 'var(--pm-color-on-success) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { color: 'var(--pm-color-on-danger) !important' });
 requireCssDeclarations(cssRules, '.pm-quick-reply-actions button.is-danger', { background: 'var(--pm-color-danger)', color: 'var(--pm-color-on-danger)' });
@@ -5096,7 +4794,7 @@ for (const selector of ['.pm-today-trend-detail-add', '.pm-today-trend-detail-re
     'min-height': 'var(--pm-size-control)',
     border: '0',
     'border-radius': 'var(--pm-radius-control)',
-    background: 'var(--pm-color-fill)',
+    background: 'var(--pm-color-accent-soft)',
     padding: 'var(--pm-space-0) var(--pm-space-3)',
     cursor: 'pointer',
   });
@@ -5117,12 +4815,12 @@ const compactActionPairRule = cssRules.find(rule => /@media\s*\(max-width:320px\
 if (compactActionPairRule?.declarations.get('grid-template-columns') !== 'repeat(2,minmax(0,1fr))') failures.push('style.css: 320px pm-action-pair must preserve two equal columns');
 const compactDetailRowRule = cssRules.find(rule => /@media\s*\(max-width:320px\)/.test(rule.parent) && rule.selectors.includes('.pm-today-trend-detail-row'));
 if (compactDetailRowRule?.declarations.get('grid-template-columns') !== 'minmax(0,1fr)') failures.push('style.css: 320px detail editor rows must collapse to one safe column');
-requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '0', 'border-radius': 'var(--pm-radius-control)', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add button', { border: '0', 'border-radius': 'var(--pm-radius-pill)', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-success', { background: 'var(--pm-color-success) !important', color: 'var(--pm-color-on-success) !important', 'border-color': 'var(--pm-color-success) !important' });
-requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-accent) !important', color: 'var(--pm-color-on-accent) !important', 'border-color': 'var(--pm-color-accent) !important' });
+requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-accent', { background: 'var(--pm-color-ink) !important', color: 'var(--pm-color-on-ink) !important', 'border-color': 'var(--pm-color-ink) !important' });
 requireCssDeclarations(cssRules, '.pm-modal-add .pm-action-button.is-danger', { background: 'var(--pm-color-danger) !important', color: 'var(--pm-color-on-danger) !important', 'border-color': 'var(--pm-color-danger) !important' });
-requireCssDeclarations(cssRules, '.pm-btn-group', { border: '0 !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
-requireCssDeclarations(cssRules, '.pm-btn-add', { border: '0 !important', 'border-radius': 'var(--pm-radius-control) !important', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
+requireCssDeclarations(cssRules, '.pm-btn-group', { border: '0 !important', 'border-radius': 'var(--pm-radius-pill) !important', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
+requireCssDeclarations(cssRules, '.pm-btn-add', { border: '0 !important', 'border-radius': 'var(--pm-radius-pill) !important', background: 'var(--pm-color-fill) !important', color: 'var(--pm-color-label) !important' });
 for (const [state, token] of [['error', '--pm-color-danger'], ['warning', '--pm-color-warning'], ['success', '--pm-color-success'], ['info', '--pm-color-accent']]) {
   requireCssDeclarations(cssRules, `.pm-api-status[data-state="${state}"]`, { color: `var(${token})` });
 }
@@ -5229,46 +4927,45 @@ for (const expected of [
 ]) {
   requireText('css', css, expected);
 }
+// 桌面图标为半透明毛玻璃底 + 强调色图形，透出主题底图。
 requireCssDeclarations(cssRules, '.pm-desktop-app-icon', {
-  background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-accent)',
+  background: 'color-mix(in srgb,var(--pm-color-surface) 68%,transparent)',
+  color: 'var(--pm-color-accent)',
 });
 requireCssDeclarations(cssRules, '.pm-quick-reply-actions button', {
-  background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-accent)',
+  background: 'var(--pm-color-ink)',
+  color: 'var(--pm-color-on-ink)',
 });
-requireCssDeclarations(cssRules, '.pm-desktop-community-dock button', {
-  background: 'var(--pm-color-accent)',
-  color: 'var(--pm-color-on-accent)',
+// 桌面小组件是实色卡片（柔影、无描边、无毛玻璃）；底部「发布一条」浮条已取消。
+requireCssDeclarations(cssRules, '.pm-desktop-pins', {
+  background: 'var(--pm-color-surface)',
+  'box-shadow': 'var(--pm-shadow-card)',
 });
 const sceneSendActionContracts = [
   {
-    action: 'publish',
-    container: '<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="分享此刻……"></textarea>',
+    // 底部输入条只剩小组帖子详情页的「回复楼主」；其余平台的发布键在编辑页顶栏（.pm-scene-pill）。
+    action: 'reply-owner',
+    marker: 'class="pm-scene-primary" data-action="reply-owner"',
+    container: '<div class="pm-scene-composer"><textarea id="pm-scene-post-input" maxlength="4082" placeholder="回复楼主"></textarea>',
     selector: '.pm-scene-composer .pm-scene-primary',
-    buttonParts: ['class="pm-scene-primary"', 'aria-label="发布"', 'title="发布"'],
-  },
-  {
-    action: 'send-danmaku',
-    container: '<div class="pm-scene-composer pm-danmaku-input"><textarea id="pm-danmaku-input" rows="1" maxlength="200" placeholder="发个弹幕见证当下"></textarea>',
-    selector: '.pm-scene-composer .pm-scene-primary',
-    buttonParts: ['class="pm-scene-primary"', 'aria-label="发送弹幕"', 'title="发送弹幕"'],
+    buttonParts: ['aria-label="回复楼主"', 'title="回复楼主"'],
   },
   {
     action: 'post-comment',
-    container: '<div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer" hidden><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="发表你的想法吧">',
+    marker: 'data-action="post-comment"',
+    container: '<div id="pm-comment-composer-${escapeAttr(post.id)}" class="pm-scene-comment-composer"${hidden ? \' hidden\' : \'\'}><input id="pm-comment-input-${escapeAttr(post.id)}" maxlength="1082" placeholder="发表你的想法吧">',
     selector: '.pm-scene-comment-composer button',
     buttonParts: ['aria-label="发送回复"', 'title="发送回复"'],
   },
 ];
-for (const { action, container, selector, buttonParts } of sceneSendActionContracts) {
-  const button = buttonContaining(`interactive-scene-views.js: ${action} action`, interactiveViewsCode, `data-action="${action}"`);
+for (const { action, marker, container, selector, buttonParts } of sceneSendActionContracts) {
+  const button = buttonContaining(`interactive-scene-views.js: ${action} action`, interactiveViewsCode, marker);
   for (const part of buttonParts) requireText(`interactive-scene-views.js: ${action} action`, button, part);
   requireText(`interactive-scene-views.js: ${action} composer`, interactiveViewsCode, `${container}${button}</div>`);
   const selectorRule = cssRules.find(rule => rule.selectors.includes(selector)
-    && rule.declarations.get('background')?.startsWith('var(--scene-accent)')
-    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-dark)'));
-  if (!selectorRule) failures.push(`style.css: ${action} must remain bound to a scene-accent send selector`);
+    && rule.declarations.get('background')?.startsWith('var(--pm-color-ink)')
+    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-ink)'));
+  if (!selectorRule) failures.push(`style.css: ${action} must remain bound to an ink send selector`);
 }
 const sceneSendSelectors = [
   '.pm-scene-composer .pm-scene-primary',
@@ -5276,11 +4973,11 @@ const sceneSendSelectors = [
 ];
 for (const selector of sceneSendSelectors) {
   const sceneSendRule = cssRules.find(rule => rule.selectors.includes(selector)
-    && rule.declarations.get('background')?.startsWith('var(--scene-accent)'));
-  if (!sceneSendRule) failures.push(`style.css: ${selector} must consume --scene-accent for its background`);
+    && rule.declarations.get('background')?.startsWith('var(--pm-color-ink)'));
+  if (!sceneSendRule) failures.push(`style.css: ${selector} must consume --pm-color-ink for its background`);
   const sceneSendColorRule = cssRules.find(rule => rule.selectors.includes(selector)
-    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-dark)'));
-  if (!sceneSendColorRule) failures.push(`style.css: ${selector} must consume --pm-color-on-dark for its foreground`);
+    && rule.declarations.get('color')?.startsWith('var(--pm-color-on-ink)'));
+  if (!sceneSendColorRule) failures.push(`style.css: ${selector} must consume --pm-color-on-ink for its foreground`);
   for (const rule of cssRules.filter(candidate => candidate.selectors.includes(selector))) {
     for (const property of ['background', 'background-color', 'color', 'border-color']) {
       const value = rule.declarations.get(property) || '';
@@ -5295,12 +4992,12 @@ for (const selector of [
   '.pm-scene-shell :is(.pm-scene-composer .pm-scene-primary,.pm-scene-comment-composer button):disabled',
 ]) if (!cssRules.some(rule => rule.selectors.includes(selector))) failures.push(`style.css: missing community send state ${selector}`);
 const cssTokenContract = {
-  '--pm-font-family-system': "-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",
+  '--pm-font-family-system': "'Tianyin Rounded',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif",
   '--pm-font-family-mono': 'ui-monospace,SFMono-Regular,Consolas,monospace',
   '--pm-line-height-loose': '1.75',
   '--pm-radius-pill': '999px',
-  '--pm-shadow-floating': '0 8px 24px rgba(0,0,0,.14)',
-  '--pm-shadow-modal': '0 16px 48px rgba(0,0,0,.18)',
+  '--pm-shadow-floating': '0 4px 12px rgba(30,30,46,.06),0 12px 32px rgba(30,30,46,.10)',
+  '--pm-shadow-modal': '0 8px 24px rgba(30,30,46,.08),0 24px 56px rgba(30,30,46,.14)',
   '--pm-z-base': '0',
   '--pm-z-menu': '20',
   '--pm-z-popover': '30',
@@ -5367,7 +5064,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.6.1') failures.push('version: expected release version 1.6.1');
+if (packageJson.version !== '1.7.0') failures.push('version: expected release version 1.7.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');
@@ -5444,8 +5141,9 @@ for (const [label, contract] of [
 }
 for (const expected of [
   'PLUGIN_LOCAL_STORAGE_KEYS', 'PLUGIN_IDB_STATIC_KEYS', 'PLUGIN_IDB_DYNAMIC_PREFIXES',
-  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX])",
+  'clearPluginData', 'pmIDBKeys', "Object.freeze(['ST_SMS_BG_LOCAL_', DESKTOP_ICON_RESOURCE_PREFIX, IMAGE_THUMB_PREFIX])",
   'DESKTOP_ICON_STORAGE_KEY', 'DESKTOP_ICON_RESOURCE_PREFIX',
+  'IMAGE_CATALOG_KEY', 'IMAGE_DNA_STORE_KEY', 'IMAGE_SETTINGS_KEY',
   'USER_GENERATION_FALLBACK_KEY', 'USER_GENERATION_STORE_KEY',
 ]) requireText('storage.js', sourceModuleByName.get('storage.js')?.code || '', expected);
 requireText('storage-primitives.js', storagePrimitivesCode, "DESKTOP_BG_KEY = 'ST_SMS_BG_DESKTOP'");

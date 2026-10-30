@@ -205,6 +205,9 @@ export function createBackupStateHandlers(deps = {}) {
         const interactiveScenes = normalizeInteractiveStore(state.interactiveScenes);
         const phoneUiState = normalizePhoneUiState(state.phoneUiState, interactiveScenes);
         await saveHistoriesStrict();
+        // 导入的记录比聊天元数据里的新：下次打开这些聊天时写回元数据，而不是被旧元数据覆盖。
+        deps.markChatMetadataLocalAuthoritative?.(Object.keys(window.__pmHistories || {}));
+        deps.markCommunityFilesLocalAuthoritative?.(Object.keys(interactiveScenes?.scopes || {}));
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
         catch { throw new Error('API 配置保存失败：浏览器存储不可用'); }
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');

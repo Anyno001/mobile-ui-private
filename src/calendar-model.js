@@ -195,7 +195,7 @@ export function normalizeCalendarScope(value) {
         if (normalized.length) { events[date] = normalized; dateCount += 1; }
     }
     const normalized = {
-        autoAdjust: source.autoAdjust === true,
+        autoAdjust: source.autoAdjust !== false,
         dateTags: normalizeCalendarDateTags(source.dateTags),
         events,
         lastGeneratedAt: normalizeTimestamp(source.lastGeneratedAt),
@@ -419,6 +419,14 @@ export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_T
     return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
 }
 
+export function firstCalendarBaseDate(texts, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    for (const text of Array.isArray(texts) ? texts : []) {
+        const date = extractCalendarBaseDate(text, dateTags);
+        if (date) return date;
+    }
+    return null;
+}
+
 export function extractCalendarDate(text, now = new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const source = String(text ?? '').trim();
     const reference = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
@@ -616,7 +624,7 @@ export function renderCalendarInjection(scope, { start = new Date(), days = 7 } 
 export function createEmptyCalendarScope(injectionDefaults = {}) {
     const defaults = normalizeInjectionDefaults(injectionDefaults);
     return {
-        autoAdjust: false, dateTags: [...DEFAULT_CALENDAR_DATE_TAGS], events: {},
+        autoAdjust: true, dateTags: [...DEFAULT_CALENDAR_DATE_TAGS], events: {},
         lastGeneratedAt: 0, lastAdjustedAt: 0, generationRule: '',
         weatherEventType: '', weatherEventIntensity: '', weatherEventDays: 0, weatherEventRevision: 0,
         ...defaults,

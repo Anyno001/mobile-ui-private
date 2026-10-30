@@ -2,7 +2,7 @@ import { generationErrorMessage } from './ai.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
-    extractCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents, replaceCalendarEventsInWindow,
+    extractCalendarBaseDate, firstCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents, replaceCalendarEventsInWindow,
     normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
@@ -20,11 +20,13 @@ import { createCalendarCommitters } from './calendar-commit.js';
 import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
 import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDeleteDialog } from './calendar-view.js';
-import { preserveCalendarManagementState, renderCalendarPageHtml } from './calendar-page-view.js';
+import { showCalendarMonthDialog } from './calendar-month-dialog.js';
+import { renderCalendarPageHtml } from './calendar-page-view.js';
 import { createCalendarOutfitController } from './calendar-outfit-controller.js';
-import { handleOutfitPageAction, loadOutfitStore, outfitSubjectOptions } from './calendar-outfit-runtime.js';
+import { handleOutfitPageAction, loadOutfitStore, outfitSubjectOptions, renderPhoneOutfitPrompt } from './calendar-outfit-runtime.js';
 import { createCalendarRecipeController } from './calendar-recipe-controller.js';
 import { createTaskController } from './calendar-task-controller.js';
+import { createCalendarAutoDetect } from './calendar-auto-detect.js';
 export const calendarGenerationErrorMessage = generationErrorMessage; export { renderCalendarPageHtml };
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
@@ -42,7 +44,7 @@ export function installCalendar(state, deps) {
         statusByStorage: new Map(),
         statusTimerByStorage: new Map(),
     };
-    const tasks = createTaskController(getStorageId);
+    const tasks = createTaskController(getStorageId), autoDetect = createCalendarAutoDetect({ getScope: id => scope(id), tasks, scanContext: (...args) => scanContext(...args) });
     const scheduleTimeout = deps.setTimeoutImpl || globalThis.setTimeout;
     const cancelTimeout = deps.clearTimeoutImpl || globalThis.clearTimeout;
     const status = (storageId, text, { duration = 4000, persistent = false } = {}) => {
@@ -91,7 +93,7 @@ export function installCalendar(state, deps) {
             selectedDate: formatCalendarDate(reference),
             viewMode: 'schedule', editorKind: 'event', cycleSubject: CYCLE_SELF_SUBJECT, outfitSubject: OUTFIT_SELF_SUBJECT,
             generating: false, recipeGenerating: false, weatherRefreshing: false, detailEditing: false,
-            managementOpenByMode: {},
+            settingsOpen: false, openEntryMenu: '',
         };
         runtime.viewByStorage.set(storageId, view);
         return view;
@@ -102,7 +104,7 @@ export function installCalendar(state, deps) {
         if (!container) return false;
         const previousShell = container.querySelector?.('.pm-calendar-shell');
         const scrollTop = previousShell?.scrollTop;
-        const currentView = preserveCalendarManagementState(container, viewFor(storageId));
+        const currentView = viewFor(storageId);
         runtime.viewByStorage.set(storageId, currentView);
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
@@ -118,7 +120,7 @@ export function installCalendar(state, deps) {
         );
         const nextShell = container.querySelector?.('.pm-calendar-shell');
         if (Number.isFinite(scrollTop) && nextShell) nextShell.scrollTop = scrollTop;
-        return true;
+        autoDetect.run(storageId); return true;
     };
     const rerender = storageId => { if (getStorageId() === storageId) render(storageId); };
     const weatherController = createCalendarWeatherController({
@@ -208,7 +210,8 @@ export function installCalendar(state, deps) {
             if (!tasks.active(task)) return false;
             if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId);
-            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags);
+            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags) // 未设定故事日期时向前回溯
+                || (currentScope.baseDate ? null : firstCalendarBaseDate(context.recentAssistantRawTexts, currentScope.dateTags));
             if (!baseDate) {
                 if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。');
                 return false;
@@ -229,7 +232,7 @@ export function installCalendar(state, deps) {
             const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
             runtime.viewByStorage.set(storageId, {
                 ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
-                selectedDate: baseDate, detailEditing: false,
+                selectedDate: baseDate, detailEditing: false, openEntryMenu: '',
             });
             if (!silent) status(storageId, `已从最后一条正文将今天调整为 ${baseDate}。`);
             rerender(storageId);
@@ -364,7 +367,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, {
             ...current,
             viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
-            selectedDate: normalizedDate, monthPanelOpen: false, detailEditing: false,
+            selectedDate: normalizedDate, monthPanelOpen: false, detailEditing: false, openEntryMenu: '',
         });
         const generationWindow = calendarWindowDescription(parsed, 7);
         status(storageId, `当前故事日期已设为 ${normalizedDate}，相对日期与${generationWindow.label}生成将以此为准。`);
@@ -379,7 +382,7 @@ export function installCalendar(state, deps) {
         runtime.viewByStorage.set(storageId, {
             ...current,
             viewYear: today.getFullYear(), viewMonth: today.getMonth() + 1,
-            selectedDate: formatCalendarDate(today), monthPanelOpen: false, detailEditing: false,
+            selectedDate: formatCalendarDate(today), monthPanelOpen: false, detailEditing: false, openEntryMenu: '',
         });
         status(storageId, '已使用设备日期作为当前故事日期。');
         rerender(storageId);
@@ -389,7 +392,7 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current, viewYear: reference.getFullYear(), viewMonth: reference.getMonth() + 1,
-            selectedDate: formatCalendarDate(reference), monthPanelOpen: false, detailEditing: false,
+            selectedDate: formatCalendarDate(reference), monthPanelOpen: false, detailEditing: false, openEntryMenu: '',
         });
         rerender(storageId);
     }
@@ -411,7 +414,7 @@ export function installCalendar(state, deps) {
             viewMonth: targetMonth.month,
             selectedDate: formatCalendarDate(targetDate),
             monthPanelOpen: false,
-            detailEditing: false,
+            detailEditing: false, openEntryMenu: '',
         });
         rerender(storageId);
         return true;
@@ -423,10 +426,13 @@ export function installCalendar(state, deps) {
         const current = viewFor(storageId);
         runtime.viewByStorage.set(storageId, {
             ...current, viewYear: year, viewMonth: month,
-            selectedDate: formatCalendarDate(target), monthPanelOpen: true, detailEditing: false,
+            selectedDate: formatCalendarDate(target), monthPanelOpen: false, detailEditing: false, openEntryMenu: '',
         });
         rerender(storageId);
     }
+    const showMonthDialog = storageId => showCalendarMonthDialog({ makeOverlay, closeOverlay, scope: scope(storageId), view: viewFor(storageId),
+        saveBaseDate: value => saveBaseDate(storageId, value), clearBaseDate: () => clearBaseDate(storageId),
+        goToReferenceDate: () => goToReferenceDate(storageId), jumpToMonth: (year, month) => jumpToMonth(storageId, year, month) });
     function selectedDateEntries(storageId) {
         const date = viewFor(storageId).selectedDate, parsed = parseCalendarDate(date);
         return {
@@ -543,8 +549,23 @@ export function installCalendar(state, deps) {
         if (action === 'calendar-generate') { await generate(storageId, 'generate'); return; }
         if (action === 'calendar-regenerate') { await generate(storageId, 'regenerate'); return; }
         if (action === 'calendar-month-panel') {
+            if (typeof makeOverlay === 'function') { showMonthDialog(storageId); return; }
             const current = viewFor(storageId);
             runtime.viewByStorage.set(storageId, { ...current, monthPanelOpen: current.monthPanelOpen !== true });
+            rerender(storageId);
+            return;
+        }
+        if (action === 'calendar-settings') {
+            const current = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, { ...current, settingsOpen: current.settingsOpen !== true, openEntryMenu: '' });
+            rerender(storageId);
+            const shell = state.phoneWindow?.querySelector?.('.pm-calendar-shell');
+            if (shell) shell.scrollTop = 0;
+            return;
+        }
+        if (action === 'calendar-entry-menu') {
+            const current = viewFor(storageId), key = button.dataset.entryKey || '';
+            runtime.viewByStorage.set(storageId, { ...current, openEntryMenu: current.openEntryMenu === key ? '' : key });
             rerender(storageId);
             return;
         }
@@ -576,7 +597,7 @@ export function installCalendar(state, deps) {
         if (['calendar-mode-schedule', 'calendar-mode-weather', 'calendar-mode-cycle', 'calendar-mode-recipe', 'calendar-mode-outfit'].includes(action)) {
             const current = viewFor(storageId);
             const viewMode = action.slice('calendar-mode-'.length);
-            runtime.viewByStorage.set(storageId, { ...current, viewMode, monthPanelOpen: false, detailEditing: false });
+            runtime.viewByStorage.set(storageId, { ...current, viewMode, monthPanelOpen: false, detailEditing: false, openEntryMenu: '', settingsOpen: false });
             rerender(storageId);
             return;
         }
@@ -590,7 +611,7 @@ export function installCalendar(state, deps) {
                 await saveBaseDate(storageId, date);
                 return;
             }
-            runtime.viewByStorage.set(storageId, { ...current, selectedDate: date, detailEditing: false });
+            runtime.viewByStorage.set(storageId, { ...current, selectedDate: date, detailEditing: false, openEntryMenu: '' });
             rerender(storageId);
             return;
         }
@@ -754,7 +775,7 @@ export function installCalendar(state, deps) {
     const releasesCalendarRuntime = reason => reason === 'phone-closed' || reason === 'host-chat-changed' || reason === 'beforeunload' || reason === 'document-hidden' || transfersCalendarStateOwnership(reason);
     const clearCalendarRuntime = () => {
         for (const token of runtime.statusTimerByStorage.values()) cancelTimeout(token.timer);
-        runtime.statusTimerByStorage.clear(); runtime.statusByStorage.clear(); runtime.viewByStorage.clear(); runtime.weatherSearchResults = [];
+        runtime.statusTimerByStorage.clear(); runtime.statusByStorage.clear(); runtime.viewByStorage.clear(); runtime.weatherSearchResults = []; autoDetect.reset();
     };
     const cancelCalendarTasks = reason => {
         if (transfersCalendarStateOwnership(reason)) invalidateCommits();
@@ -772,5 +793,7 @@ export function installCalendar(state, deps) {
             runtime.recipeStore = normalizeRecipeStore(loadCalendarRecipes()); runtime.outfitStore = loadOutfitStore();
         },
         renderCalendar: render,
+        getStoryToday: (storageId = getStorageId()) => formatCalendarDate(calendarReferenceDate(scope(storageId))), // 日历「今天」，未设置时为现实日期
+        getPhoneOutfitPrompt: ({ storageId = getStorageId(), names = [], userName = '' } = {}) => renderPhoneOutfitPrompt({ store: runtime.outfitStore, storageId, enabled: scope(storageId).injectionOutfitEnabled, start: calendarReferenceDate(scope(storageId)), names, userName }),
     });
 }

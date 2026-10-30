@@ -99,6 +99,22 @@ export function ensureMessageEntry(entry, options = {}) {
         delete entry.bubbleIds;
         changed = true;
     }
+    if (entry.storyDate !== undefined && !normalizeStoryDate(entry.storyDate)) {
+        delete entry.storyDate;
+        changed = true;
+    }
+    if (entry.sentAt !== undefined && !normalizeSentAt(entry.sentAt)) {
+        delete entry.sentAt;
+        changed = true;
+    }
+    if (entry.floor !== undefined && !(Number.isSafeInteger(entry.floor) && entry.floor >= 0)) {
+        delete entry.floor;
+        delete entry.floorAnchor;
+        changed = true;
+    } else if (entry.floorAnchor !== undefined && typeof entry.floorAnchor !== 'string') {
+        delete entry.floorAnchor;
+        changed = true;
+    }
     if (entry.quote !== undefined) {
         const quote = normalizeQuoteSnapshot(entry.quote);
         if (quote) {
@@ -162,8 +178,22 @@ export function normalizeMessageHistory(history, options = {}) {
     return changed;
 }
 
-export function createMessageEntry({ role, content, directorNote, quote, descriptors, messageId } = {}) {
+let floorMarkProvider = null;
+/** 新消息记下发送时主线的楼层与锚点（删楼回退用）；由 main.js 接上酒馆上下文。 */
+export function setFloorMarkProvider(provider) {
+    floorMarkProvider = typeof provider === 'function' ? provider : null;
+}
+function currentFloorMark() {
+    try {
+        const mark = floorMarkProvider?.();
+        return mark && Number.isSafeInteger(mark.floor) && mark.floor >= 0
+            ? { floor: mark.floor, floorAnchor: typeof mark.floorAnchor === 'string' ? mark.floorAnchor : '' } : {};
+    } catch (error) { return {}; }
+}
+
+export function createMessageEntry({ role, content, directorNote, quote, descriptors, messageId, storyDate, sentAt } = {}) {
     const normalizedQuote = normalizeQuoteSnapshot(quote);
+    const normalizedStoryDate = normalizeStoryDate(storyDate);
     const bubbles = (Array.isArray(descriptors) ? descriptors : []).map(descriptor => ({
         bubbleId: uid('bubble'),
         text: String(typeof descriptor === 'object' ? descriptor?.text || '' : descriptor || ''),
@@ -174,7 +204,118 @@ export function createMessageEntry({ role, content, directorNote, quote, descrip
         content: String(content || ''),
         messageId: cleanId(messageId) || uid('msg'),
         bubbles,
+        sentAt: normalizeSentAt(sentAt) || Date.now(),
+        ...currentFloorMark(),
+        ...(normalizedStoryDate ? { storyDate: normalizedStoryDate } : {}),
         ...(directorNote ? { directorNote } : {}),
         ...(normalizedQuote ? { quote: normalizedQuote } : {}),
     };
+}
+
+const STORY_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+
+function storyDateParts(value) {
+    const match = STORY_DATE_PATTERN.exec(String(value || ''));
+    if (!match) return null;
+    const [year, month, day] = match.slice(1).map(Number);
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return { year, month, day, date };
+}
+
+/** 剧情日期统一为 YYYY-MM-DD；无效值返回空串。 */
+export function normalizeStoryDate(value) {
+    return storyDateParts(value) ? String(value) : '';
+}
+
+function normalizeSentAt(value) {
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function storyDayDiff(from, to) {
+    const a = storyDateParts(from), b = storyDateParts(to);
+    if (!a || !b) return null;
+    return Math.round((Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / 86400000);
+}
+
+/** 聊天界面日期分隔条：今天/昨天/前天，同年写月日，跨年写全。 */
+export function formatStoryDateLabel(storyDate, today = '') {
+    const parts = storyDateParts(storyDate);
+    if (!parts) return '';
+    const weekday = `周${WEEKDAYS[parts.date.getDay()]}`;
+    const diff = storyDayDiff(storyDate, today);
+    if (diff === 0) return '今天';
+    if (diff === 1) return `昨天 ${weekday}`;
+    if (diff === 2) return `前天 ${weekday}`;
+    const todayParts = storyDateParts(today);
+    const sameYear = todayParts && todayParts.year === parts.year;
+    return `${sameYear ? '' : `${parts.year}年`}${parts.month}月${parts.day}日 ${weekday}`;
+}
+
+/** 发给 AI 的历史里的日期行。 */
+export function formatStoryDateHeading(storyDate) {
+    const parts = storyDateParts(storyDate);
+    if (!parts) return '';
+    return `—— ${parts.year}年${parts.month}月${parts.day}日 周${WEEKDAYS[parts.date.getDay()]} ——`;
+}
+
+/** 当前这一轮的日期行；与上次聊天隔了几天时一并写明。 */
+export function formatCurrentStoryDateHeading(currentStoryDate, previousStoryDate = '') {
+    const heading = formatStoryDateHeading(currentStoryDate);
+    if (!heading) return '';
+    const diff = storyDayDiff(previousStoryDate, currentStoryDate);
+    return diff > 0 ? `${heading}（距上次聊天已过 ${diff} 天）` : heading;
+}
+
+export function lastStoryDate(history) {
+    const entries = Array.isArray(history) ? history : [];
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const date = normalizeStoryDate(entries[index]?.storyDate);
+        if (date) return date;
+    }
+    return '';
+}
+
+/** 编辑框文字：每个气泡一行；群聊 AI 消息写成「名字：内容」。 */
+export function messageEntryToEditText(entry, options = {}) {
+    const bubbles = describeMessageEntry(entry, options);
+    const grouped = options.isGroup && entry?.role === 'assistant';
+    return bubbles.map(bubble => (grouped && bubble.sender ? `${bubble.sender}：${bubble.text}` : bubble.text)).join('\n');
+}
+
+/**
+ * 用编辑框文字重建消息；保留 messageId、引用、剧情引导与时间。
+ * 文字为空时返回 null，由调用方决定提示。
+ */
+export function applyMessageEdit(entry, text, options = {}) {
+    const lines = String(text || '').split('\n').map(line => line.trim()).filter(Boolean);
+    if (!lines.length || !entry || typeof entry !== 'object') return null;
+    const previous = describeMessageEntry(entry, options);
+    const grouped = options.isGroup && entry.role === 'assistant';
+    let lastSender = '';
+    const descriptors = lines.map(line => {
+        if (!grouped) return { text: line, sender: '' };
+        const match = line.match(/^(.{1,20})[：:]\s*(.+)$/);
+        if (match) lastSender = match[1].trim();
+        return { text: match ? match[2].trim() : line, sender: lastSender };
+    }).filter(descriptor => descriptor.text);
+    if (!descriptors.length) return null;
+    const bubbles = descriptors.map((descriptor, index) => ({
+        bubbleId: previous[index]?.bubbleId && previous[index].text === descriptor.text && previous[index].sender === descriptor.sender
+            ? previous[index].bubbleId : uid('bubble'),
+        text: descriptor.text,
+        sender: descriptor.sender,
+    }));
+    let content;
+    if (grouped) {
+        const blocks = [];
+        for (const bubble of bubbles) {
+            const tail = blocks.at(-1);
+            if (tail && tail.sender === bubble.sender) tail.texts.push(bubble.text);
+            else blocks.push({ sender: bubble.sender, texts: [bubble.text] });
+        }
+        content = blocks.map(block => (block.sender ? `${block.sender}：` : '') + block.texts.join(' / ')).join('\n');
+    } else content = bubbles.map(bubble => bubble.text).join(' / ');
+    return { ...entry, content, bubbles };
 }

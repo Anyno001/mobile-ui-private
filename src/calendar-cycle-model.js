@@ -170,7 +170,7 @@ function cycleDayIndex(scope, dateStr) {
  *   - 易孕窗口之后: luteal（安全期）
  * 易孕窗口起点不得早于经期结束后的第一天，所有边界限制在当前周期内。
  */
-function phaseForDay(day, cycleLength, periodLength) {
+export function phaseForDay(day, cycleLength, periodLength) {
     if (day <= periodLength) return 'period';
     const ovulationDay = Math.max(periodLength + 1, Math.min(cycleLength - 14, cycleLength - 1));
     const fertileStart = Math.max(periodLength + 1, ovulationDay - 5);

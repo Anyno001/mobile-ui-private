@@ -1,4 +1,5 @@
 import { normalizeInteractiveStore, stripPersistedV2ContentRating } from './interactive-scene-model.js';
+import { saveInteractiveBackup } from './storage.js';
 
 export const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 export const now = () => Date.now();
@@ -25,12 +26,15 @@ export function parseCommunityPostInput(rawContent, _actors, defaultAuthorSeed, 
     };
 }
 
-export async function migrateInteractiveStore(rawStore, saveStore) {
+export async function migrateInteractiveStore(rawStore, saveStore, saveBackup = saveInteractiveBackup) {
     const persistedCompatibility = stripPersistedV2ContentRating(rawStore);
     const normalized = normalizeInteractiveStore(persistedCompatibility.store);
     const needsSave = !!rawStore && (rawStore.version !== normalized.version || persistedCompatibility.changed);
     if (!needsSave) return normalized;
     const snapshot = JSON.parse(JSON.stringify(rawStore));
+    // 低于当前版本的原始数据先备份再保存；备份失败则不迁移，旧数据保持原样。
+    const sourceVersion = Number.isInteger(rawStore.version) ? rawStore.version : 1;
+    if (sourceVersion < normalized.version) await saveBackup(sourceVersion, snapshot);
     try {
         await saveStore(normalized);
     } catch (error) {

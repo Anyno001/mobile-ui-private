@@ -16,6 +16,26 @@ export const SPECIAL_RE = new RegExp(`[\\(（][ \\t]*(${KEYWORD_PATTERN})(?:[ \\
 export const STANDALONE_SPECIAL_RE = new RegExp(`^[ \\t]*(${KEYWORD_PATTERN})(?:[ \\t]*(?:\\+|：|:)[ \\t]*|[ \\t]+)(\\S(?:[^\\r\\n]*\\S)?)[ \\t]*$`, 'i');
 export const EMO_RE = /\[emo:([^\]:]+):(\d+)\]/gi;
 
+/**
+ * 图片卡外壳：聊天、社区、视频共用，生图控制器按 data-image-desc 补上图片、按钮或状态。
+ * 社区帖子传 postId（sceneId 从外层 [data-scene-id] 取）；视频传 sourceType: 'video'、sceneId: 视频 id、postId: 'cover' 或 'scene-N'。
+ */
+export function imageCardMarkup(desc, { postId = '', author = '', sourceType = '', sceneId = '' } = {}) {
+    const value = String(desc || '').trim();
+    const post = postId ? ` data-post-id="${escapeAttr(postId)}" data-image-author="${escapeAttr(author)}"` : '';
+    const owner = (sourceType ? ` data-image-source="${escapeAttr(sourceType)}"` : '') + (sceneId ? ` data-scene-id="${escapeAttr(sceneId)}"` : '');
+    return `<div class="pm-img-card" data-image-desc="${escapeAttr(value)}"${post}${owner} data-state="idle"><p class="pm-img-card-desc">${escapeHtml(value)}</p></div>`;
+}
+
+/** 一个气泡是不是「图片：描述」：是就返回描述，不是返回空串。 */
+export function imageSpecialDescription(text) {
+    const value = String(text || '').trim();
+    const standalone = value.match(STANDALONE_SPECIAL_RE);
+    if (standalone && normalizeKeyword(standalone[1]) === '图片') return standalone[2].trim();
+    const wrapped = value.match(new RegExp(`^${SPECIAL_RE.source}$`, 'i'));
+    return wrapped && normalizeKeyword(wrapped[1]) === '图片' ? wrapped[2].trim() : '';
+}
+
 function isValidSpecialContent(kind, content) {
     const value = content.trim();
     if (!value || /^[+：:]+$/.test(value)) return false;
@@ -139,7 +159,9 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
             const title = kind === '退还' ? '已退还' : kind;
             bubble.innerHTML = `<div class="${className}"><div class="pm-t-icon">¥</div><div class="pm-t-info"><b>${title}</b><span>¥${amount.toFixed(2)}</span></div></div>`;
         } else if (kind === '图片') {
-            bubble.innerHTML = `<div class="pm-img-card">🖼️ ${escapeHtml(content.trim())}</div>`;
+            // 生图控制器按 data-image-desc 补上图片、生成按钮或状态（phone-image-controller.js）。
+            bubble.classList.add('pm-image-bubble');
+            bubble.innerHTML = imageCardMarkup(content);
         } else {
             const voiceText = content.trim();
             const length = [...voiceText].length;

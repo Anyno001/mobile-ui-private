@@ -7,6 +7,20 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
             element.setAttribute('aria-pressed', String(active));
         });
         document.querySelectorAll('.pm-layout-chip').forEach(element => {
+            const wallpaper = element.dataset.wallpaperVariant;
+            if (wallpaper) {
+                const active = wallpaper === (theme.wallpaper === 'plain' ? 'plain' : 'soft');
+                element.classList.toggle('pm-layout-active', active);
+                element.setAttribute('aria-pressed', String(active));
+                return;
+            }
+            const iconStyle = element.dataset.iconVariant;
+            if (iconStyle) {
+                const active = iconStyle === (theme.iconStyle === 'cream' ? 'cream' : 'glass');
+                element.classList.toggle('pm-layout-active', active);
+                element.setAttribute('aria-pressed', String(active));
+                return;
+            }
             const value = element.dataset.themeMode;
             if (!value) return;
             const active = value === theme.darkMode;
@@ -48,6 +62,12 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
     const setDarkMode = mode => {
         return mutateTheme(() => { window.__pmTheme.darkMode = mode; });
     };
+    const setWallpaper = style => mutateTheme(() => {
+        window.__pmTheme.wallpaper = style === 'plain' ? 'plain' : 'soft';
+    });
+    const setIconStyle = style => mutateTheme(() => {
+        window.__pmTheme.iconStyle = style === 'cream' ? 'cream' : 'glass';
+    });
     const setPreset = preset => mutateTheme(() => {
         if (!Object.hasOwn(THEME_PRESETS, preset)) return;
         window.__pmTheme.preset = preset;
@@ -70,5 +90,5 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
     const clearCustomColor = () => mutateTheme(() => { window.__pmTheme.customRight = ''; window.__pmTheme.customLeft = ''; });
     const setBorderColor = () => mutateTheme(() => { window.__pmTheme.borderColor = document.getElementById('pm-border-color')?.value || '#1a1a1a'; });
     const setCustomTitle = () => mutateTheme(() => { window.__pmTheme.customTitle = (document.getElementById('pm-custom-title')?.value || '').trim().slice(0, 20); });
-    return { showPage, setDarkMode, setPreset, setCustomAccent, setCustomColor, clearCustomColor, setBorderColor, setCustomTitle, uploadBackground: (input, scope) => backgroundSettings.upload(input, scope), setBackgroundUrl: scope => backgroundSettings.setUrl(scope), clearBackground: scope => backgroundSettings.clear(scope) };
+    return { showPage, setDarkMode, setIconStyle, setWallpaper, setPreset, setCustomAccent, setCustomColor, clearCustomColor, setBorderColor, setCustomTitle, uploadBackground: (input, scope) => backgroundSettings.upload(input, scope), setBackgroundUrl: scope => backgroundSettings.setUrl(scope), clearBackground: scope => backgroundSettings.clear(scope) };
 }

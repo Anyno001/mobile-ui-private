@@ -47,7 +47,7 @@ export function createTodayTrendActionDispatcher({
     if (!container?.addEventListener || typeof getStorageId !== 'function' || typeof getStore !== 'function' || typeof committer?.commitScope !== 'function' || typeof render !== 'function') {
         throw new TypeError('今日风向动作分发依赖无效');
     }
-    const view = { name: 'world', mode: 'content', dynamicsTab: 'active', editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, ruleReturnName: null, menuOpenId: null };
+    const view = { name: 'world', mode: 'content', dynamicsTab: 'active', detailId: null, detailReturn: null, selectedCircleId: null, editingWorldItemId: null, editingCircleId: null, editingFactionId: null, editingEventId: null, editingRule: null, ruleDraft: null, ruleReturnName: null, menuOpenId: null };
     let rerenderEpoch = 0;
     const rerender = async (focus = null) => {
         const epoch = ++rerenderEpoch;
@@ -73,7 +73,7 @@ export function createTodayTrendActionDispatcher({
     const run = promise => Promise.resolve(promise).catch(error => { onError(error); return false; });
     const closeMenu = () => { view.menuOpenId = null; };
     const confirmDelete = label => typeof confirmImpl === 'function' && confirmImpl(`删除${label}不可恢复。确定继续吗？`);
-    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.dynamicsTab = name === 'dynamics' ? 'active' : view.dynamicsTab; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; closeMenu(); return rerender(); };
+    const open = (name, mode = 'content') => { view.name = name; view.mode = mode; view.dynamicsTab = name === 'dynamics' ? 'active' : view.dynamicsTab; view.detailId = null; view.detailReturn = null; view.editingWorldItemId = null; view.editingCircleId = null; view.editingFactionId = null; view.editingEventId = null; view.editingRule = null; view.ruleDraft = null; view.ruleReturnName = null; closeMenu(); return rerender(); };
     const keydown = event => {
         const tab = event.target?.closest?.('button[data-action="today-trend-set-dynamics-tab"]');
         if (tab && container.contains(tab) && !tab.disabled && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
@@ -127,12 +127,30 @@ export function createTodayTrendActionDispatcher({
             const add = fieldset?.querySelector('[data-action="today-trend-add-detail"]'); if (add) add.disabled = false;
             return;
         }
+        // 详情页：detailReturn 记住从哪个模块进入，返回时回到原处。
+        const detail = { 'today-trend-open-world-item': ['world', 'worldItemId'], 'today-trend-open-faction': ['faction', 'factionId'], 'today-trend-open-event': ['dynamics', 'eventId'] }[action];
+        if (detail) {
+            const [name, key] = detail;
+            view.detailReturn = [...(view.detailReturn || []), { name: view.name, detailId: view.detailId }].slice(-6);
+            view.name = name; view.mode = 'content'; view.detailId = button.dataset[key] || null;
+            view.editingWorldItemId = null; view.editingFactionId = null; view.editingEventId = null;
+            return run(rerender());
+        }
+        if (action === 'today-trend-close-detail') {
+            const stack = view.detailReturn || [];
+            const back = stack.at(-1);
+            view.detailReturn = stack.length > 1 ? stack.slice(0, -1) : null;
+            view.detailId = back?.detailId || null; view.name = back?.name || view.name; view.mode = 'content';
+            view.editingWorldItemId = null; view.editingFactionId = null; view.editingEventId = null;
+            return run(rerender());
+        }
+        if (action === 'today-trend-select-circle') { view.selectedCircleId = button.dataset.circleId || null; view.editingCircleId = null; return run(rerender()); }
         if (action === 'today-trend-open-world') return run(open('world'));
         if (action === 'today-trend-open-world-settings') return run(open('world', 'settings'));
         if (action === 'today-trend-add-world-item') { view.editingWorldItemId = '__new__'; return run(rerender()); }
         if (action === 'today-trend-edit-world-item') { view.editingWorldItemId = button.dataset.worldItemId || null; return run(rerender()); }
         if (action === 'today-trend-cancel-world-editor') { view.editingWorldItemId = null; return run(rerender()); }
-        if (action === 'today-trend-delete-world-item') { if (!confirmDelete(button.dataset.label || '世界态势项目')) return; return run(commit(scope => ({ ...scope, world: { ...scope.world, items: scope.world.items.filter(item => item.id !== button.dataset.worldItemId) } })).then(() => onStatus('世界态势项目已删除。'))); }
+        if (action === 'today-trend-delete-world-item') { if (!confirmDelete(button.dataset.label || '世界态势项目')) return; view.detailId = null; view.detailReturn = null; return run(commit(scope => ({ ...scope, world: { ...scope.world, items: scope.world.items.filter(item => item.id !== button.dataset.worldItemId) } })).then(() => onStatus('世界态势项目已删除。'))); }
         if (action === 'today-trend-open-reputation') return run(open('reputation'));
         if (action === 'today-trend-open-reputation-settings') return run(open('reputation', 'settings'));
         if (action === 'today-trend-open-factions') return run(open('faction'));
@@ -149,13 +167,13 @@ export function createTodayTrendActionDispatcher({
         if (action === 'today-trend-create-event') { view.name = 'dynamics'; view.editingEventId = '__new__'; return run(rerender()); }
         if (action === 'today-trend-edit-event') { view.name = 'dynamics'; view.editingEventId = button.dataset.eventId || null; return run(rerender()); }
         if (action === 'today-trend-cancel-event-editor') { view.editingEventId = null; return run(rerender()); }
-        if (action === 'today-trend-delete-event') { if (!confirmDelete(button.dataset.label || '归档事件')) return; return run(commit(scope => ({ ...scope, dynamics: { ...scope.dynamics, archived: scope.dynamics.archived.filter(item => item.id !== button.dataset.eventId) } })).then(() => onStatus('已删除归档事件。'))); }
+        if (action === 'today-trend-delete-event') { if (!confirmDelete(button.dataset.label || '归档事件')) return; view.detailId = null; view.detailReturn = null; return run(commit(scope => ({ ...scope, dynamics: { ...scope.dynamics, archived: scope.dynamics.archived.filter(item => item.id !== button.dataset.eventId) } })).then(() => onStatus('已删除归档事件。'))); }
         if (action === 'today-trend-advance-all-events') return run(onGenerate?.('dynamics') ?? Promise.reject(new Error('今日风向动态生成能力尚未接入')));
         if (action === 'today-trend-advance-event') return run(onRefresh?.('dynamics', button.dataset.eventId) ?? Promise.reject(new Error('今日风向动态推进能力尚未接入')));
         if (action === 'today-trend-promote-underground') { view.name = 'dynamics'; view.editingEventId = `promote:${button.dataset.eventId || ''}`; return run(rerender()); }
         if (action === 'today-trend-archive-event') { view.name = 'dynamics'; view.editingEventId = `archive:${button.dataset.eventId || ''}`; return run(rerender()); }
-        if (action === 'today-trend-delete-circle') { if (!confirmDelete(button.dataset.label || '风评圈层')) return; return run(commit(scope => ({ ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.filter(item => item.id !== button.dataset.circleId) } })).then(() => onStatus('风评圈层已删除。'))); }
-        if (action === 'today-trend-delete-faction') { if (!confirmDelete(button.dataset.label || '势力')) return; return run(commit(scope => ({ ...scope, factions: scope.factions.filter(item => item.id !== button.dataset.factionId).map(item => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter(id => id !== button.dataset.factionId) })) })).then(() => onStatus('势力图谱已删除。'))); }
+        if (action === 'today-trend-delete-circle') { if (!confirmDelete(button.dataset.label || '风评圈层')) return; view.detailId = null; view.detailReturn = null; return run(commit(scope => ({ ...scope, reputation: { ...scope.reputation, circles: scope.reputation.circles.filter(item => item.id !== button.dataset.circleId) } })).then(() => onStatus('风评圈层已删除。'))); }
+        if (action === 'today-trend-delete-faction') { if (!confirmDelete(button.dataset.label || '势力')) return; view.detailId = null; view.detailReturn = null; return run(commit(scope => ({ ...scope, factions: scope.factions.filter(item => item.id !== button.dataset.factionId).map(item => ({ ...item, parentId: item.parentId === button.dataset.factionId ? null : item.parentId, relatedFactionIds: item.relatedFactionIds.filter(id => id !== button.dataset.factionId) })) })).then(() => onStatus('势力图谱已删除。'))); }
         if (action === 'today-trend-set-circle-status') {
             const circleId = String(button.dataset.circleId || '');
             const status = String(button.dataset.status || '');

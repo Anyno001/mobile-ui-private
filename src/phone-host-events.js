@@ -76,6 +76,14 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
                 if (hasCompletedAssistantMessage && isAutoPokeAllowed() && typeof window.__pmIncrementCounters === 'function') window.__pmIncrementCounters();
             } else if (currentLength < previousLength) runtime.lastChatLength = currentLength;
         }));
+        // 主线删楼（含重新生成前删掉最后一楼）：手机记录回退到对应楼层。
+        // 宿主没有该事件时跳过，不影响其余事件的注册结果。
+        const deleted = resolveHostEvent(eventTypes, 'MESSAGE_DELETED');
+        if (deleted) results.push(registerOnce('rollback:MESSAGE_DELETED', deleted, () => {
+            Promise.resolve(deps.applyFloorRollback?.()).catch(error => {
+                console.warn('[phone-mode] 删楼回退手机记录失败', error?.name || 'Error');
+            });
+        }));
         const changed = resolveHostEvent(eventTypes, 'CHAT_CHANGED');
         results.push(registerOnce('resolved:CHAT_CHANGED', changed, () => {
             const inheritBranch = deps.beginBranchInheritance || beginBranchInheritance;
@@ -115,12 +123,17 @@ export function createPhoneHostEventController({ state, runtime, deps, getCtx, g
                 runtime.lastBranchInheritance = { status: 'failed', reason: null, sourceId: branch?.sourceId || null, targetId: branch?.targetId || null, sourcePresence: null, targetPresence: null };
                 runtime.lastBranchInheritanceError = { name: typeof error?.name === 'string' && error.name ? error.name : 'Error', message: typeof error?.message === 'string' ? error.message.slice(0, 240) : '' };
                 console.warn('[phone-mode] 分支手机数据继承失败', error?.name || 'Error'); return { status: 'failed', error };
-            }).finally(() => handleHostChatChanged({
-                state, runtime, chatLength: (currentContext?.chat || []).length,
-                cancelCommunityGeneration: deps.cancelCommunityGeneration, cancelCalendarTasks: deps.cancelCalendarTasks,
-                cancelTodayTrendInitialization: deps.cancelTodayTrendInitialization, cancelTodayTrendRuleRegeneration: deps.cancelTodayTrendRuleRegeneration,
-                cancelTodayTrendGeneration: deps.cancelTodayTrendGeneration, disarmAutoPoke, endPhone: window.__pmEnd, invalidateGeneration,
-            }));
+            }).finally(async () => {
+                handleHostChatChanged({
+                    state, runtime, chatLength: (currentContext?.chat || []).length,
+                    cancelCommunityGeneration: deps.cancelCommunityGeneration, cancelCalendarTasks: deps.cancelCalendarTasks,
+                    cancelTodayTrendInitialization: deps.cancelTodayTrendInitialization, cancelTodayTrendRuleRegeneration: deps.cancelTodayTrendRuleRegeneration,
+                    cancelTodayTrendGeneration: deps.cancelTodayTrendGeneration, disarmAutoPoke, endPhone: window.__pmEnd, invalidateGeneration,
+                });
+                // 新聊天的手机记录以其元数据对账；手机关着时注入也要能读到。
+                try { await deps.reconcileChatMetadata?.(); await deps.reconcileCommunityFiles?.(); }
+                catch (error) { console.warn('[phone-mode] 聊天元数据对账失败', error?.name || 'Error'); }
+            });
         }));
         runtime.eventHooked = results.every(Boolean);
         if (runtime.eventHooked) console.log('[phone-mode] hooked', injectionEvents.length, 'injection events');

@@ -2,6 +2,7 @@ import { createEmojiRenderBudget } from './emoji-media.js';
 import { createBubbles } from './messaging.js';
 import { bindPressGesture } from './press-gesture.js';
 import { escapeHtml } from './ui.js';
+import { formatStoryDateLabel, normalizeStoryDate } from './chat-message-model.js';
 
 export function bindBubbleQuoteGesture(root, { state, quote, text, senderName, metadata, gestureRuntime = {} }) {
     if (metadata?.pendingId !== undefined || !metadata?.messageId || !metadata?.bubbleId) return null;
@@ -30,7 +31,19 @@ export function bindBubbleQuoteGesture(root, { state, quote, text, senderName, m
     });
 }
 
-export function createPhoneMessageRenderer({ state, quote }) {
+function historyEntryFor(state, metadata) {
+    const messageId = metadata?.messageId;
+    if (!messageId || metadata?.pendingId !== undefined) return null;
+    const history = state.conversationHistory || [];
+    const indexed = history[Number(metadata.historyIndex)];
+    if (indexed?.messageId === messageId) return indexed;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+        if (history[index]?.messageId === messageId) return history[index];
+    }
+    return null;
+}
+
+export function createPhoneMessageRenderer({ state, quote, getStoryToday = () => '', onBubblesRendered = () => {} }) {
     let emojiRenderBudget = createEmojiRenderBudget();
     const bubbleQuoteGestureUnbinders = new Map();
     const resetEmojiRenderBudget = () => { emojiRenderBudget = createEmojiRenderBudget(); };
@@ -90,8 +103,35 @@ export function createPhoneMessageRenderer({ state, quote }) {
         root.appendChild(action);
     }
 
+    /** 消息的剧情日期与列表里最后一条分隔条不同时，先插一条日期分隔。 */
+    function ensureDateDivider(list, metadata) {
+        const storyDate = normalizeStoryDate(historyEntryFor(state, metadata)?.storyDate);
+        if (!storyDate) return;
+        const dividers = list.getElementsByClassName('pm-date-divider');
+        if (dividers[dividers.length - 1]?.dataset.storyDate === storyDate) return;
+        const node = document.createElement('div');
+        node.className = 'pm-note pm-date-divider';
+        node.dataset.storyDate = storyDate;
+        node.textContent = formatStoryDateLabel(storyDate, getStoryToday());
+        list.appendChild(node);
+    }
+
+    /** 删除消息后清掉下方已没有消息的日期分隔。 */
+    function pruneDateDividers() {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
+        for (const divider of [...list.getElementsByClassName('pm-date-divider')]) {
+            let next = divider.nextElementSibling, hasMessage = false;
+            while (next && !next.classList.contains('pm-date-divider')) {
+                if (next.dataset.messageId || next.querySelector?.('[data-message-id]')) { hasMessage = true; break; }
+                next = next.nextElementSibling;
+            }
+            if (!hasMessage) divider.remove();
+        }
+    }
+
     function addBubble(text, side, senderName, historyIndex, metadata) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return [];
+        ensureDateDivider(list, metadata);
         const nodes = createBubbles(text, side, senderName, {
             groupColorMap: state.groupColorMap, groupMembers: state.groupMembers, emojis: window.__pmEmojis,
             emojiBudget: emojiRenderBudget,
@@ -117,6 +157,8 @@ export function createPhoneMessageRenderer({ state, quote }) {
             }
             list.appendChild(node);
         });
+        // 图片卡要读气泡上的 messageId/bubbleId，元数据写完再补图。
+        try { onBubblesRendered(nodes); } catch (error) { console.warn('[phone-mode] 图片卡渲染失败', error); }
         list.scrollTop = list.scrollHeight;
         return nodes;
     }
@@ -149,6 +191,7 @@ export function createPhoneMessageRenderer({ state, quote }) {
     }
     function addDirector(text, metadata) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return null;
+        ensureDateDivider(list, metadata);
         const node = document.createElement('div'); node.className = 'pm-director'; applyBubbleMetadata(node, metadata);
         node.innerHTML = `<span class="pm-director-icon">🎬</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
         list.appendChild(node); list.scrollTop = list.scrollHeight; return node;
@@ -162,6 +205,6 @@ export function createPhoneMessageRenderer({ state, quote }) {
     const hideTyping = () => document.getElementById('pm-typing')?.remove();
     return {
         addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
-        clearBubbleQuoteGesture, clearBubbleQuoteGestures,
+        clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
     };
 }

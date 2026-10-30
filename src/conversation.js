@@ -74,6 +74,7 @@ export function installConversation(state, deps) {
         }
         state.activeStorageId = id;
         state.currentPersona = name;
+        state.historyRenderLimit = 0;
         state.conversationHistory = getStoredHistory(id, name);
         const historyChanged = normalizeMessageHistory(state.conversationHistory, {
             isGroup: state.isGroupChat,
@@ -94,5 +95,17 @@ export function installConversation(state, deps) {
             state, getStorageId, saveKey, storageId, history, normalizationContext,
         ),
         getSaveKey: () => getSaveKey(state),
+        /** 按当前 state 重画会话；keepScroll 时保持与底部的距离（展开更早消息用）。 */
+        rerenderConversation: ({ keepScroll = false } = {}) => {
+            const list = state.phoneWindow?.querySelector('.pm-msg-list');
+            if (!list || !state.currentPersona) return false;
+            const fromBottom = list.scrollHeight - list.scrollTop;
+            renderConversationHistory({
+                state, deps, storageId: state.activeStorageId || getStorageId(), name: state.currentPersona,
+            });
+            if (keepScroll) list.scrollTop = list.scrollHeight - fromBottom;
+            deps.refreshReplyCardAvailability?.();
+            return true;
+        },
     });
 }

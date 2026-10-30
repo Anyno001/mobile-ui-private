@@ -1,4 +1,3 @@
-import { SAVE_LIMIT } from './constants.js';
 import { normalizeMessageHistory } from './chat-message-model.js';
 import { saveHistories } from './storage.js';
 import { getConversationSaveKey } from './conversation-state.js';
@@ -56,7 +55,7 @@ export function persistConversationHistory(
         groupMembers: Array.isArray(context.groupMembers) ? context.groupMembers : [],
         legacySeed: `${id}:${saveKey.trim()}`,
     });
-    const committed = replaceConversationHistory(id, saveKey, cloneHistory(history.slice(-SAVE_LIMIT)));
+    const committed = replaceConversationHistory(id, saveKey, cloneHistory(history));
     if (!committed) return false;
     saveHistories();
     return true;
@@ -64,5 +63,5 @@ export function persistConversationHistory(
 
 export function readConversationHistory(storageId, saveKey) {
     const history = window.__pmHistories[storageId]?.[saveKey];
-    return Array.isArray(history) ? cloneHistory(history.slice(-SAVE_LIMIT)) : [];
+    return Array.isArray(history) ? cloneHistory(history) : [];
 }

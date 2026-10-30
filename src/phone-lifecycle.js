@@ -3,6 +3,7 @@ import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
 import { reconcileGalBubble } from './gal-bubble.js';
 import { PHONE_UI_PAGES } from './interactive-scene-model.js';
 import { escapeHtml } from './ui.js';
+import { applyMessageEdit, messageEntryToEditText } from './chat-message-model.js';
 import {
     CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, CONTROL_ICON_SVG,
     HOME_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SIGNAL_ICON_SVG,
@@ -12,6 +13,8 @@ import { bindPressGesture } from './press-gesture.js';
 import { loadBgSettings } from './storage-background.js';
 import { loadDesktopIcons } from './desktop-icon-storage.js';
 import { installStoryOracle } from './story-oracle.js';
+import { installPhoneImages } from './phone-image-controller.js';
+import { installPhoneGallery } from './phone-gallery.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -164,19 +167,25 @@ export function handleMessageSelectionKey(event, checkbox) {
     return true;
 }
 
-export function deleteSelectedMessages({
-    state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection, clearBubbleQuoteGesture,
-}) {
-    const list = state.phoneWindow?.querySelector('.pm-msg-list');
-    if (!list) return 0;
-    const toRemoveIndices = new Set();
-    list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
+export function selectedHistoryIndices(list) {
+    const indices = new Set();
+    list?.querySelectorAll('.pm-select-wrap').forEach(wrap => {
         const cb = wrap.querySelector('.pm-message-select-check');
         if (cb?.dataset.checked === '1') {
             const historyIndex = wrap.dataset.historyIndex;
-            if (historyIndex !== undefined && historyIndex !== '') toRemoveIndices.add(Number(historyIndex));
+            if (historyIndex !== undefined && historyIndex !== '') indices.add(Number(historyIndex));
         }
     });
+    return indices;
+}
+
+export function deleteSelectedMessages({
+    state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection, clearBubbleQuoteGesture,
+    pruneDateDividers, recordPhoneChange, saveKey = '',
+}) {
+    const list = state.phoneWindow?.querySelector('.pm-msg-list');
+    if (!list) return 0;
+    const toRemoveIndices = selectedHistoryIndices(list);
     list.querySelectorAll('.pm-select-wrap').forEach(wrap => {
         const historyIndex = wrap.dataset.historyIndex;
         const bubble = wrap.querySelector('.pm-bubble, .pm-group-bubble-wrap, .pm-director');
@@ -189,6 +198,13 @@ export function deleteSelectedMessages({
         }
     });
     if (toRemoveIndices.size > 0) {
+        // 从后往前记旧版本：回退时从新到旧撤销，前一条总会先被插回。
+        const history = state.conversationHistory;
+        recordPhoneChange?.([...toRemoveIndices].filter(index => history[index]).sort((a, b) => b - a)
+            .map(index => ({
+                saveKey, op: 'remove', entry: history[index],
+                afterId: history[index - 1]?.messageId ?? null, index,
+            })));
         state.conversationHistory = state.conversationHistory.filter((_, index) => !toRemoveIndices.has(index));
         const sorted = [...toRemoveIndices].filter(Number.isInteger).sort((a, b) => a - b);
         for (const node of list.querySelectorAll('[data-history-index]')) {
@@ -198,6 +214,7 @@ export function deleteSelectedMessages({
             node.dataset.historyIndex = String(previous - shift);
         }
         refreshReplyCardAvailability?.();
+        pruneDateDividers?.();
         persistCurrentHistory();
         applyBidirectionalInjection();
     }
@@ -219,6 +236,8 @@ export function installPhoneLifecycle(state, deps) {
         refreshReplyCardAvailability, clearBubbleQuoteGesture, clearBubbleQuoteGestures,
     } = deps;
     installStoryOracle(state, deps);
+    installPhoneImages(state, deps);
+    installPhoneGallery(state, deps);
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({
@@ -291,8 +310,77 @@ export function installPhoneLifecycle(state, deps) {
     window.__pmDeleteSelected = () => {
         deleteSelectedMessages({
             state, refreshReplyCardAvailability, persistCurrentHistory, applyBidirectionalInjection,
-            clearBubbleQuoteGesture,
+            clearBubbleQuoteGesture, pruneDateDividers: deps.pruneDateDividers,
+            recordPhoneChange: deps.recordPhoneChange, saveKey: deps.getSaveKey?.() || '',
         });
+    };
+
+    let messageEditTarget = null;
+    window.__pmEditSelected = () => {
+        const list = state.phoneWindow?.querySelector('.pm-msg-list');
+        const indices = [...selectedHistoryIndices(list)];
+        if (indices.length !== 1) {
+            alert(indices.length ? '一次只能编辑一条消息。' : '请先选择要编辑的消息。');
+            return;
+        }
+        if (state.isGenerating) {
+            alert('正在生成回复，请稍后再编辑。');
+            return;
+        }
+        const historyIndex = indices[0];
+        const entry = state.conversationHistory[historyIndex];
+        if (!entry) return;
+        const options = { isGroup: state.isGroupChat, groupMembers: state.groupMembers };
+        messageEditTarget = {
+            historyIndex, messageId: entry.messageId,
+            storageId: state.activeStorageId, saveKey: deps.getSaveKey?.(),
+        };
+        window.__pmToggleSelect();
+        const groupedHint = state.isGroupChat && entry.role === 'assistant' ? '，群聊写作「名字：内容」' : '';
+        deps.makeOverlay(`
+    <div class="pm-modal">
+      <div class="pm-modal-header"><span></span><b>编辑消息</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
+      <label class="pm-settings-field">消息内容（每行一个气泡${groupedHint}）
+        <textarea id="pm-message-edit-text" class="pm-cfg-input" rows="6">${escapeHtml(messageEntryToEditText(entry, options))}</textarea></label>
+      ${entry.role === 'user' && entry.directorNote ? `<label class="pm-settings-field">剧情引导
+        <textarea id="pm-message-edit-director" class="pm-cfg-input" rows="2">${escapeHtml(entry.directorNote)}</textarea></label>` : ''}
+      <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent is-flex-1" onclick="window.__pmSaveMessageEdit()">保存</button></div>
+    </div>`, { onClose: () => { messageEditTarget = null; } });
+        document.getElementById('pm-message-edit-text')?.focus();
+    };
+
+    window.__pmSaveMessageEdit = () => {
+        const target = messageEditTarget;
+        const entry = state.conversationHistory[target?.historyIndex];
+        if (!target || entry?.messageId !== target.messageId
+            || state.activeStorageId !== target.storageId || deps.getSaveKey?.() !== target.saveKey) {
+            alert('会话已变化，本次编辑未保存。');
+            closeOverlay?.('message-edit');
+            return;
+        }
+        const text = document.getElementById('pm-message-edit-text')?.value || '';
+        const directorInput = document.getElementById('pm-message-edit-director');
+        const directorNote = directorInput ? directorInput.value.trim() : entry.directorNote || '';
+        let next = applyMessageEdit(entry, text, { isGroup: state.isGroupChat, groupMembers: state.groupMembers });
+        if (!next && entry.role === 'user' && directorNote) next = { ...entry, content: '', bubbles: [] };
+        if (!next) {
+            alert('消息内容不能为空；要删掉整条请用「删除所选」。');
+            return;
+        }
+        if (directorNote) next.directorNote = directorNote;
+        else delete next.directorNote;
+        const previousHistory = state.conversationHistory;
+        deps.recordPhoneChange?.([{ saveKey: target.saveKey, op: 'edit', entry }]);
+        state.conversationHistory = previousHistory.map((item, index) => (index === target.historyIndex ? next : item));
+        if (!persistCurrentHistory()) {
+            state.conversationHistory = previousHistory;
+            alert('消息保存失败：会话尚未就绪。');
+            return;
+        }
+        messageEditTarget = null;
+        closeOverlay?.('message-edit');
+        deps.rerenderConversation?.({ keepScroll: true });
+        applyBidirectionalInjection();
     };
 
     window.__pmToggleMin = () => {
@@ -323,6 +411,7 @@ export function installPhoneLifecycle(state, deps) {
         // 空历史也必须落盘，否则删除最后一条消息后直接关闭会让旧历史在下次打开时复活。
         if (!force) {
             if (state.currentPersona) persistCurrentHistory();
+            deps.flushChatMetadata?.(); deps.flushCommunityFiles?.();
             try {
                 deps.persistPhoneUiSnapshot?.();
             } catch (error) {
@@ -344,6 +433,8 @@ export function installPhoneLifecycle(state, deps) {
         deps.cancelCalendarTasks?.('phone-closed');
         deps.destroyTodayTrendPhoneUi?.();
         deps.destroyStoryOraclePhoneUi?.();
+        deps.destroyPhoneGalleryUi?.();
+        deps.destroyPhoneImages?.();
         deps.cancelTodayTrendInitialization?.('phone-closed');
         deps.cancelTodayTrendRuleRegeneration?.('phone-closed');
         deps.cancelTodayTrendGeneration?.('phone-closed', true);
@@ -396,8 +487,13 @@ export function installPhoneLifecycle(state, deps) {
         const branchTargetId = getStorageId();
         try {
             await awaitPendingBranchInheritance(branchTargetId);
+            // 启动期读取若仍在进行，先等它落定，避免它晚到后用旧快照覆盖下面的结果。
+            await runtime.historyLoadPromise?.catch?.(() => false);
             // 分支事务可能刚覆盖同一 IDB 键；不能复用启动期的旧读取 Promise。
-            await loadHistoriesFromIDB();
+            const historiesLoaded = await loadHistoriesFromIDB();
+            // 以当前聊天元数据里的手机记录对账（清过浏览器数据、换设备时从这里找回）。
+            await deps.reconcileChatMetadata?.({ historiesLoaded });
+            await deps.reconcileCommunityFiles?.();
         } catch (error) {
             console.warn('[phone-mode] 分支手机数据继承未完成，按当前已持久化状态打开', error?.name || 'Error');
         }
@@ -445,7 +541,8 @@ export function installPhoneLifecycle(state, deps) {
       </div>
     </div>
     <div class="pm-confirm-bar">
-      <span class="pm-confirm-tip">选择要删除的消息</span>
+      <span class="pm-confirm-tip">选择消息</span>
+      <button onclick="window.__pmEditSelected()" class="pm-cancel-btn">编辑</button>
       <button onclick="window.__pmDeleteSelected()" class="pm-confirm-btn">删除所选</button>
       <button onclick="window.__pmToggleSelect()" class="pm-cancel-btn">取消</button>
     </div>
@@ -469,6 +566,7 @@ export function installPhoneLifecycle(state, deps) {
   <section class="pm-phone-page pm-calendar-page" data-phone-page="calendar" hidden></section>
   <section class="pm-phone-page pm-today-trend-page" data-phone-page="today-trend" hidden></section>
   <section class="pm-phone-page pm-story-oracle-page" data-phone-page="story-oracle" hidden></section>
+  <section class="pm-phone-page pm-gallery-page" data-phone-page="gallery" hidden></section>
 </div>
 </div>
 <div class="pm-phone-resize-handle" data-resize-corner="nw" role="separator" aria-label="从左上角调整手机窗口大小" title="拖动调整手机大小"></div>
@@ -481,6 +579,8 @@ export function installPhoneLifecycle(state, deps) {
         deps.bindPhonePageUi?.(state.phoneWindow);
         deps.bindTodayTrendPhoneUi?.(state.phoneWindow);
         deps.bindStoryOraclePhoneUi?.(state.phoneWindow);
+        deps.bindPhoneImages?.(state.phoneWindow);
+        deps.bindPhoneGalleryUi?.(state.phoneWindow);
         ambientStatus.sync();
         if (state.phoneWindow.showPopover) try { state.phoneWindow.showPopover(); } catch (e) {}
         state.phoneActive = true;
@@ -610,7 +710,10 @@ export function installPhoneLifecycle(state, deps) {
     runtime.galBubbleReconcilePending = true;
     reconcileGal();
     const initialGroupMetaLoad = (deps.loadGroupMeta || loadGroupMeta)();
-    loadHistoriesOnce(); // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
+    // 首次打开复用同一个恢复任务，避免并发读取用旧快照覆盖内存
+    loadHistoriesOnce().then(historiesLoaded => deps.reconcileChatMetadata?.({ historiesLoaded }))
+        .then(() => deps.reconcileCommunityFiles?.())
+        .catch(error => console.warn('[phone-mode] 启动时聊天元数据对账失败', error?.name || 'Error'));
     // 宿主事件重试不能依赖本地数据恢复成功；否则 IDB 故障会永久漏掉 CHAT_CHANGED。
     runtime.galBubbleInitialTimer = setTimeout(() => {
         runtime.galBubbleInitialTimer = null;

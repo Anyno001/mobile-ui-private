@@ -161,6 +161,8 @@ export async function gatherContext(getCtx, {
     const rawLatestChatText = latestMessage?.rawContent || '';
     const latestChatIsUser = latestMessage?.isUser === true;
     const mainChat = normalizedChat.filter(message => message.content);
+    // 新到旧的角色回复原文，供日历在最后一条无日期时向前回溯。
+    const recentAssistantRawTexts = mainChat.filter(message => !message.isUser).map(message => message.rawContent).reverse();
     let worldBookText = '';
     if (includeWorldBook) {
         try {
@@ -175,5 +177,5 @@ export async function gatherContext(getCtx, {
             warnHostContextFailureOnce('world-book', '读取世界书上下文失败', error);
         }
     }
-    return { cardDesc: outfitTarget?.kind === 'user' ? outfitTarget.description : character.description ?? '', cardPersonality: outfitTarget?.kind === 'user' ? '' : character.personality ?? '', cardScenario: outfitTarget?.kind === 'user' ? '' : character.scenario ?? '', cardFirstMes: character?.first_mes ?? '', cardMesExample: character?.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, worldBookText, userName: userPersona.name, userDesc: userPersona.description, outfitTarget };
+    return { cardDesc: outfitTarget?.kind === 'user' ? outfitTarget.description : character.description ?? '', cardPersonality: outfitTarget?.kind === 'user' ? '' : character.personality ?? '', cardScenario: outfitTarget?.kind === 'user' ? '' : character.scenario ?? '', cardFirstMes: character?.first_mes ?? '', cardMesExample: character?.mes_example ?? '', mainChatText: mainChat.map(message => `${message.who}：${message.content}`).join('\n'), latestChatText, rawLatestChatText, latestChatIsUser, recentAssistantRawTexts, worldBookText, userName: userPersona.name, userDesc: userPersona.description, outfitTarget };
 }

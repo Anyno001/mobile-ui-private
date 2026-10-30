@@ -311,17 +311,6 @@ export function toggleSceneMenu(button) {
     return opening;
 }
 
-export function selectScenePreset(app, button) {
-    if (!app || !button) return false;
-    const accent = String(button.dataset?.accent || '').trim().toLowerCase();
-    if (!/^#[0-9a-f]{6}$/.test(accent)) throw new Error('社区预设主题色格式无效');
-    app.querySelectorAll?.('.pm-scene-preset').forEach(item => {
-        item.classList.toggle('is-active', item === button);
-    });
-    app.style?.setProperty?.('--scene-accent', accent);
-    return true;
-}
-
 export function syncSceneAccentControls(app, accent) {
     const normalized = String(accent || '').trim().toLowerCase();
     if (!/^#[0-9a-f]{6}$/.test(normalized)) throw new Error('社区主题色格式无效');

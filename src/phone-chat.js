@@ -1,4 +1,4 @@
-import { CONTEXT_LIMIT, SAVE_LIMIT } from './constants.js';
+import { CONTEXT_LIMIT } from './constants.js';
 import { buildChatPreferencePrompt } from './behavior-config.js';
 import {
     createMessageEntry, describeMessageEntry, formatQuoteContext,
@@ -51,7 +51,9 @@ export function installPhoneChat(state, deps) {
         }
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
-        const smsHistoryText = buildHistoryText(targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona);
+        const smsHistoryText = buildHistoryText(
+            targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona, false, request.storyDate,
+        );
         const currentQuoteText = formatQuoteContext(request.userHistoryEntry?.quote);
         const preferencePrompt = buildChatPreferencePrompt({
             store: window.__pmCharacterBehavior,
@@ -61,7 +63,7 @@ export function installPhoneChat(state, deps) {
             emojiPrompt: getEmojiPrompt(saveKey, storageId, window.__pmPokeConfig, window.__pmEmojis),
             wordyPrompt: getWordyPrompt(window.__pmWordyLimit),
             galBubblePrompt: getGalBubblePrompt(window.__pmGalBubbleOperational),
-        });
+        }) + (deps.getPhoneOutfitPrompt?.({ storageId, names: isGroup ? groupMembers : [currentPersona], userName }) || '');
 
         try {
             const cfg = window.__pmConfig;
@@ -86,7 +88,7 @@ export function installPhoneChat(state, deps) {
                 if (parsed.length) {
                     const contentParts = parsed.map(p => `${p.name}：${p.sentences.join(' / ')}`);
                     const assistantEntry = createMessageEntry({
-                        role: 'assistant',
+                        role: 'assistant', storyDate: request.storyDate,
                         content: contentParts.join('\n'),
                         descriptors: parsed.flatMap(block => block.sentences.map(text => ({ text, sender: block.name }))),
                     });
@@ -97,7 +99,7 @@ export function installPhoneChat(state, deps) {
                     const snippet = raw ? raw.substring(0, 20).replace(/\n/g, '') + '...' : '空响应或纯思考过程';
                     const fallbackText = `（回复格式无法识别：${snippet}）`;
                     targetHistory.push(createMessageEntry({
-                        role: 'assistant',
+                        role: 'assistant', storyDate: request.storyDate,
                         content: '（格式无法解析或AI拒答）',
                         descriptors: [{ text: fallbackText, sender: '系统' }],
                     }));
@@ -118,7 +120,7 @@ export function installPhoneChat(state, deps) {
                 }
                 if (!sentences.length) sentences = !raw?.trim() ? ['（空响应）'] : ['（格式无法解析）'];
                 targetHistory.push(createMessageEntry({
-                    role: 'assistant',
+                    role: 'assistant', storyDate: request.storyDate,
                     content: sentences.join(' / '),
                     descriptors: sentences,
                 }));
@@ -127,6 +129,8 @@ export function installPhoneChat(state, deps) {
 
             persistCurrentHistory(saveKey, storageId, targetHistory);
             if (isGenerationTaskActive(task)) applyBidirectionalInjection();
+            // 生图：「拍一张」的图挂到刚提交的气泡，AI 发的图按设置自动生成。
+            deps.notePhoneImageEntries?.([request.userHistoryEntry, targetHistory.at(-1)].filter(Boolean), { storageId, saveKey });
             return resultData;
         } catch (e) {
             // 用户主动停止必须向外传播，否则外层无法区分取消与失败。
@@ -234,6 +238,75 @@ export function installPhoneChat(state, deps) {
         input.focus();
     };
 
+    function buildChatRequestState(target, targetHistory, userHistoryEntry, storyDate) {
+        return {
+            storageId: target.storageId,
+            saveKey: target.saveKey,
+            isGroup: state.isGroupChat,
+            currentPersona: state.currentPersona,
+            groupMembers: state.groupMembers.slice(),
+            groupDisplayName: state.groupDisplayName,
+            groupRandomNpcEnabled: state.groupRandomNpcEnabled,
+            groupNature: state.groupNature,
+            groupRandomNpcPrompt: state.groupRandomNpcPrompt,
+            targetHistory,
+            userHistoryEntry,
+            storyDate,
+        };
+    }
+
+    /** 只有「我的消息 + 一条回复」结尾时才能重新生成；自动消息、拍一拍结尾不处理。 */
+    function getRegenerateTarget() {
+        const history = state.conversationHistory;
+        const assistantEntry = history.at(-1);
+        const userEntry = history.at(-2);
+        if (assistantEntry?.role !== 'assistant' || userEntry?.role !== 'user') return null;
+        const target = getPendingTarget();
+        return target ? { ...target, userEntry } : null;
+    }
+
+    window.__pmCanRegenerate = () => !state.isGenerating && Boolean(getRegenerateTarget());
+
+    window.__pmRegenerateLast = async () => {
+        if (state.isGenerating) return;
+        const target = getRegenerateTarget();
+        if (!target) return;
+        const task = beginGeneration(target.storageId);
+        if (!task) return;
+        const { userEntry } = target;
+        // 沿用原消息的日期：重新生成的是那一天的回复。
+        const storyDate = userEntry.storyDate || deps.getStoryToday?.(target.storageId) || '';
+        const request = buildChatRequestState(target, state.conversationHistory.slice(0, -2), userEntry, storyDate);
+        const isStillTarget = () => isGenerationTaskActive(task)
+            && state.activeStorageId === target.storageId
+            && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === target.saveKey;
+        if (isStillTarget()) showTyping();
+        try {
+            const oldAssistant = state.conversationHistory.at(-1);
+            const result = await fetchSMS(userEntry.content || '', userEntry.directorNote || '', task, request);
+            if (!result || !isGenerationTaskActive(task)) return;
+            // 被换掉的旧回复记成「已删除」：删楼回退到这次重新生成之前时恢复它。
+            if (oldAssistant?.messageId) deps.recordPhoneChange?.([{
+                saveKey: target.saveKey, op: 'remove', entry: oldAssistant,
+                afterId: userEntry.messageId, index: request.targetHistory.length - 1,
+            }]);
+            if (isStillTarget()) {
+                hideTyping();
+                state.conversationHistory = request.targetHistory;
+                deps.rerenderConversation?.({ keepScroll: false });
+            }
+        } catch (error) {
+            const cancelled = error?.name === 'AbortError';
+            if (isStillTarget()) {
+                hideTyping();
+                if (!cancelled) addNote(`（重新生成失败：${error?.message || error}，原回复已保留）`);
+            }
+            if (!cancelled) console.error('[phone-mode] __pmRegenerateLast 异常', error);
+        } finally {
+            finishGeneration(task);
+        }
+    };
+
     window.__pmSubmitPending = async () => {
         if (state.isGenerating) return;
         const target = getPendingTarget();
@@ -251,25 +324,15 @@ export function installPhoneChat(state, deps) {
         setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, 'submitting');
         updatePendingDomStatus(itemIds, 'submitting');
         window.__pmRefreshControlCenter?.();
-        const request = {
-            storageId: target.storageId,
-            saveKey: target.saveKey,
-            isGroup: state.isGroupChat,
-            currentPersona: state.currentPersona,
-            groupMembers: state.groupMembers.slice(),
-            groupDisplayName: state.groupDisplayName,
-            groupRandomNpcEnabled: state.groupRandomNpcEnabled,
-            groupNature: state.groupNature,
-            groupRandomNpcPrompt: state.groupRandomNpcPrompt,
-            targetHistory: state.conversationHistory.slice(),
-            userHistoryEntry: createMessageEntry({
-                role: 'user',
-                content: combined.plainText,
-                directorNote: combined.directorNote,
-                quote: combined.quote,
-                descriptors: combined.bubbleParts,
-            }),
-        };
+        const storyDate = deps.getStoryToday?.(target.storageId) || '';
+        const request = buildChatRequestState(target, state.conversationHistory.slice(), createMessageEntry({
+            role: 'user',
+            content: combined.plainText,
+            directorNote: combined.directorNote,
+            quote: combined.quote,
+            descriptors: combined.bubbleParts,
+            storyDate,
+        }), storyDate);
         const isStillTarget = () => isGenerationTaskActive(task)
             && state.activeStorageId === target.storageId
             && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === target.saveKey;
@@ -278,7 +341,7 @@ export function installPhoneChat(state, deps) {
             const result = await fetchSMS(combined.plainText, combined.directorNote, task, request);
             if (!result || !isGenerationTaskActive(task)) return;
             if (isStillTarget()) hideTyping();
-            const historyWindow = createHistoryWindow(request.targetHistory, SAVE_LIMIT);
+            const historyWindow = createHistoryWindow(request.targetHistory);
             const userHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 2);
             const aiHistoryIndex = historyWindow.toWindowIndex(request.targetHistory.length - 1);
             removePendingBatch(runtime, target.storageId, target.saveKey, itemIds);

@@ -23,11 +23,16 @@
 | 今日风向、社区、日历任务 | 各域 controller | 关闭、聊天切换、页面挂起均以原因字符串取消；今日风向页面销毁同时解绑代理事件 |
 | 自动任务 Map | `runtime.automaticTasks` | 最小化、关闭、聊天切换和页面挂起均 `disarmAutoPoke(reason)`，递增 epoch 并清表 |
 | 冷启动历史读取 Promise | `runtime.historyLoadPromise` | `finally` 仅清当前 promise；完成前检查 `phoneActive` 与原窗口身份，关闭后不得回写旧窗口 |
+| 社区文件上传防抖 | `community-file-sync.js` 的 `uploadTimer`（1500ms） | 社区保存成功后排队；`flushCommunityFiles` 在关闭手机与页面挂起时立即上传并清计时器；上传失败留待下次改动或对账，不自建重试 |
+| 聊天元数据写入防抖 | 酒馆 `saveMetadataDebounced`（owner 为宿主，插件不自建计时器） | IndexedDB 写成功后同步 `chatMetadata.tianyin_phone` 并调用宿主防抖；关闭手机与页面挂起时 `flushChatMetadata` 立即 `saveMetadata`；宿主切换聊天时自行取消防抖，未写入的改动由下次对账按本地时间戳补写 |
+| 生图任务与图片卡监听 | `phone-image-controller.js:installPhoneImages`：`jobs` Map（每个任务一个 AbortController）、串行 `queue`、`pendingShots`；`phoneWindow` 上的 click / error（capture）监听挂在 `lifecycle` AbortController 上 | `__pmEnd` 调 `destroyPhoneImages`：abort 监听与全部在途任务，清空任务表和未发送的「拍一张」；已上传的图留在目录里 |
+| 相册页监听与目录订阅 | `phone-gallery.js:installPhoneGallery`：`lifecycle` AbortController + `store.subscribe` 返回的退订函数；`renderSerial` 作废迟到的渲染与缩略图读取 | `__pmEnd` 调 `destroyPhoneGalleryUi`：abort、退订、递增 `renderSerial` |
+| 图片元数据写入防抖 | 酒馆 `saveMetadataDebounced`（插件不自建计时器） | 写入 `chatMetadata.tianyin_phone_images` 后调用宿主防抖；与聊天记录共用宿主的防抖与保存时机 |
 | 会话暂存队列 | `runtime.pendingMessages` | 每个 `storageId + saveKey` 最多 `PENDING_MESSAGE_LIMIT = 50` 条；提交、删除、清空和删除会话时移除空桶 |
 
 ## 缓存边界
 
-- 单会话聊天历史由 `SAVE_LIMIT = 60` 截断后才进入 `window.__pmHistories`；历史镜像仍按全部已加载会话保留，以维持当前 IDB、导入导出和注入兼容，不能在没有迁移/宿主回归证据时擅自淘汰。
+- 单会话聊天历史不再截断，完整进入 `window.__pmHistories`（界面只渲染最近 `HISTORY_RENDER_LIMIT = 200` 条，可分批展开）；历史镜像仍按全部已加载会话保留，以维持当前 IDB、导入导出和注入兼容，不能在没有迁移/宿主回归证据时擅自淘汰。
 - `runtime.trackedExtensionPromptKeys` 仅保存当前注入写入或清理失败的 key；每次替换注入先清理旧 key。宿主清理失败的 key 必须保留以便后续重试，不能为压缩内存静默丢弃。
 - 日历按会话缓存的视图和状态由日历域 owner 管理；读取外部存储后的 reload 会清空 `viewByStorage`。跨会话总量策略需与存储治理一并定义。
 

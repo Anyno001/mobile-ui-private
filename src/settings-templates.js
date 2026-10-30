@@ -1,17 +1,18 @@
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
 import { THEME_PRESETS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
+import { DEFAULT_ROLLBACK_FLOORS, MAX_ROLLBACK_FLOORS } from './phone-floor-rollback.js';
 
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b><span class="pm-settings-home-hint">默认使用酒馆 API 预设</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b><span class="pm-settings-home-hint">创建或清除开关入口</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b><span class="pm-settings-home-hint">日夜模式、气泡颜色与背景图</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b><span class="pm-settings-home-hint">导出、导入或安全清理插件数据</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>世界书读取</b><span class="pm-settings-home-hint">包括数据库条目在内，控制手机读取的世界书条目</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b><span class="pm-settings-home-hint">控制手机会话与社区写入主提示词的额度</span></button>
-      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b><span class="pm-settings-home-hint">分别设置聊天、社区、日历与菜谱的注入位置和深度</span></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('api')"><b>API</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('quick-reply')"><b>手机开关</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('look')"><b>主题</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>世界书读取</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">
         <span><b id="pm-wordy-label">全局短消息限制</b><span class="pm-settings-home-hint">除话痨人设外，每条消息不超过 35 字</span></span>
         <div id="pm-wordy-check" onclick="window.__pmToggleWordyLimit()"
@@ -33,26 +34,26 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml }) {
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
-        <div class="pm-cfg-label">API 模式</div>
+        <div class="pm-cfg-label">API模式</div>
         <div class="pm-mode-switch">
-          <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主 API</div>
-          <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立 API</div>
+          <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主API</div>
+          <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆 API 预设'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆API预设'}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
         <div class="pm-cfg-label">已保存档案</div>
         <div class="pm-prof-list">${profilesHtml}</div>
       </div>
       <div id="pm-indep-config-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
-        <label class="pm-settings-field"><span class="pm-cfg-label">API 地址</span><input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}"></label>
+        <label class="pm-settings-field"><span class="pm-cfg-label">API地址</span><input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}"></label>
         <label class="pm-settings-field"><span class="pm-cfg-label">API Key</span><input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${cfg.apiKey}" maxlength="999"></label>
-        <div class="pm-settings-field"><span class="pm-cfg-label">模型名称</span><div class="pm-model-row"><input id="pm-cfg-model" class="pm-cfg-input" placeholder="独立 API 必填：手动输入或选择" value="${cfg.model}"><button id="pm-model-arrow" type="button" aria-label="选择模型" onclick="window.__pmShowModelPicker()">▼</button></div></div>
+        <div class="pm-settings-field"><span class="pm-cfg-label">模型名称</span><div class="pm-model-row"><input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或选择" value="${cfg.model}"><button id="pm-model-arrow" type="button" aria-label="选择模型" onclick="window.__pmShowModelPicker()">▼</button></div></div>
         <label class="pm-settings-field" for="pm-cfg-temperature"><span class="pm-cfg-label">温度</span><input id="pm-cfg-temperature" class="pm-cfg-input" type="number" min="0" max="2" step="0.1" inputmode="decimal" value="${cfg.temperature}"><span class="pm-cfg-help">范围 0–2；数值越高，回复越随机。默认 1.2。</span></label>
         <div id="pm-api-status" class="pm-cfg-tip">测试连接不会覆盖当前配置，点击保存后生效</div>
         <div class="pm-action-row">
           <button id="pm-api-fetch-models" type="button" class="pm-action-button is-model-fetch" onclick="window.__pmTestApi(this)">拉取模型</button>
-          <button id="pm-api-test-model" type="button" class="pm-action-button is-api-test" onclick="window.__pmTestModel(this)">测试 API</button>
+          <button id="pm-api-test-model" type="button" class="pm-action-button is-api-test" onclick="window.__pmTestModel(this)">测试API</button>
         </div>
       </div>
       <div class="pm-settings-tail"></div>
@@ -70,7 +71,7 @@ export function renderQuickReplySettings(status, label = '天音') {
         unavailable: status.error || '当前版本不支持快捷回复。',
     };
     return `<div class="pm-settings-page pm-quick-reply-settings">
-      <section><b>手机开关</b><p>入口会执行 <code>/phone</code>。名称最多 6 个字，留空时使用“天音”。</p>
+      <section>
         <label class="pm-quick-reply-label"><span>入口名称</span><input id="pm-quick-reply-label" class="pm-cfg-input" maxlength="6" value="${labelValue}" autocomplete="off"></label>
       </section>
       <div id="pm-quick-reply-status" class="pm-cfg-tip" data-state="${status.state}" role="status">${descriptions[status.state] || descriptions.unavailable}</div>
@@ -90,15 +91,7 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
     const leftColor = theme.customLeft || (interfaceMode === 'dark' ? preset.leftDark || preset.left : preset.left);
     return `
     <div class="pm-settings-page">
-      <div class="pm-settings-section">
-        <label class="pm-cfg-label pm-ambient-setting">
-          <span><b>显示本地状态栏</b><small>仅显示设备本地时间。</small></span>
-          <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-        </label>
-      </div>
-      <div class="pm-settings-section">
-        <label class="pm-settings-field" for="pm-custom-title"><span class="pm-cfg-label">桌面标题</span><input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}" placeholder="天音小笺" oninput="window.__pmSetCustomTitle()"><span class="pm-cfg-help">留空时显示“天音小笺”。</span></label>
-      </div>
+      <div class="pm-settings-group"><div class="pm-settings-group-title">外观</div><div class="pm-settings-group-card">
       <div class="pm-settings-section">
         <div class="pm-cfg-label">日夜模式</div>
         <div class="pm-theme-row">
@@ -106,6 +99,28 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <button type="button" class="pm-layout-chip ${theme.darkMode === 'dark' ? 'pm-layout-active' : ''}" data-theme-mode="dark" aria-pressed="${theme.darkMode === 'dark'}" onclick="window.__pmSetDarkMode('dark')">夜间</button>
         </div>
       </div>
+      <div class="pm-settings-section">
+        <div class="pm-cfg-label">图标风格</div>
+        <div class="pm-theme-row">
+          <button type="button" class="pm-layout-chip ${theme.iconStyle !== 'cream' ? 'pm-layout-active' : ''}" data-icon-variant="glass" aria-pressed="${theme.iconStyle !== 'cream'}" onclick="window.__pmSetIconStyle('glass')">毛玻璃</button>
+          <button type="button" class="pm-layout-chip ${theme.iconStyle === 'cream' ? 'pm-layout-active' : ''}" data-icon-variant="cream" aria-pressed="${theme.iconStyle === 'cream'}" onclick="window.__pmSetIconStyle('cream')">奶油渐层</button>
+        </div>
+      </div>
+      <div class="pm-settings-section">
+        <div class="pm-cfg-label">背景</div>
+        <div class="pm-theme-row">
+          <button type="button" class="pm-layout-chip ${theme.wallpaper !== 'plain' ? 'pm-layout-active' : ''}" data-wallpaper-variant="soft" aria-pressed="${theme.wallpaper !== 'plain'}" onclick="window.__pmSetWallpaper('soft')">柔光</button>
+          <button type="button" class="pm-layout-chip ${theme.wallpaper === 'plain' ? 'pm-layout-active' : ''}" data-wallpaper-variant="plain" aria-pressed="${theme.wallpaper === 'plain'}" onclick="window.__pmSetWallpaper('plain')">纯白</button>
+        </div>
+      </div>
+      <div class="pm-settings-section">
+        <label class="pm-cfg-label pm-ambient-setting">
+          <span><b>显示本地状态栏</b></span>
+          <div id="pm-ambient-status-enabled" class="pm-custom-check ${theme.ambientStatusEnabled === true ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${theme.ambientStatusEnabled === true}" onclick="const enabled=!this.classList.contains('is-checked');this.classList.toggle('is-checked',enabled);this.setAttribute('aria-checked',String(enabled));window.__pmSetAmbientStatus(enabled)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+        </label>
+      </div>
+      </div></div>
+      <div class="pm-settings-group"><div class="pm-settings-group-title">颜色</div><div class="pm-settings-group-card">
       <div class="pm-settings-section">
         <div class="pm-cfg-label">主题颜色</div>
         <div class="pm-settings-inline-row pm-theme-row">${presetButtons}<input id="pm-custom-accent" type="color" value="${customAccent || preset.accent || preset.right}" onchange="window.__pmSetCustomAccent()" class="pm-color-pick" title="自定义主题色" aria-label="自定义主题色"></div>
@@ -127,6 +142,11 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <button type="button" onclick="document.getElementById('pm-border-color').value='#1a1a1a';window.__pmSetBorderColor()" class="pm-color-clear">重置</button>
         </div>
       </div>
+      </div></div>
+      <div class="pm-settings-group"><div class="pm-settings-group-title">桌面</div><div class="pm-settings-group-card">
+      <div class="pm-settings-section">
+        <label class="pm-settings-field" for="pm-custom-title"><span class="pm-cfg-label">桌面标题</span><input id="pm-custom-title" class="pm-cfg-input" maxlength="20" value="${String(theme.customTitle || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}" placeholder="天音小笺" oninput="window.__pmSetCustomTitle()"></label>
+      </div>
       <div class="pm-settings-section">
         <div class="pm-cfg-label">背景图</div>
         <div class="pm-settings-stack">
@@ -135,9 +155,10 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
           <div class="pm-bg-row"><span class="pm-bg-label">本联系人</span>${localBackgroundButtons}</div>
         </div>
       </div>
+      </div></div>
       <div class="pm-settings-section">
-        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('appearance-pack')"><span><b>一键美化</b><small>导出可分享的主题、背景和桌面图标</small></span><span aria-hidden="true">›</span></button>
-        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('desktop-icons')"><span><b>桌面图标</b><small>修改七个桌面入口的图片图标</small></span><span aria-hidden="true">›</span></button>
+        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('appearance-pack')"><span><b>一键美化</b></span><span aria-hidden="true">›</span></button>
+        <button type="button" class="pm-settings-subpage-button" onclick="window.__pmShowConfig('desktop-icons')"><span><b>自定义图标</b></span><span aria-hidden="true">›</span></button>
       </div>
       <div class="pm-settings-tail"></div>
     </div>`;
@@ -146,7 +167,7 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
 export function renderAppearancePackSettings() {
     return `<div class="pm-settings-page pm-appearance-pack-settings">
       <div class="pm-settings-section">
-        <div class="pm-cfg-tip">仅导出主题外观、桌面/全局/当前联系人背景和七个桌面图标，不含聊天、联系人、API 或其他业务数据。远程图片链接不会被打包。</div>
+        <div class="pm-cfg-tip">仅含主题外观、背景与桌面图标，不含聊天与API配置；远程图片链接不打包。</div>
         <label class="pm-settings-field" for="pm-appearance-name"><span class="pm-cfg-label">美化名称</span><input id="pm-appearance-name" class="pm-cfg-input" maxlength="60" placeholder="例如：薄荷日记"></label>
         <label class="pm-settings-field" for="pm-appearance-author"><span class="pm-cfg-label">作者</span><input id="pm-appearance-author" class="pm-cfg-input" maxlength="60" placeholder="可留空"></label>
         <label class="pm-settings-field" for="pm-appearance-description"><span class="pm-cfg-label">说明</span><textarea id="pm-appearance-description" class="pm-cfg-input" maxlength="500" rows="4" placeholder="可留空"></textarea></label>
@@ -226,16 +247,14 @@ export function renderBudgetSettings({ config }) {
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
-        <div class="pm-cfg-label">上下文预算</div>
-        <div class="pm-cfg-tip">控制本插件写入主提示词的内容量，不限制模型输出。</div>
-        <label class="pm-settings-field" for="pm-budget-target"><span class="pm-cfg-label">总目标（估算 token）</span><input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}"><span class="pm-cfg-tip">数值越大，AI 能看到的手机和社区历史越多，也会占用更多上下文。</span></label>
+        <label class="pm-settings-field" for="pm-budget-target"><span class="pm-cfg-label">总目标（估算 token）</span><input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}"></label>
         <div class="pm-budget-weight-list">
           <label class="pm-cfg-label">手机会话占比 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
           <label class="pm-cfg-label">互动社区占比 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>
           <label class="pm-cfg-label">日历模块占比 (%)<input id="pm-budget-calendar-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.calendar}" data-initial-value="${percentages.calendar}"></label>
           <label class="pm-cfg-label">今日风向占比 (%)<input id="pm-budget-today-trend-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.todayTrend}" data-initial-value="${percentages.todayTrend}"></label>
         </div>
-        <div class="pm-cfg-tip">四类内容占比合计必须为 100%。日历模块包含生活日历、菜谱和穿搭。</div>
+        <div class="pm-cfg-tip">四项合计 100%。</div>
         <label class="pm-settings-field" for="pm-budget-priority"><span class="pm-cfg-label">剩余额度优先补给</span><select id="pm-budget-priority" class="pm-cfg-input">
           <option value="phone" ${priority === 'phone' ? 'selected' : ''}>手机会话优先</option>
           <option value="community" ${priority === 'community' ? 'selected' : ''}>互动社区优先</option>
@@ -243,7 +262,7 @@ export function renderBudgetSettings({ config }) {
           <option value="todayTrend" ${priority === 'todayTrend' ? 'selected' : ''}>今日风向优先</option>
         </select></label>
         <label class="pm-cfg-label pm-check-setting">
-          <span>自动将未使用的额度补给仍有内容的模块</span>
+          <span>未用完的额度补给其他模块</span>
           <div id="pm-budget-redistribute" class="pm-custom-check ${config.redistributeUnused ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${config.redistributeUnused}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </label>
       </div>
@@ -253,22 +272,27 @@ export function renderBudgetSettings({ config }) {
 
 
 
-export function renderBackupSettings() {
+export function renderBackupSettings({ rollbackFloors = DEFAULT_ROLLBACK_FLOORS } = {}) {
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
+        <label class="pm-cfg-label" for="pm-rollback-floors">删楼回退保留层数</label>
+        <input id="pm-rollback-floors" class="pm-cfg-input" type="number" min="0" max="${MAX_ROLLBACK_FLOORS}" step="1" inputmode="numeric" value="${rollbackFloors}" onchange="window.__pmSaveRollbackFloors(this)">
+        <div class="pm-cfg-tip">主线删楼后，此后的手机消息随之撤回；保留层数内的编辑、删除与重新生成可还原，0为不保留。</div>
+      </div>
+      <div class="pm-settings-section">
         <div class="pm-cfg-label">数据备份</div>
         <div class="pm-action-row">
-          <button class="pm-action-button is-success" onclick="window.__pmExportData()">导出备份</button>
+          <button class="pm-action-button" onclick="window.__pmExportData()">导出备份</button>
           <button class="pm-action-button is-accent" onclick="document.getElementById('pm-import-file').click()">导入备份</button>
           <input id="pm-import-file" type="file" accept=".json" onchange="window.__pmImportData(this)" hidden>
         </div>
-        <div class="pm-cfg-tip is-warning">注意：导入会覆盖当前所有联系人、记录、社区与页面恢复状态</div>
+        <div class="pm-cfg-tip is-warning">导入会覆盖当前全部数据。</div>
       </div>
       <div class="pm-settings-section">
-        <div class="pm-cfg-label is-danger">应用内安全清理</div>
-        <div class="pm-cfg-tip">仅删除天音小笺拥有的数据，不触碰宿主或其他扩展。建议先导出备份。</div>
-        <button type="button" class="pm-action-button is-danger is-full" onclick="window.__pmClearAllData()">清理全部天音小笺数据</button>
+        <div class="pm-cfg-label">清理数据</div>
+        <div class="pm-cfg-tip">只清除本插件的数据，建议先导出备份。</div>
+        <button type="button" class="pm-action-button is-danger-text is-full" onclick="window.__pmClearAllData()">清理全部天音小笺数据</button>
       </div>
       <div class="pm-settings-tail"></div>
     </div>`;

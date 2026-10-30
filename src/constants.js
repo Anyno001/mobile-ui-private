@@ -1,4 +1,5 @@
-export const SAVE_LIMIT = 60;
+// 聊天历史不截断；界面一次只渲染最近 HISTORY_RENDER_LIMIT 条，往上可分批展开。
+export const HISTORY_RENDER_LIMIT = 200;
 export const CONTEXT_LIMIT = 20;
 export const BIDIRECTIONAL_LIMIT = 20;
 export const BIDIRECTIONAL_KEY = 'PHONE_SMS_MEMORY';

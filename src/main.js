@@ -23,9 +23,20 @@ import { createRuntimeState } from './runtime.js';
 import { installSettingsUi } from './settings-ui.js';
 import { installTodayTrend } from './today-trend.js';
 import { installTodayTrendPhoneUi } from './today-trend-phone-ui.js';
-import { saveBudgetConfig, saveEmojis } from './storage.js';
+import {
+    loadGroupMeta, saveBudgetConfig, saveEmojis, saveGroupMeta, saveHistoriesStrict,
+    setGroupMetaPersistListener, setHistoryPersistListener,
+} from './storage.js';
+import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
+import { createChatMetadataSync } from './chat-metadata-sync.js';
+import { setFloorMarkProvider } from './chat-message-model.js';
+import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
 
 (async function bootstrapPhoneMode() {
+    // 扩展安装与酒馆助手自动更新脚本可能同时存在，先启动的一份生效。
+    const bootKey = Symbol.for('tianyin-xiaojian.boot');
+    if (globalThis[bootKey]) return;
+    globalThis[bootKey] = true;
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const runtime = createRuntimeState();
@@ -35,6 +46,7 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
         activeStorageId: '',
         currentPersona: '',
         conversationHistory: [],
+        historyRenderLimit: 0,
         activeQuote: null,
         isGenerating: false,
         generationTask: null,
@@ -85,6 +97,41 @@ import { saveBudgetConfig, saveEmojis } from './storage.js';
     installContactGenerator(state, deps);
     installPhoneChatPoke(state, deps);
     installPhoneLifecycle(state, deps);
+    // 手机聊天记录随酒馆聊天文件保存（chatMetadata 第二副本）。
+    setFloorMarkProvider(() => {
+        const chat = getCtx()?.chat;
+        return Array.isArray(chat) ? floorMarkFor(chat) : null;
+    });
+    const chatMetadataSync = createChatMetadataSync({
+        getCtx, getStorageId, getRollbackFloors: () => loadRollbackFloors(),
+        ensureHistoriesLoaded: async () => (runtime.historyLoadPromise
+            ? runtime.historyLoadPromise.catch(() => false) : true),
+        awaitBranch: storageId => awaitPendingBranchInheritance(storageId).catch(() => {}),
+        saveHistories: () => saveHistoriesStrict(),
+        saveGroupMeta: () => saveGroupMeta(),
+        loadGroupMeta: () => loadGroupMeta(),
+    });
+    setHistoryPersistListener(chatMetadataSync.noteLocalChange);
+    setGroupMetaPersistListener(chatMetadataSync.noteLocalChange);
+    Object.assign(deps, {
+        reconcileChatMetadata: chatMetadataSync.reconcile,
+        flushChatMetadata: chatMetadataSync.flush,
+        markChatMetadataLocalAuthoritative: chatMetadataSync.markLocalAuthoritative,
+        recordPhoneChange: chatMetadataSync.recordPhoneChange,
+        pruneRollback: chatMetadataSync.pruneRollback,
+        /** 主线删楼后回退手机记录；正在看的会话有变化就重画。 */
+        applyFloorRollback: async () => {
+            const changedKeys = await chatMetadataSync.applyFloorRollback({
+                onChanged: () => { if (state.isGenerating) deps.invalidateGeneration?.(); },
+            });
+            const saveKey = deps.getSaveKey?.();
+            if (!state.phoneActive || !saveKey || !changedKeys.includes(saveKey)) return changedKeys;
+            if (state.activeStorageId !== getStorageId()) return changedKeys;
+            state.conversationHistory = (window.__pmHistories[state.activeStorageId]?.[saveKey] || []).slice();
+            deps.rerenderConversation?.({ keepScroll: true });
+            return changedKeys;
+        },
+    });
     installDiagnosticApi(deps);
     installTodayTrend(state, deps);
     installTodayTrendPhoneUi(state, deps);

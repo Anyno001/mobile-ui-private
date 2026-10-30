@@ -1,3 +1,4 @@
+import { diffTodayTrendScopes, resolveTodayTrendPreviousScope } from './today-trend-changes.js';
 import { createTodayTrendCommitter } from './today-trend-commit.js';
 import { createTodayTrendGenerationController } from './today-trend-generation.js';
 import { countTodayTrendAssistantMessages, createTodayTrendScheduler } from './today-trend-scheduler.js';
@@ -346,6 +347,12 @@ export function installTodayTrend(_state, deps = {}) {
         getTodayTrendUiScope: async storageId => {
             if (typeof committer.loadCanonical !== 'function') return (await loadStore()).scopes?.[storageId] || null;
             return resolveTodayTrendV2UiScope(await committer.loadCanonical(), storageId);
+        },
+        // 较上次更新的变化标记；任何读取或校验失败都返回 null，不影响页面渲染。
+        getTodayTrendChanges: async (storageId, scope) => {
+            if (typeof committer.loadCanonical !== 'function' || !scope) return null;
+            const previous = resolveTodayTrendPreviousScope(await committer.loadCanonical(), storageId);
+            return previous ? diffTodayTrendScopes(previous, scope) : null;
         },
         getTodayTrendRetentionSettingsState: retentionSettingsState,
         reloadTodayTrendStore: reloadStore,

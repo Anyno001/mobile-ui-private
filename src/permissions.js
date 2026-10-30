@@ -1,4 +1,4 @@
-import { INTERACTIVE_STORE_VERSION, normalizeScene } from './interactive-scene-model.js';
+import { INTERACTIVE_STORE_VERSION, normalizeLiveRoomSnapshot, normalizeScene } from './interactive-scene-model.js';
 
 const UNKNOWN_STORAGE_ID = 'sms_unknown__default';
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
@@ -236,6 +236,12 @@ export function resolveCommunitySources({
         if (actorsEntry.invalid || !actorsEntry.found || !plainRecord(actorsEntry.value)) {
             return { allowed: false, reason: 'invalid-actors', sources: [] };
         }
+        const liveRoomsEntry = ownData(scopeEntry.value, 'liveRooms');
+        const liveOrderEntry = ownData(scopeEntry.value, 'liveOrder');
+        const liveOrder = liveOrderEntry.found ? dataArraySnapshot(liveOrderEntry.value) : { valid: true, value: [] };
+        if (liveRoomsEntry.invalid || liveOrderEntry.invalid || !liveOrder.valid || (liveRoomsEntry.found && !plainRecord(liveRoomsEntry.value))) {
+            return { allowed: false, reason: 'invalid-live-rooms', sources: [] };
+        }
         const sources = [];
         const seen = new Set();
         for (let index = 0; index < sceneIds.value.length; index += 1) {
@@ -260,7 +266,25 @@ export function resolveCommunitySources({
                 actorIds.add(post.authorId);
                 for (const comment of post.comments) actorIds.add(comment.authorId);
             }
-            for (const item of scene.live.danmaku) actorIds.add(item.authorId);
+            // 直播间只读取 liveOrder 里指向该社区的那一间；没有直播间时不报错，注入文本里就没有直播段。
+            let liveRoom = null;
+            if (liveRoomsEntry.found) {
+                for (const roomId of liveOrder.value) {
+                    if (typeof roomId !== 'string') return { allowed: false, reason: 'invalid-live-rooms', sources: [] };
+                    const roomEntry = ownData(liveRoomsEntry.value, roomId);
+                    if (roomEntry.invalid) return { allowed: false, reason: 'invalid-live-room', sources: [] };
+                    if (!roomEntry.found || !plainRecord(roomEntry.value)) continue;
+                    const sourceSceneEntry = ownData(roomEntry.value, 'sourceSceneId');
+                    if (!sourceSceneEntry.found || sourceSceneEntry.value !== sceneId) continue;
+                    try {
+                        liveRoom = Object.freeze(normalizeLiveRoomSnapshot(roomEntry.value, roomId, actorsEntry.value, currentStorageId));
+                    } catch (error) {
+                        return { allowed: false, reason: 'invalid-live-room', sources: [] };
+                    }
+                    break;
+                }
+            }
+            for (const item of liveRoom?.danmaku || []) actorIds.add(item.authorId);
             const actors = {};
             for (const actorId of actorIds) {
                 const actorEntry = ownData(actorsEntry.value, actorId);
@@ -273,7 +297,7 @@ export function resolveCommunitySources({
             }
             sources.push(Object.freeze({
                 type: 'community', storageId: currentStorageId, sourceId: sceneId,
-                scene: Object.freeze(scene), actors: Object.freeze(actors),
+                scene: Object.freeze(scene), liveRoom, actors: Object.freeze(actors),
                 selection: selection.value,
             }));
         }

@@ -74,8 +74,8 @@ export function resolveCommunityMessageEvents(eventTypes) {
 }
 
 
-export function createCommunityTaskController({ runtime, isAllowed, isTargetActive }) {
-    if (!runtime || typeof isAllowed !== 'function' || typeof isTargetActive !== 'function') {
+export function createCommunityTaskController({ runtime, isAllowed, isTargetActive, isLiveTargetActive = () => false }) {
+    if (!runtime || typeof isAllowed !== 'function' || typeof isTargetActive !== 'function' || typeof isLiveTargetActive !== 'function') {
         throw new TypeError('社区任务控制器依赖无效');
     }
     runtime.communityGeneration = Number.isInteger(runtime.communityGeneration) ? runtime.communityGeneration : 0;
@@ -107,7 +107,7 @@ export function createCommunityTaskController({ runtime, isAllowed, isTargetActi
     const isActive = task => !!task
         && runtime.communityTask === task
         && runtime.communityGeneration === task.generation
-        && isTargetActive(task);
+        && (task.roomId ? isLiveTargetActive(task) : isTargetActive(task));
     const setMode = mode => {
         if (!['remind', 'auto'].includes(mode)) throw new Error('社区热场模式无效');
         runtime.communityMode = mode;
@@ -117,10 +117,11 @@ export function createCommunityTaskController({ runtime, isAllowed, isTargetActi
         runtime.communityBaselineAssistantCount = snapshot?.assistantCount ?? 0;
         runtime.communityReminder = null;
     };
-    const begin = ({ kind, storageId, sceneId, turnKey = '', scheduled = false }) => {
-        if (!kind || !storageId || !sceneId || runtime.communityTask) return null;
+    // 任务目标是社区（sceneId）或直播间（roomId）；两者共用同一把忙碌锁，同一时间只有一个生成任务。
+    const begin = ({ kind, storageId, sceneId, roomId, turnKey = '', scheduled = false }) => {
+        if (!kind || !storageId || (!sceneId && !roomId) || runtime.communityTask) return null;
         const task = Object.freeze({
-            generation: ++runtime.communityGeneration, kind, storageId, sceneId, turnKey,
+            generation: ++runtime.communityGeneration, kind, storageId, ...(roomId ? { roomId } : { sceneId }), turnKey,
         });
         runtime.communityTask = task;
         runtime.communityTaskPhase = scheduled ? COMMUNITY_TASK_PHASES.SCHEDULED : COMMUNITY_TASK_PHASES.GENERATING;
@@ -274,4 +275,47 @@ export function createCommunityGenerationRunner({
         return task;
     };
     return { cancel, generateFeed, generateDanmaku, observe };
+}
+
+// 直播间的弹幕生成：目标是 { storageId, roomId }，与社区共用同一个任务控制器，所以互相排斥、可一并取消。
+// 不接入社区的正文观察与提醒，正文进展不会触发直播间生成。
+export function createLiveGenerationRunner({
+    controller, getTarget, request, commitDanmaku, onRender = () => {}, onStatus = () => {},
+}) {
+    if (!controller || typeof getTarget !== 'function' || typeof request !== 'function' || typeof commitDanmaku !== 'function') {
+        throw new TypeError('直播生成调度器依赖无效');
+    }
+    const isCancelled = (task, error) => !controller.isActive(task)
+        || error?.message === '生成已取消' || error?.name === 'AbortError';
+    const generateDanmaku = async (scheduledTask = null, { taskKind = 'manual-danmaku', onComplete = null } = {}) => {
+        let task = scheduledTask;
+        if (!task) {
+            const target = getTarget();
+            task = target ? controller.begin({ kind: taskKind, ...target }) : null;
+        }
+        if (!task) throw new Error('已有社区生成任务正在进行');
+        if (!controller.markGenerating(task)) {
+            // 目标已不在场：释放任务锁，按取消处理，避免一直占着忙碌锁。
+            controller.finish(task);
+            throw new Error('生成已取消');
+        }
+        const target = { storageId: task.storageId, roomId: task.roomId };
+        try {
+            const items = await request(target);
+            if (!controller.isActive(task)) throw new Error('生成已取消');
+            await commitDanmaku(target, items, () => controller.isActive(task), onComplete);
+            if (!controller.isActive(task)) throw new Error('生成已取消');
+            controller.finish(task);
+            onRender();
+            return true;
+        } catch (error) {
+            if (isCancelled(task, error)) {
+                controller.finish(task);
+                throw new Error('生成已取消');
+            }
+            if (controller.finish(task, error)) onStatus(generationErrorMessage(error));
+            throw error;
+        }
+    };
+    return { generateDanmaku };
 }

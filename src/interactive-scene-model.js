@@ -1,5 +1,6 @@
 import {
-    INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, PHONE_UI_PAGES, PHONE_UI_TABS,
+    COMMUNITY_PLATFORMS, COMMUNITY_POST_FLAGS, INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, LIVE_DANMAKU_KINDS, PHONE_UI_PAGES, PHONE_UI_TABS,
+    platformForPreset,
 } from './interactive-scene-constants.js';
 import { stripPersistedV2ContentRating as stripPersistedV2ContentRatingImpl } from './interactive-scene-store-migration.js';
 import {
@@ -7,9 +8,13 @@ import {
     normalizeSharedCommunityTemplates, validPhoneUiId,
 } from './interactive-scene-community-template.js';
 
-export const INTERACTIVE_STORE_VERSION = 2;
+export const INTERACTIVE_STORE_VERSION = 3;
+const LEGACY_V2_STORE_VERSION = 2;
 export const PHONE_UI_STATE_VERSION = 1;
-export { INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, PHONE_UI_PAGES, PHONE_UI_TABS };
+export {
+    COMMUNITY_PLATFORMS, COMMUNITY_POST_FLAGS, INTERACTIVE_ACTOR_TYPES, INTERACTIVE_LIMITS, LIVE_DANMAKU_KINDS, PHONE_UI_PAGES, PHONE_UI_TABS,
+    platformForPreset,
+};
 export { createCommunityTemplate, createSceneFromCommunityTemplateSnapshot as createSceneFromCommunityTemplate };
 
 const text = (value, max) => String(value ?? '').trim().slice(0, max);
@@ -43,28 +48,36 @@ const assertDataArray = (value, label) => {
         if (!Object.hasOwn(descriptor, 'value')) throw new Error(`${label}.${index} 不能是访问器属性`);
     }
 };
+// v2 与 v3 共用同一套严格校验（assertV2* 命名沿用），仅错误信息中的版本标签不同；标签在同步归一化入口处设置。
+let strictTag = `v${INTERACTIVE_STORE_VERSION}`;
+const withStrictTag = (version, run) => {
+    const previous = strictTag;
+    strictTag = `v${version}`;
+    try { return run(); } finally { strictTag = previous; }
+};
 const assertV2Keys = (raw, allowedKeys, label) => {
-    assertDataObject(raw, `互动场景 v2 ${label}`);
+    assertDataObject(raw, `互动场景 ${strictTag} ${label}`);
     const allowed = new Set(allowedKeys);
     const unsupported = Object.keys(raw).find(key => !allowed.has(key));
-    if (unsupported) throw new Error(`互动场景 v2 ${label} 包含额外字段：${unsupported}`);
+    if (unsupported) throw new Error(`互动场景 ${strictTag} ${label} 包含额外字段：${unsupported}`);
 };
 const assertV2Text = (value, max, label, { allowEmpty = false } = {}) => {
-    if (typeof value !== 'string') throw new Error(`互动场景 v2 ${label} 必须是字符串`);
-    if (value !== value.trim()) throw new Error(`互动场景 v2 ${label} 不能包含首尾空白`);
-    if (!allowEmpty && !value) throw new Error(`互动场景 v2 ${label} 不能为空`);
-    if (value.length > max) throw new Error(`互动场景 v2 ${label} 长度不能超过 ${max}`);
+    if (typeof value !== 'string') throw new Error(`互动场景 ${strictTag} ${label} 必须是字符串`);
+    if (value !== value.trim()) throw new Error(`互动场景 ${strictTag} ${label} 不能包含首尾空白`);
+    if (!allowEmpty && !value) throw new Error(`互动场景 ${strictTag} ${label} 不能为空`);
+    if (value.length > max) throw new Error(`互动场景 ${strictTag} ${label} 长度不能超过 ${max}`);
 };
 const assertV2Timestamp = (value, label) => {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`互动场景 v2 ${label} 必须是有效时间戳`);
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw new Error(`互动场景 ${strictTag} ${label} 必须是有效时间戳`);
 };
 const assertV2AuthorFields = (raw, label) => {
     assertV2Text(raw.authorId, 80, `${label}.authorId`);
     assertV2Text(raw.authorNameSnapshot, 80, `${label}.authorNameSnapshot`);
 };
 const assertV2List = (value, label) => {
-    assertDataArray(value, `互动场景 v2 ${label}`);
+    assertDataArray(value, `互动场景 ${strictTag} ${label}`);
 };
+const isStrictVersion = version => version === LEGACY_V2_STORE_VERSION || version === INTERACTIVE_STORE_VERSION;
 const assertV1Object = (value, label) => {
     assertDataObject(value, `互动场景 v1 ${label}`);
 };
@@ -134,7 +147,7 @@ const assertSafeDictionaryKey = (value, label) => {
 };
 const assertV2DictionaryKey = (value, max, label) => {
     assertV2Text(value, max, label);
-    return assertSafeDictionaryKey(value, `v2 ${label}`);
+    return assertSafeDictionaryKey(value, `${strictTag} ${label}`);
 };
 const normalizeV1DictionaryKey = (value, max, label) => {
     const normalized = text(value, max);
@@ -161,7 +174,7 @@ export function createEmptyInteractiveStore() {
 }
 
 export function stripPersistedV2ContentRating(rawStore) {
-    return stripPersistedV2ContentRatingImpl(rawStore, INTERACTIVE_STORE_VERSION);
+    return stripPersistedV2ContentRatingImpl(rawStore, LEGACY_V2_STORE_VERSION);
 }
 
 export function createDefaultPhoneUiScope() {
@@ -233,7 +246,7 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             ...(dismissedCommunityTemplateIds.length ? { dismissedCommunityTemplateIds } : {}),
             lastPage,
             lastSceneId,
-            lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : 'feed',
+            lastTab: PHONE_UI_TABS.includes(value.lastTab) ? value.lastTab : 'feed', // 旧状态的 'live' 在此归一为 'feed'
             lastChatType: lastChatKey ? lastChatType : null,
             lastChatKey,
         };
@@ -428,18 +441,30 @@ function deterministicItemId(prefix, scopeId, path, content) {
 
 function normalizeAuthor(raw, scope, scopeId, sourceVersion, createdAt) {
     const snapshot = text(raw?.authorNameSnapshot ?? raw?.author, 80) || '匿名用户';
-    if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+    if (isStrictVersion(sourceVersion)) {
         const actorId = assertV2DictionaryKey(raw?.authorId, 80, '内容 authorId');
-        if (!Object.hasOwn(scope.actors || {}, actorId)) throw new Error(`互动场景 v2 内容引用了不存在的 actor：${actorId}`);
+        if (!Object.hasOwn(scope.actors || {}, actorId)) throw new Error(`互动场景 ${strictTag} 内容引用了不存在的 actor：${actorId}`);
         return { authorId: actorId, authorNameSnapshot: snapshot };
     }
     return actorReference(ensureLegacyActor(scope, scopeId, snapshot, createdAt), snapshot);
 }
 
+const validRatingValue = value => Number.isInteger(value) && value >= 1 && value <= 5;
+
+// v3 评论可选字段：quoteId（豆瓣引用楼层）与 rating（书评短评）；缺省不输出该键。quoteId 是否指向同帖评论在帖子层统一核对。
+function normalizeCommentExtras(raw) {
+    const quoteId = typeof raw?.quoteId === 'string' ? text(raw.quoteId, 80) : '';
+    return { ...(quoteId ? { quoteId } : {}), ...(validRatingValue(raw?.rating) ? { rating: raw.rating } : {}) };
+}
+
 function normalizeComment(raw, context) {
-    if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt'], 'comment');
+    if (isStrictVersion(context.sourceVersion)) {
+        const allowed = ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt'];
+        if (context.sourceVersion === INTERACTIVE_STORE_VERSION) allowed.push('quoteId', 'rating');
+        assertV2Keys(raw, allowed, 'comment');
         assertV2Text(raw.id, 80, 'comment.id'); assertV2AuthorFields(raw, 'comment'); assertV2Text(raw.content, 1000, 'comment.content'); assertV2Timestamp(raw.createdAt, 'comment.createdAt');
+        if (Object.hasOwn(raw, 'quoteId')) assertV2Text(raw.quoteId, 80, 'comment.quoteId');
+        if (Object.hasOwn(raw, 'rating') && !validRatingValue(raw.rating)) throw new Error(`互动场景 ${strictTag} comment.rating 必须是 1-5 的整数`);
     } else if (context.strictLegacy) {
         assertV1Item(raw, 'comment', context.path);
     }
@@ -451,33 +476,109 @@ function normalizeComment(raw, context) {
         ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
         content,
         createdAt,
+        ...normalizeCommentExtras(raw),
     };
 }
 
-// 书评形态的可选字段：旧数据不含这两项，只有存在时才校验与输出，保持既有存储与 fixture 等价。
-function normalizeReviewFields(raw) {
+// 引用楼层只能指向同帖另一条评论；目标被删除或截断后丢弃 quoteId，评论本身保留。
+function pruneDanglingQuotes(comments) {
+    const ids = new Set(comments.map(comment => comment.id));
+    return comments.map(comment => {
+        if (!Object.hasOwn(comment, 'quoteId') || (comment.quoteId !== comment.id && ids.has(comment.quoteId))) return comment;
+        const { quoteId: _dropped, ...rest } = comment;
+        return rest;
+    });
+}
+
+const optionalText = (value, max) => typeof value === 'string' ? text(value, max) : '';
+
+function normalizeRepost(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const author = optionalText(value.author, 80);
+    const content = optionalText(value.content, 1000);
+    return author && content ? { author, content } : null;
+}
+
+// 配图：只存画面描述，图片本身由生图目录按 sceneId/postId 关联。
+function normalizePostImage(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const desc = optionalText(value.desc, 200);
+    return desc ? { desc } : null;
+}
+
+function normalizePostSource(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const key = optionalText(value.key, 120);
+    if (value.type !== 'igs' || !Number.isSafeInteger(value.floor) || value.floor < 0 || !key) return null;
+    return { type: 'igs', floor: value.floor, key };
+}
+
+// 帖子可选字段（书评 work/rating 为 v2 已有，其余为 v3 新增）：缺省不输出该键，非法值丢弃而不让整条帖子失效。
+function normalizePostExtras(raw) {
     const work = text(raw?.work, 40);
-    const rating = Number.isInteger(raw?.rating) && raw.rating >= 1 && raw.rating <= 5 ? raw.rating : null;
-    return { ...(work ? { work } : {}), ...(rating ? { rating } : {}) };
+    const rating = validRatingValue(raw?.rating) ? raw.rating : null;
+    const title = optionalText(raw?.title, 40);
+    const flag = COMMUNITY_POST_FLAGS.includes(raw?.flag) ? raw.flag : '';
+    const repost = normalizeRepost(raw?.repost);
+    const mood = optionalText(raw?.mood, 12);
+    const workAuthor = optionalText(raw?.workAuthor, 40);
+    const to = optionalText(raw?.to, 40);
+    const sign = optionalText(raw?.sign, 40);
+    const source = normalizePostSource(raw?.source);
+    const image = normalizePostImage(raw?.image);
+    return {
+        ...(title ? { title } : {}), ...(flag ? { flag } : {}), ...(repost ? { repost } : {}), ...(mood ? { mood } : {}),
+        ...(work ? { work } : {}), ...(workAuthor ? { workAuthor } : {}), ...(rating ? { rating } : {}),
+        ...(to ? { to } : {}), ...(sign ? { sign } : {}), ...(source ? { source } : {}), ...(image ? { image } : {}),
+    };
+}
+
+function assertV3PostExtras(raw) {
+    if (Object.hasOwn(raw, 'title')) assertV2Text(raw.title, 40, 'post.title');
+    if (Object.hasOwn(raw, 'flag') && !COMMUNITY_POST_FLAGS.includes(raw.flag)) throw new Error(`互动场景 ${strictTag} post.flag 必须是 ${COMMUNITY_POST_FLAGS.join('、')} 之一`);
+    if (Object.hasOwn(raw, 'repost')) {
+        assertV2Keys(raw.repost, ['author', 'content'], 'post.repost');
+        assertV2Text(raw.repost.author, 80, 'post.repost.author');
+        assertV2Text(raw.repost.content, 1000, 'post.repost.content');
+    }
+    if (Object.hasOwn(raw, 'mood')) assertV2Text(raw.mood, 12, 'post.mood');
+    if (Object.hasOwn(raw, 'workAuthor')) assertV2Text(raw.workAuthor, 40, 'post.workAuthor');
+    if (Object.hasOwn(raw, 'to')) assertV2Text(raw.to, 40, 'post.to');
+    if (Object.hasOwn(raw, 'sign')) assertV2Text(raw.sign, 40, 'post.sign');
+    if (Object.hasOwn(raw, 'image')) {
+        assertV2Keys(raw.image, ['desc'], 'post.image');
+        assertV2Text(raw.image.desc, 200, 'post.image.desc');
+    }
+    if (Object.hasOwn(raw, 'source')) {
+        assertV2Keys(raw.source, ['type', 'floor', 'key'], 'post.source');
+        if (raw.source.type !== 'igs') throw new Error(`互动场景 ${strictTag} post.source.type 必须是 igs`);
+        if (!Number.isSafeInteger(raw.source.floor) || raw.source.floor < 0) throw new Error(`互动场景 ${strictTag} post.source.floor 必须是非负整数`);
+        assertV2Text(raw.source.key, 120, 'post.source.key');
+    }
 }
 
 function normalizePost(raw, context) {
-    if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared', 'work', 'rating'], 'post');
+    if (isStrictVersion(context.sourceVersion)) {
+        const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
+        assertV2Keys(raw, [
+            'id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared', 'work', 'rating',
+            ...(isV3 ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image'] : []),
+        ], 'post');
         assertV2Text(raw.id, 80, 'post.id'); assertV2AuthorFields(raw, 'post'); assertV2Text(raw.content, 4000, 'post.content'); assertV2Timestamp(raw.createdAt, 'post.createdAt');
         if (Object.hasOwn(raw, 'work')) assertV2Text(raw.work, 40, 'post.work');
-        if (Object.hasOwn(raw, 'rating') && (!Number.isInteger(raw.rating) || raw.rating < 1 || raw.rating > 5)) {
-            throw new Error('互动场景 v2 post.rating 必须是 1-5 的整数');
+        if (Object.hasOwn(raw, 'rating') && !validRatingValue(raw.rating)) {
+            throw new Error(`互动场景 ${strictTag} post.rating 必须是 1-5 的整数`);
         }
+        if (isV3) assertV3PostExtras(raw);
         assertV2List(raw.tags, 'post.tags');
-        if (raw.tags.length > 5) throw new Error('互动场景 v2 post.tags 不能超过 5 项');
+        if (raw.tags.length > 5) throw new Error(`互动场景 ${strictTag} post.tags 不能超过 5 项`);
         raw.tags.forEach((tag, index) => assertV2Text(tag, 30, `post.tags.${index}`));
         assertV2List(raw.comments, 'post.comments');
-        if (raw.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`互动场景 v2 post.comments 不能超过 ${INTERACTIVE_LIMITS.comments} 项`);
-        if (typeof raw.liked !== 'boolean') throw new Error('互动场景 v2 post.liked 必须是布尔值');
-        if (Object.hasOwn(raw, 'shared') && typeof raw.shared !== 'boolean') throw new Error('互动场景 v2 post.shared 必须是布尔值');
+        if (raw.comments.length > INTERACTIVE_LIMITS.comments) throw new Error(`互动场景 ${strictTag} post.comments 不能超过 ${INTERACTIVE_LIMITS.comments} 项`);
+        if (typeof raw.liked !== 'boolean') throw new Error(`互动场景 ${strictTag} post.liked 必须是布尔值`);
+        if (Object.hasOwn(raw, 'shared') && typeof raw.shared !== 'boolean') throw new Error(`互动场景 ${strictTag} post.shared 必须是布尔值`);
         if (Object.hasOwn(raw, 'shareCount') && (!Number.isSafeInteger(raw.shareCount) || raw.shareCount < 0)) {
-            throw new Error('互动场景 v2 post.shareCount 必须是非负安全整数');
+            throw new Error(`互动场景 ${strictTag} post.shareCount 必须是非负安全整数`);
         }
     } else if (context.strictLegacy) {
         assertV1Item(raw, 'post', context.path);
@@ -492,21 +593,26 @@ function normalizePost(raw, context) {
         content,
         tags: list(raw?.tags).map(tag => text(tag, 30)).filter(Boolean).slice(0, 5),
         createdAt,
-        comments: list(raw?.comments).map((comment, index) => normalizeComment(comment, {
+        comments: pruneDanglingQuotes(list(raw?.comments).map((comment, index) => normalizeComment(comment, {
             ...context, path: `${context.path}.comments.${index}`,
-        })).filter(Boolean).slice(-INTERACTIVE_LIMITS.comments),
+        })).filter(Boolean).slice(-INTERACTIVE_LIMITS.comments)),
         liked: !!raw?.liked,
         shareCount: Number.isSafeInteger(raw?.shareCount) && raw.shareCount >= 0 ? raw.shareCount : 0,
         shared: typeof raw?.shared === 'boolean' ? raw.shared
             : Number.isSafeInteger(raw?.shareCount) && raw.shareCount > 0,
-        ...normalizeReviewFields(raw),
+        ...normalizePostExtras(raw),
     };
 }
 
+// 弹幕：v1/v2 来自 scene.live.danmaku（无 kind，一律视为 chat），v3 来自直播间（带 kind）。
 function normalizeDanmaku(raw, context) {
-    if (context.sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt'], 'danmaku');
+    const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
+    if (isStrictVersion(context.sourceVersion)) {
+        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt', ...(isV3 ? ['kind'] : [])], 'danmaku');
         assertV2Text(raw.id, 80, 'danmaku.id'); assertV2AuthorFields(raw, 'danmaku'); assertV2Text(raw.content, 200, 'danmaku.content'); assertV2Timestamp(raw.createdAt, 'danmaku.createdAt');
+        if (isV3 && Object.hasOwn(raw, 'kind') && !LIVE_DANMAKU_KINDS.includes(raw.kind)) {
+            throw new Error(`互动场景 ${strictTag} danmaku.kind 必须是 ${LIVE_DANMAKU_KINDS.join('、')} 之一`);
+        }
     } else if (context.strictLegacy) {
         assertV1Item(raw, 'danmaku', context.path);
     }
@@ -518,6 +624,7 @@ function normalizeDanmaku(raw, context) {
         ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
         content,
         createdAt,
+        kind: LIVE_DANMAKU_KINDS.includes(raw?.kind) ? raw.kind : 'chat',
     };
 }
 
@@ -527,88 +634,192 @@ function normalizeThemeAccent(value) {
 }
 
 
-export function normalizeScene(raw, options = {}) {
+const HOT_BADGES = Object.freeze(['沸', '热', '新', '']);
+const HOT_LIMIT = 5;
+
+// 热榜条目：最多 5 项，非法项丢弃；空数组或缺省时调用方不输出该键。
+function normalizeHot(value) {
+    const items = [];
+    for (const item of Array.isArray(value) ? value : []) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        const title = optionalText(item.title, 30);
+        const badge = item.badge === undefined ? '' : item.badge;
+        if (!title || !HOT_BADGES.includes(badge)) continue;
+        items.push({ title, badge });
+        if (items.length >= HOT_LIMIT) break;
+    }
+    return items;
+}
+
+function normalizeTonight(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const title = optionalText(value.title, 60);
+    const openedAt = finitePositiveNumber(value.openedAt);
+    return title && openedAt ? { title, openedAt } : null;
+}
+
+// 返回 { scene, live }：v1/v2 的 scene.live 不进入 v3 scene，交给调用方迁成直播间；v3 来源时 live 为 null。
+function normalizeSceneWithLegacyLive(raw, options = {}) {
     const scope = options.scope || { actors: {} };
     const scopeId = text(options.scopeId, 160) || '__standalone__';
-    const sourceVersion = options.sourceVersion === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
+    const sourceVersion = options.sourceVersion === INTERACTIVE_STORE_VERSION || options.sourceVersion === LEGACY_V2_STORE_VERSION
+        ? options.sourceVersion : 1;
     const strictLegacy = sourceVersion === 1 && options.strictLegacy === true;
-    if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-        assertV2Keys(raw, ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
-        if (raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'warmupStarted', 'danmaku'], 'live');
+    const isV3 = sourceVersion === INTERACTIVE_STORE_VERSION;
+    if (isStrictVersion(sourceVersion)) {
+        assertV2Keys(raw, isV3
+            ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+            : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
+        if (!isV3 && raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'warmupStarted', 'danmaku'], 'live');
         assertV2Text(raw.id, 80, 'scene.id');
         assertV2Text(raw.title, 80, 'scene.title');
+        if (isV3 && !COMMUNITY_PLATFORMS.includes(raw.platform)) {
+            throw new Error(`互动场景 ${strictTag} scene.platform 必须是 ${COMMUNITY_PLATFORMS.join('、')} 之一`);
+        }
+        if (isV3 && typeof raw.nsfw !== 'boolean') throw new Error(`互动场景 ${strictTag} scene.nsfw 必须是布尔值`);
+        if (isV3 && Object.hasOwn(raw, 'autoRespond') && typeof raw.autoRespond !== 'boolean') throw new Error(`互动场景 ${strictTag} scene.autoRespond 必须是布尔值`);
         assertV2Text(raw.preset, 30, 'scene.preset');
         assertV2Text(raw.styleInput, 2000, 'scene.styleInput', { allowEmpty: true });
         assertV2Text(raw.generatedPrompt, 6000, 'scene.generatedPrompt', { allowEmpty: true });
         if (raw.themeAccent !== undefined) {
             assertV2Text(raw.themeAccent, 7, 'scene.themeAccent', { allowEmpty: true });
             if (raw.themeAccent && normalizeThemeAccent(raw.themeAccent) !== raw.themeAccent) {
-                throw new Error('互动场景 v2 scene.themeAccent 必须是小写六位十六进制颜色');
+                throw new Error(`互动场景 ${strictTag} scene.themeAccent 必须是小写六位十六进制颜色`);
             }
+        }
+        if (isV3 && Object.hasOwn(raw, 'tonight')) {
+            assertV2Keys(raw.tonight, ['title', 'openedAt'], 'scene.tonight');
+            assertV2Text(raw.tonight.title, 60, 'scene.tonight.title');
+            assertV2Timestamp(raw.tonight.openedAt, 'scene.tonight.openedAt');
+        }
+        if (isV3 && Object.hasOwn(raw, 'hot')) {
+            assertV2List(raw.hot, 'scene.hot');
+            if (raw.hot.length > HOT_LIMIT) throw new Error(`互动场景 ${strictTag} scene.hot 不能超过 ${HOT_LIMIT} 项`);
+            raw.hot.forEach((item, index) => {
+                assertV2Keys(item, ['title', 'badge'], `scene.hot.${index}`);
+                assertV2Text(item.title, 30, `scene.hot.${index}.title`);
+                if (!HOT_BADGES.includes(item.badge)) throw new Error(`互动场景 ${strictTag} scene.hot.${index}.badge 必须是 ${HOT_BADGES.map(badge => badge || '空').join('、')} 之一`);
+            });
         }
         assertV2Timestamp(raw.createdAt, 'scene.createdAt'); assertV2Timestamp(raw.updatedAt, 'scene.updatedAt');
         assertV2List(raw.posts, 'scene.posts');
-        if (raw.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`互动场景 v2 scene.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
-        assertV2Text(raw.live.title, 100, 'live.title', { allowEmpty: true });
-        if (raw.live.status !== 'idle') throw new Error('互动场景 v2 live.status 必须是 idle');
-        if (Object.hasOwn(raw.live, 'warmupStarted') && typeof raw.live.warmupStarted !== 'boolean') throw new Error('互动场景 v2 live.warmupStarted 必须是布尔值');
-        assertV2List(raw.live.danmaku, 'live.danmaku');
-        if (raw.live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`互动场景 v2 live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
+        if (raw.posts.length > INTERACTIVE_LIMITS.posts) throw new Error(`互动场景 ${strictTag} scene.posts 不能超过 ${INTERACTIVE_LIMITS.posts} 项`);
+        if (!isV3) {
+            assertV2Text(raw.live.title, 100, 'live.title', { allowEmpty: true });
+            if (raw.live.status !== 'idle') throw new Error(`互动场景 ${strictTag} live.status 必须是 idle`);
+            if (Object.hasOwn(raw.live, 'warmupStarted') && typeof raw.live.warmupStarted !== 'boolean') throw new Error(`互动场景 ${strictTag} live.warmupStarted 必须是布尔值`);
+            assertV2List(raw.live.danmaku, 'live.danmaku');
+            if (raw.live.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`互动场景 ${strictTag} live.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
+        }
     } else if (strictLegacy) {
         assertV1Scene(raw, `scope ${scopeId}.scene ${raw?.id || '(空)'}`);
     }
     const sceneId = text(raw?.id, 80) || id('scene');
     const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
-    return {
+    const preset = text(raw?.preset, 30) || 'weibo';
+    const platform = COMMUNITY_PLATFORMS.includes(raw?.platform) ? raw.platform : platformForPreset(preset);
+    const tonight = platform === 'night' ? normalizeTonight(raw?.tonight) : null;
+    const hot = normalizeHot(raw?.hot);
+    const scene = {
         id: sceneId,
         title: text(raw?.title, 80) || '未命名互动场景',
-        preset: text(raw?.preset, 30) || 'weibo',
+        platform,
+        nsfw: raw?.nsfw === true,
+        // 「发布后自动回应」缺省视为开；宽松读入只认明确的 false，且只在关闭时写出该键，老数据与模板保持原样。
+        ...(raw?.autoRespond === false ? { autoRespond: false } : {}),
+        preset,
         styleInput: text(raw?.styleInput, 2000),
         generatedPrompt: text(raw?.generatedPrompt, 6000),
         themeAccent: normalizeThemeAccent(raw?.themeAccent),
+        ...(tonight ? { tonight } : {}),
+        ...(hot.length ? { hot } : {}),
         createdAt,
         updatedAt: finitePositiveNumber(raw?.updatedAt) || createdAt,
         posts: list(raw?.posts).map((post, index) => normalizePost(post, {
             scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.posts.${index}`,
         })).filter(Boolean).slice(-INTERACTIVE_LIMITS.posts),
-        live: {
-            title: text(raw?.live?.title, 100),
-            status: 'idle',
-            warmupStarted: raw?.live?.warmupStarted === true,
-            danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
-                scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.live.danmaku.${index}`,
-            })).filter(Boolean).slice(-INTERACTIVE_LIMITS.danmaku),
-        },
     };
+    const live = isV3 ? null : {
+        title: text(raw?.live?.title, 100),
+        danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
+            scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.live.danmaku.${index}`,
+        })).filter(Boolean).slice(-INTERACTIVE_LIMITS.danmaku),
+    };
+    return { scene, live };
 }
 
-export function addSceneComment(scope, scopeId, scene, postId, authorSeed, content) {
+// 单独归一化一个 scene。旧版 scene.live 在此被丢弃；整库迁移请走 normalizeInteractiveStore。
+export function normalizeScene(raw, options = {}) {
+    const sourceVersion = options.sourceVersion;
+    return withStrictTag(sourceVersion === LEGACY_V2_STORE_VERSION ? LEGACY_V2_STORE_VERSION : INTERACTIVE_STORE_VERSION,
+        () => normalizeSceneWithLegacyLive(raw, options).scene);
+}
+
+// 豆瓣引用楼层：在 comments[0..beforeIndex) 里找与 quote（作者名）同名的最近一条评论，返回它的 id；找不到返回空串。
+export function findQuoteTargetId(comments, quote, beforeIndex = list(comments).length) {
+    const name = text(quote, 80);
+    if (!name) return '';
+    const source = list(comments);
+    for (let index = Math.min(beforeIndex, source.length) - 1; index >= 0; index -= 1) {
+        if (source[index]?.authorNameSnapshot === name && source[index]?.id) return source[index].id;
+    }
+    return '';
+}
+
+// extras.quoteId 必须指向同帖已有评论，extras.rating 必须是 1-5 的整数；非法值丢弃，不影响评论本身。
+export function addSceneComment(scope, scopeId, scene, postId, authorSeed, content, extras = {}) {
     const post = scene?.posts?.find(item => item.id === postId);
     const normalizedContent = text(content, 1000);
     if (!post) throw new Error('帖子不存在');
     if (!normalizedContent) throw new Error('评论内容不能为空');
     const author = resolveInteractiveAuthor(scope, scopeId, authorSeed?.displayName, authorSeed);
+    const quoteId = typeof extras?.quoteId === 'string' && post.comments.some(comment => comment.id === extras.quoteId) ? extras.quoteId : '';
     post.comments.push({
         id: id('comment'), ...author, content: normalizedContent, createdAt: Date.now(),
+        ...(quoteId ? { quoteId } : {}), ...(validRatingValue(extras?.rating) ? { rating: extras.rating } : {}),
     });
     post.comments = post.comments.slice(-INTERACTIVE_LIMITS.comments);
     scene.updatedAt = Date.now();
     return post.comments.at(-1);
 }
 
-export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) {
+// 微博热搜：只给 weibo 社区写；条目经 normalizeHot 校验，空结果不改动原有热搜。
+export function setSceneHot(scene, hot) {
+    if (!scene) throw new Error('互动场景不存在');
+    const items = normalizeHot(hot);
+    if (!items.length) return false;
+    scene.hot = items;
+    scene.updatedAt = Date.now();
+    return true;
+}
+
+// 夜间信箱：只给 night 社区写；openedAt 记当前时间，title 非法时不改动。
+export function setSceneTonight(scene, tonight, openedAt = Date.now()) {
+    if (!scene) throw new Error('互动场景不存在');
+    const normalized = normalizeTonight({ title: tonight?.title, openedAt });
+    if (!normalized) return false;
+    scene.tonight = normalized;
+    scene.updatedAt = Date.now();
+    return true;
+}
+
+// options.place(posts, post)：单条帖子时由调用方决定插入位置（用户新帖随机插入），缺省仍追加到末尾。
+export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = [], options = {}) {
     if (!scope || !scene) throw new Error('互动场景不存在');
     const prepared = list(items).flatMap(item => {
         const content = text(item?.content, 4000);
         if (!content) return [];
         const comments = list(item?.comments).flatMap(comment => {
             const commentContent = text(comment?.content, 1000);
-            return commentContent ? [{ author: comment?.author, content: commentContent }] : [];
+            return commentContent ? [{
+                author: comment?.author, content: commentContent, quote: text(comment?.quote, 80),
+                rating: validRatingValue(comment?.rating) ? comment.rating : 0,
+            }] : [];
         }).slice(0, INTERACTIVE_LIMITS.comments);
         return [{
             author: item?.author, authorSeed: item?.authorSeed || null, content,
             tags: list(item?.tags).map(tag => text(tag, 30)).filter(Boolean).slice(0, 5), comments,
-            review: normalizeReviewFields(item),
+            review: normalizePostExtras(item),
         }];
     });
     if (!prepared.length) return [];
@@ -617,21 +828,30 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = []) 
     let posts;
     try {
         for (const seed of actorSeeds) ensureInteractiveActor(scope, scopeId, seed);
-        posts = prepared.map(item => ({
-            id: id('post'),
-            ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed),
-            content: item.content, tags: item.tags,
-            comments: item.comments.map(comment => ({
-                id: id('comment'), ...resolveInteractiveAuthor(scope, scopeId, comment.author),
-                content: comment.content, createdAt,
-            })),
-            liked: false, shareCount: 0, shared: false, createdAt, ...item.review,
-        }));
+        posts = prepared.map(item => {
+            const comments = [];
+            item.comments.forEach(comment => {
+                // quote 是被引用楼层的作者名：在同帖更靠前的评论里找同名作者的最近一条，找不到就不带 quoteId。
+                const quoteId = findQuoteTargetId(comments, comment.quote);
+                comments.push({
+                    id: id('comment'), ...resolveInteractiveAuthor(scope, scopeId, comment.author),
+                    content: comment.content, createdAt,
+                    ...(quoteId ? { quoteId } : {}), ...(comment.rating ? { rating: comment.rating } : {}),
+                });
+            });
+            return {
+                id: id('post'),
+                ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed),
+                content: item.content, tags: item.tags, comments,
+                liked: false, shareCount: 0, shared: false, createdAt, ...item.review,
+            };
+        });
     } catch (error) {
         scope.actors = actorsSnapshot;
         throw error;
     }
-    scene.posts.push(...posts);
+    if (typeof options?.place === 'function' && posts.length === 1) options.place(scene.posts, posts[0]);
+    else scene.posts.push(...posts);
     scene.posts = scene.posts.slice(-INTERACTIVE_LIMITS.posts);
     scene.updatedAt = createdAt;
     return posts;
@@ -643,15 +863,6 @@ export function updateScenePost(scene, postId, content) {
     if (!post) throw new Error('帖子不存在');
     if (!normalizedContent) throw new Error('帖子内容不能为空');
     post.content = normalizedContent;
-    scene.updatedAt = Date.now();
-}
-
-export function updateSceneDanmaku(scene, danmakuId, content) {
-    const danmaku = scene?.live?.danmaku?.find(item => item.id === danmakuId);
-    const normalizedContent = text(content, 200);
-    if (!danmaku) throw new Error('弹幕不存在');
-    if (!normalizedContent) throw new Error('弹幕内容不能为空');
-    danmaku.content = normalizedContent;
     scene.updatedAt = Date.now();
 }
 
@@ -668,12 +879,6 @@ export function updateSceneComment(scene, postId, commentId, content) {
 export function deleteScenePost(scene, postId) {
     if (!scene?.posts?.some(item => item.id === postId)) throw new Error('帖子不存在');
     scene.posts = scene.posts.filter(item => item.id !== postId);
-    scene.updatedAt = Date.now();
-}
-
-export function deleteSceneDanmaku(scene, danmakuId) {
-    if (!scene?.live?.danmaku?.some(item => item.id === danmakuId)) throw new Error('弹幕不存在');
-    scene.live.danmaku = scene.live.danmaku.filter(item => item.id !== danmakuId);
     scene.updatedAt = Date.now();
 }
 
@@ -702,8 +907,16 @@ export function incrementScenePostShare(scene, postId) {
     return true;
 }
 
+// 直播是独立 App：社区被删除时保留其直播间，只去掉 sourceSceneId，使它成为独立房间。
+function detachLiveRoomsFromScene(scope, sceneId) {
+    for (const room of Object.values(scope?.liveRooms || {})) {
+        if (room?.sourceSceneId === sceneId) delete room.sourceSceneId;
+    }
+}
+
 export function deleteInteractiveScene(scope, sceneId) {
     if (!scope?.scenes?.[sceneId]) throw new Error('互动场景不存在');
+    detachLiveRoomsFromScene(scope, sceneId);
     delete scope.scenes[sceneId];
     scope.sceneOrder = scope.sceneOrder.filter(idValue => idValue !== sceneId);
     scope.activeSceneId = scope.scenes[scope.activeSceneId] ? scope.activeSceneId : scope.sceneOrder.at(-1) || null;
@@ -712,21 +925,243 @@ export function deleteInteractiveScene(scope, sceneId) {
 export function enforceInteractiveSceneLimit(scope) {
     while (scope.sceneOrder.length > INTERACTIVE_LIMITS.scenes) {
         const removedId = scope.sceneOrder.shift();
+        detachLiveRoomsFromScene(scope, removedId);
         delete scope.scenes[removedId];
     }
 }
 
+export function createEmptyInteractiveScope() {
+    return { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {}, liveRooms: {}, liveOrder: [] };
+}
+
+const liveRoomIdFor = (scopeId, sceneId) => `live_${stableHash(`${scopeId}\u0000${sceneId}`)}`;
+export const LIVE_HOST_SETTING_MAX = 1000;
+
+function normalizeLiveRoom(raw, roomId, scope, scopeId) {
+    const label = `liveRoom ${roomId}`;
+    assertV2Keys(raw, [
+        'id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku',
+    ], label);
+    assertV2Text(raw.id, 80, `${label}.id`);
+    if (raw.id !== roomId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.${label}.id 必须与直播间键一致`);
+    assertV2Text(raw.title, 100, `${label}.title`);
+    if (typeof raw.hostIsUser !== 'boolean') throw new Error(`互动场景 ${strictTag} ${label}.hostIsUser 必须是布尔值`);
+    if (Object.hasOwn(raw, 'hostActorId')) {
+        const hostActorId = assertV2DictionaryKey(raw.hostActorId, 80, `${label}.hostActorId`);
+        if (!Object.hasOwn(scope.actors, hostActorId)) throw new Error(`互动场景 ${strictTag} ${label} 引用了不存在的 actor：${hostActorId}`);
+    }
+    assertV2Text(raw.hostNameSnapshot, 80, `${label}.hostNameSnapshot`, { allowEmpty: true });
+    if (Object.hasOwn(raw, 'hostSetting')) assertV2Text(raw.hostSetting, LIVE_HOST_SETTING_MAX, `${label}.hostSetting`, { allowEmpty: true });
+    assertV2Text(raw.category, 12, `${label}.category`, { allowEmpty: true });
+    if (typeof raw.nsfw !== 'boolean') throw new Error(`互动场景 ${strictTag} ${label}.nsfw 必须是布尔值`);
+    if (Object.hasOwn(raw, 'sourceSceneId')) assertV2Text(raw.sourceSceneId, 80, `${label}.sourceSceneId`);
+    assertV2Timestamp(raw.createdAt, `${label}.createdAt`); assertV2Timestamp(raw.updatedAt, `${label}.updatedAt`);
+    assertV2List(raw.danmaku, `${label}.danmaku`);
+    if (raw.danmaku.length > INTERACTIVE_LIMITS.danmaku) throw new Error(`互动场景 ${strictTag} ${label}.danmaku 不能超过 ${INTERACTIVE_LIMITS.danmaku} 项`);
+    return {
+        id: roomId,
+        title: raw.title,
+        hostIsUser: raw.hostIsUser,
+        ...(Object.hasOwn(raw, 'hostActorId') ? { hostActorId: raw.hostActorId } : {}),
+        hostNameSnapshot: raw.hostNameSnapshot,
+        ...(raw.hostSetting ? { hostSetting: raw.hostSetting } : {}),
+        category: raw.category,
+        nsfw: raw.nsfw,
+        ...(Object.hasOwn(raw, 'sourceSceneId') ? { sourceSceneId: raw.sourceSceneId } : {}),
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+        danmaku: raw.danmaku.map((item, index) => normalizeDanmaku(item, {
+            scope, scopeId, sourceVersion: INTERACTIVE_STORE_VERSION, strictLegacy: false, path: `liveRooms.${roomId}.danmaku.${index}`,
+        })).filter(Boolean),
+    };
+}
+
+// 供权限层读取单个直播间：按 v3 严格规则校验并返回归一化副本，非法数据抛错。
+export function normalizeLiveRoomSnapshot(raw, roomId, actors, scopeId) {
+    return withStrictTag(INTERACTIVE_STORE_VERSION, () => normalizeLiveRoom(raw, roomId, { actors: actors || {} }, scopeId));
+}
+
+// v3 scope 的 liveRooms / liveOrder：校验规则与 scenes / sceneOrder 一致。
+function normalizeScopeLiveRooms(value, scope, scopeId) {
+    assertDataObject(value.liveRooms, `互动场景 ${strictTag} scope ${scopeId}.liveRooms`);
+    assertV2List(value.liveOrder, `scope ${scopeId}.liveOrder`);
+    if (value.liveOrder.length > INTERACTIVE_LIMITS.liveRooms) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.liveOrder 不能超过 ${INTERACTIVE_LIMITS.liveRooms} 项`);
+    const orderedIds = new Set();
+    for (const roomId of value.liveOrder) {
+        assertV2DictionaryKey(roomId, 80, `scope ${scopeId}.liveOrder item`);
+        if (orderedIds.has(roomId)) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.liveOrder 包含重复直播间：${roomId}`);
+        orderedIds.add(roomId);
+    }
+    const roomKeys = Object.keys(value.liveRooms).map(roomKey => assertV2DictionaryKey(roomKey, 80, `scope ${scopeId}.liveRoom key`));
+    const orphanRoomId = roomKeys.find(roomKey => !orderedIds.has(roomKey));
+    if (orphanRoomId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.liveRooms 包含未列入 liveOrder 的直播间：${orphanRoomId}`);
+    const missingRoomId = value.liveOrder.find(roomId => !Object.hasOwn(value.liveRooms, roomId));
+    if (missingRoomId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.liveOrder 引用了不存在的直播间：${missingRoomId}`);
+    for (const roomId of value.liveOrder) scope.liveRooms[roomId] = normalizeLiveRoom(value.liveRooms[roomId], roomId, scope, scopeId);
+    scope.liveOrder = Object.keys(scope.liveRooms);
+}
+
+// v1/v2 → v3：每个有弹幕的 scene 生成一间直播间，id 由 scopeId + sceneId 稳定哈希得出，重复迁移结果一致；liveOrder 按 sceneOrder 顺序。
+function migrateLegacyLivesToRooms(scope, scopeId, legacyLives) {
+    for (const sceneId of scope.sceneOrder) {
+        const live = legacyLives.get(sceneId);
+        if (!live || !live.danmaku.length) continue;
+        const scene = scope.scenes[sceneId];
+        const roomId = liveRoomIdFor(scopeId, sceneId);
+        scope.liveRooms[roomId] = {
+            id: roomId,
+            title: live.title || text(`${scene.title} 直播间`, 100),
+            hostIsUser: false,
+            hostNameSnapshot: text(scene.title, 80),
+            category: '',
+            nsfw: false,
+            sourceSceneId: sceneId,
+            createdAt: scene.createdAt,
+            updatedAt: scene.updatedAt,
+            danmaku: live.danmaku,
+        };
+        scope.liveOrder.push(roomId);
+    }
+}
+
+export function enforceLiveRoomLimit(scope) {
+    while (scope.liveOrder.length > INTERACTIVE_LIMITS.liveRooms) {
+        const removedId = scope.liveOrder.shift();
+        delete scope.liveRooms[removedId];
+    }
+}
+
+export function findLiveRoomForScene(scope, sceneId) {
+    for (const roomId of Array.isArray(scope?.liveOrder) ? scope.liveOrder : []) {
+        const room = Object.hasOwn(scope.liveRooms || {}, roomId) ? scope.liveRooms[roomId] : null;
+        if (room && room.sourceSceneId === sceneId) return room;
+    }
+    return null;
+}
+
+// 旧直播页没有「开播」字段：直播间里出现过非用户（热场）发言即视为已开播。
+export function isLiveRoomWarmedUp(scope, room) {
+    return (room?.danmaku || []).some(item => scope?.actors?.[item.authorId]?.type !== 'user');
+}
+
+export function createLiveRoom(scope, scopeId, seed = {}) {
+    if (!scope) throw new Error('互动场景不存在');
+    if (!scope.liveRooms || typeof scope.liveRooms !== 'object') scope.liveRooms = {};
+    if (!Array.isArray(scope.liveOrder)) scope.liveOrder = [];
+    const timestamp = Date.now();
+    const sourceSceneId = optionalText(seed?.sourceSceneId, 80);
+    const preferredId = sourceSceneId ? liveRoomIdFor(scopeId, sourceSceneId) : '';
+    const roomId = preferredId && !Object.hasOwn(scope.liveRooms, preferredId) ? preferredId : id('live');
+    const hostActorId = optionalText(seed?.hostActorId, 80);
+    const room = {
+        id: roomId,
+        title: optionalText(seed?.title, 100) || '直播间',
+        hostIsUser: seed?.hostIsUser === true,
+        ...(hostActorId && Object.hasOwn(scope.actors || {}, hostActorId) ? { hostActorId } : {}),
+        hostNameSnapshot: optionalText(seed?.hostNameSnapshot, 80),
+        ...(optionalText(seed?.hostSetting, LIVE_HOST_SETTING_MAX) ? { hostSetting: optionalText(seed?.hostSetting, LIVE_HOST_SETTING_MAX) } : {}),
+        category: optionalText(seed?.category, 12),
+        nsfw: seed?.nsfw === true,
+        ...(sourceSceneId ? { sourceSceneId } : {}),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        danmaku: [],
+    };
+    scope.liveRooms[roomId] = room;
+    scope.liveOrder.push(roomId);
+    enforceLiveRoomLimit(scope);
+    return room;
+}
+
+// 编辑直播间：只改开播页上的字段；弹幕、来源社区和创建时间保持不变。
+// patch.hostActorId 为空时去掉主播绑定；调用方负责确认 actor 存在。
+export function updateLiveRoom(scope, roomId, patch = {}) {
+    const room = scope?.liveRooms && Object.hasOwn(scope.liveRooms, roomId) ? scope.liveRooms[roomId] : null;
+    if (!room) throw new Error('直播间不存在');
+    const title = optionalText(patch?.title, 100);
+    if (!title) throw new Error('直播间标题不能为空');
+    const hostActorId = optionalText(patch?.hostActorId, 80);
+    if (hostActorId && !Object.hasOwn(scope.actors || {}, hostActorId)) throw new Error('主播角色不存在');
+    const hostSetting = optionalText(patch?.hostSetting, LIVE_HOST_SETTING_MAX);
+    room.title = title;
+    room.category = optionalText(patch?.category, 12);
+    room.hostIsUser = patch?.hostIsUser === true;
+    if (hostActorId && !room.hostIsUser) room.hostActorId = hostActorId; else delete room.hostActorId;
+    room.hostNameSnapshot = optionalText(patch?.hostNameSnapshot, 80);
+    if (hostSetting) room.hostSetting = hostSetting; else delete room.hostSetting;
+    room.nsfw = patch?.nsfw === true;
+    room.updatedAt = Date.now();
+    return room;
+}
+
+export function deleteLiveRoom(scope, roomId) {
+    if (!scope?.liveRooms || !Object.hasOwn(scope.liveRooms, roomId)) throw new Error('直播间不存在');
+    delete scope.liveRooms[roomId];
+    scope.liveOrder = scope.liveOrder.filter(idValue => idValue !== roomId);
+}
+
+export function appendLiveDanmaku(scope, scopeId, room, items, actorSeeds = []) {
+    if (!scope || !room) throw new Error('直播间不存在');
+    const prepared = list(items).flatMap(item => {
+        const content = text(item?.content, 200);
+        return content ? [{
+            author: item?.author, authorSeed: item?.authorSeed || null, content,
+            kind: LIVE_DANMAKU_KINDS.includes(item?.kind) ? item.kind : 'chat',
+        }] : [];
+    });
+    if (!prepared.length) return [];
+    const actorsSnapshot = { ...(scope.actors || {}) };
+    const createdAt = Date.now();
+    let entries;
+    try {
+        for (const seed of actorSeeds) ensureInteractiveActor(scope, scopeId, seed);
+        entries = prepared.map(item => ({
+            id: id('danmaku'),
+            ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed),
+            content: item.content, createdAt, kind: item.kind,
+        }));
+    } catch (error) {
+        scope.actors = actorsSnapshot;
+        throw error;
+    }
+    room.danmaku.push(...entries);
+    room.danmaku = room.danmaku.slice(-INTERACTIVE_LIMITS.danmaku);
+    room.updatedAt = createdAt;
+    return entries;
+}
+
+export function updateLiveDanmaku(room, danmakuId, content) {
+    const danmaku = room?.danmaku?.find(item => item.id === danmakuId);
+    const normalizedContent = text(content, 200);
+    if (!danmaku) throw new Error('弹幕不存在');
+    if (!normalizedContent) throw new Error('弹幕内容不能为空');
+    danmaku.content = normalizedContent;
+    room.updatedAt = Date.now();
+}
+
+export function deleteLiveDanmaku(room, danmakuId) {
+    if (!room?.danmaku?.some(item => item.id === danmakuId)) throw new Error('弹幕不存在');
+    room.danmaku = room.danmaku.filter(item => item.id !== danmakuId);
+    room.updatedAt = Date.now();
+}
+
+// 接受 v1、v2、v3，输出永远是 v3：v1/v2 的 scene.live 迁成 scope 级直播间。
 export function normalizeInteractiveStore(raw) {
     const result = createEmptyInteractiveStore();
     if (raw === null || raw === undefined) return result;
     assertDataObject(raw, '互动场景 store');
     const hasVersion = Object.hasOwn(raw, 'version');
-    if (hasVersion && ![1, INTERACTIVE_STORE_VERSION].includes(raw.version)) throw new Error(`互动场景版本 ${raw.version} 不受支持`);
-    const sourceVersion = hasVersion && raw.version === INTERACTIVE_STORE_VERSION ? INTERACTIVE_STORE_VERSION : 1;
-    if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+    if (hasVersion && ![1, LEGACY_V2_STORE_VERSION, INTERACTIVE_STORE_VERSION].includes(raw.version)) throw new Error(`互动场景版本 ${raw.version} 不受支持`);
+    const sourceVersion = hasVersion && isStrictVersion(raw.version) ? raw.version : 1;
+    return withStrictTag(sourceVersion, () => normalizeStoreScopes(raw, result, sourceVersion));
+}
+
+function normalizeStoreScopes(raw, result, sourceVersion) {
+    const isV3 = sourceVersion === INTERACTIVE_STORE_VERSION;
+    if (isStrictVersion(sourceVersion)) {
         assertV2Keys(raw, ['version', 'scopes'], 'store');
-        if (!Object.hasOwn(raw, 'scopes')) throw new Error('互动场景 v2 scopes 缺失');
-        assertDataObject(raw.scopes, '互动场景 v2 scopes');
+        if (!Object.hasOwn(raw, 'scopes')) throw new Error(`互动场景 ${strictTag} scopes 缺失`);
+        assertDataObject(raw.scopes, `互动场景 ${strictTag} scopes`);
     } else {
         assertV1Keys(raw, ['version', 'scopes'], 'store');
         if (!Object.hasOwn(raw, 'scopes')) throw new Error('互动场景 v1 store.scopes 缺失');
@@ -734,23 +1169,24 @@ export function normalizeInteractiveStore(raw) {
     }
     const normalizedScopeIds = new Set();
     for (const [rawScopeId, value] of Object.entries(raw.scopes || {})) {
-        const scopeId = sourceVersion === INTERACTIVE_STORE_VERSION
+        const scopeId = isStrictVersion(sourceVersion)
             ? assertV2DictionaryKey(rawScopeId, 160, 'scope key')
             : normalizeV1DictionaryKey(rawScopeId, 160, 'scope key');
         if (!scopeId) continue;
         if (normalizedScopeIds.has(scopeId)) throw new Error(`互动场景 v${sourceVersion} scope key 归一化后冲突：${scopeId}`);
         normalizedScopeIds.add(scopeId);
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-            assertV2Keys(value, ['activeSceneId', 'sceneOrder', 'scenes', 'actors'], `scope ${scopeId}`);
-            for (const key of ['activeSceneId', 'sceneOrder', 'scenes', 'actors']) {
-                if (!Object.hasOwn(value, key)) throw new Error(`互动场景 v2 scope ${scopeId}.${key} 缺失`);
+        if (isStrictVersion(sourceVersion)) {
+            const scopeKeys = ['activeSceneId', 'sceneOrder', 'scenes', 'actors', ...(isV3 ? ['liveRooms', 'liveOrder'] : [])];
+            assertV2Keys(value, scopeKeys, `scope ${scopeId}`);
+            for (const key of scopeKeys) {
+                if (!Object.hasOwn(value, key)) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.${key} 缺失`);
             }
-            if (value.activeSceneId !== null && typeof value.activeSceneId !== 'string') throw new Error(`互动场景 v2 scope ${scopeId}.activeSceneId 无效`);
+            if (value.activeSceneId !== null && typeof value.activeSceneId !== 'string') throw new Error(`互动场景 ${strictTag} scope ${scopeId}.activeSceneId 无效`);
             if (typeof value.activeSceneId === 'string') assertV2Text(value.activeSceneId, 80, `scope ${scopeId}.activeSceneId`);
             assertV2List(value.sceneOrder, `scope ${scopeId}.sceneOrder`);
-            if (value.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`互动场景 v2 scope ${scopeId}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
+            if (value.sceneOrder.length > INTERACTIVE_LIMITS.scenes) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.sceneOrder 不能超过 ${INTERACTIVE_LIMITS.scenes} 项`);
             value.sceneOrder.forEach((sceneId, index) => assertV2Text(sceneId, 80, `scope ${scopeId}.sceneOrder.${index}`));
-            assertDataObject(value.scenes, `互动场景 v2 scope ${scopeId}.scenes`);
+            assertDataObject(value.scenes, `互动场景 ${strictTag} scope ${scopeId}.scenes`);
         } else {
             assertV1Keys(value, ['activeSceneId', 'sceneOrder', 'scenes'], `scope ${scopeId}`);
             if (Object.hasOwn(value, 'activeSceneId') && value.activeSceneId !== null && typeof value.activeSceneId !== 'string') throw new Error(`互动场景 v1 scope ${scopeId}.activeSceneId 必须是字符串或 null`);
@@ -758,9 +1194,9 @@ export function normalizeInteractiveStore(raw) {
             if (!Object.hasOwn(value, 'sceneOrder')) throw new Error(`互动场景 v1 scope ${scopeId}.sceneOrder 缺失`);
             assertV1Object(value.scenes, `scope ${scopeId}.scenes`);
         }
-        const scope = { activeSceneId: null, sceneOrder: [], scenes: {}, actors: {} };
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-            if (!value.actors || typeof value.actors !== 'object' || Array.isArray(value.actors)) throw new Error(`互动场景 v2 scope ${scopeId} 缺少 actors registry`);
+        const scope = createEmptyInteractiveScope();
+        if (isStrictVersion(sourceVersion)) {
+            if (!value.actors || typeof value.actors !== 'object' || Array.isArray(value.actors)) throw new Error(`互动场景 ${strictTag} scope ${scopeId} 缺少 actors registry`);
             for (const [rawActorId, actorValue] of Object.entries(value.actors)) {
                 const actorId = assertV2DictionaryKey(rawActorId, 80, `scope ${scopeId}.actor key`);
                 assertV2Actor(actorValue, actorId, scopeId);
@@ -769,7 +1205,7 @@ export function normalizeInteractiveStore(raw) {
         }
         const sceneValues = new Map();
         for (const [rawSceneId, sceneValue] of Object.entries(value.scenes || {})) {
-            const sceneId = sourceVersion === INTERACTIVE_STORE_VERSION
+            const sceneId = isStrictVersion(sourceVersion)
                 ? assertV2DictionaryKey(rawSceneId, 80, `scope ${scopeId}.scene key`)
                 : normalizeV1DictionaryKey(rawSceneId, 80, `scope ${scopeId}.scene key`);
             if (!sceneId) continue;
@@ -783,28 +1219,29 @@ export function normalizeInteractiveStore(raw) {
             }
             sceneValues.set(sceneId, sceneValue);
         }
-        const order = sourceVersion === INTERACTIVE_STORE_VERSION
+        const order = isStrictVersion(sourceVersion)
             ? [...value.sceneOrder]
             : value.sceneOrder.map(key => {
                 if (typeof key !== 'string') throw new Error(`互动场景 v1 scope ${scopeId}.sceneOrder 必须是字符串数组`);
                 return normalizeV1DictionaryKey(key, 80, `scope ${scopeId}.sceneOrder item`);
             }).filter(Boolean).slice(-INTERACTIVE_LIMITS.scenes);
         if (sourceVersion === 1 && new Set(order).size !== order.length) throw new Error(`互动场景 v1 scope ${scopeId}.sceneOrder 归一化后包含重复场景`);
-        if (sourceVersion === INTERACTIVE_STORE_VERSION) {
+        if (isStrictVersion(sourceVersion)) {
             const orderedIds = new Set();
             for (const sceneId of order) {
                 assertV2DictionaryKey(sceneId, 80, `scope ${scopeId}.sceneOrder item`);
-                if (orderedIds.has(sceneId)) throw new Error(`互动场景 v2 scope ${scopeId}.sceneOrder 包含重复场景：${sceneId}`);
+                if (orderedIds.has(sceneId)) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.sceneOrder 包含重复场景：${sceneId}`);
                 orderedIds.add(sceneId);
             }
             const sceneIds = [...sceneValues.keys()];
             const orphanSceneId = sceneIds.find(sceneId => !orderedIds.has(sceneId));
-            if (orphanSceneId) throw new Error(`互动场景 v2 scope ${scopeId}.scenes 包含未列入 sceneOrder 的场景：${orphanSceneId}`);
+            if (orphanSceneId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.scenes 包含未列入 sceneOrder 的场景：${orphanSceneId}`);
             const missingSceneId = order.find(sceneId => !sceneValues.has(sceneId));
-            if (missingSceneId) throw new Error(`互动场景 v2 scope ${scopeId}.sceneOrder 引用了不存在的场景：${missingSceneId}`);
-            if (value.activeSceneId === null && order.length) throw new Error(`互动场景 v2 scope ${scopeId}.activeSceneId 不能在存在场景时为 null`);
-            if (typeof value.activeSceneId === 'string' && !orderedIds.has(value.activeSceneId)) throw new Error(`互动场景 v2 scope ${scopeId}.activeSceneId 未指向有效场景`);
+            if (missingSceneId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.sceneOrder 引用了不存在的场景：${missingSceneId}`);
+            if (value.activeSceneId === null && order.length) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.activeSceneId 不能在存在场景时为 null`);
+            if (typeof value.activeSceneId === 'string' && !orderedIds.has(value.activeSceneId)) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.activeSceneId 未指向有效场景`);
         }
+        const legacyLives = new Map();
         for (const key of order) {
             if (!sceneValues.has(key)) throw new Error(`互动场景 v${sourceVersion} scope ${scopeId}.sceneOrder 引用了不存在的场景：${key}`);
             const rawSceneValue = sceneValues.get(key);
@@ -812,20 +1249,24 @@ export function normalizeInteractiveStore(raw) {
                 throw new Error(`互动场景 v${sourceVersion} scope ${scopeId}.scene ${key} 格式无效`);
             }
             let sceneValue = rawSceneValue;
-            if (sourceVersion === INTERACTIVE_STORE_VERSION) {
-                if (sceneValue.id !== key) throw new Error(`互动场景 v2 scope ${scopeId}.scene ${key}.id 必须与场景键一致`);
+            if (isStrictVersion(sourceVersion)) {
+                if (sceneValue.id !== key) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.scene ${key}.id 必须与场景键一致`);
             } else {
                 if (Object.hasOwn(sceneValue, 'id') && typeof sceneValue.id !== 'string') throw new Error(`互动场景 v1 scope ${scopeId}.scene ${key}.id 必须是字符串`);
                 const sceneId = Object.hasOwn(sceneValue, 'id') ? normalizeV1DictionaryKey(sceneValue.id, 80, `scope ${scopeId}.scene ${key}.id`) : key;
                 if (sceneId !== key) throw new Error(`互动场景 v1 scope ${scopeId}.scene ${key}.id 必须与场景键一致`);
                 sceneValue = { ...sceneValue, id: key };
             }
-            scope.scenes[key] = normalizeScene(sceneValue, { scope, scopeId, sourceVersion, strictLegacy: sourceVersion === 1 });
+            const { scene, live } = normalizeSceneWithLegacyLive(sceneValue, { scope, scopeId, sourceVersion, strictLegacy: sourceVersion === 1 });
+            scope.scenes[key] = scene;
+            if (live) legacyLives.set(key, live);
         }
         scope.sceneOrder = Object.keys(scope.scenes);
+        if (isV3) normalizeScopeLiveRooms(value, scope, scopeId);
+        else migrateLegacyLivesToRooms(scope, scopeId, legacyLives);
         if (sourceVersion === 1 && value.activeSceneId !== undefined && value.activeSceneId !== null && typeof value.activeSceneId !== 'string') throw new Error(`互动场景 v1 scope ${scopeId}.activeSceneId 必须是字符串或 null`);
-        const normalizedActiveSceneId = sourceVersion === INTERACTIVE_STORE_VERSION ? value.activeSceneId : normalizeV1DictionaryKey(value.activeSceneId, 80, `scope ${scopeId}.activeSceneId`);
-        scope.activeSceneId = sourceVersion === INTERACTIVE_STORE_VERSION
+        const normalizedActiveSceneId = isStrictVersion(sourceVersion) ? value.activeSceneId : normalizeV1DictionaryKey(value.activeSceneId, 80, `scope ${scopeId}.activeSceneId`);
+        scope.activeSceneId = isStrictVersion(sourceVersion)
             ? value.activeSceneId
             : Object.hasOwn(scope.scenes, normalizedActiveSceneId) ? normalizedActiveSceneId : scope.sceneOrder.at(-1) || null;
         result.scopes[scopeId] = scope;
