@@ -64,13 +64,13 @@ export function parseVideoEnvelope(envelope, kind) {
         const meta = isRecord(envelope.meta) ? envelope.meta : {};
         const items = cleanDanmaku(source, VIDEO_LIMITS.danmaku);
         const comments = cleanComments(meta.comments, VIDEO_LIMITS.comments);
-        if (!items.length && !comments.length) throw new Error('AI 未返回有效内容');
+        if (!items.length && !comments.length) throw new Error('AI未返回有效内容');
         return { items, meta: { video: cleanVideoMeta(meta.video), comments } };
     }
     const items = kind === 'video_comments' ? cleanComments(source, 12)
         : kind === 'video_replies' ? cleanReplies(source).slice(0, 8)
             : kind === 'video_danmaku' ? cleanDanmaku(source, 20) : null;
     if (!items) throw new Error(`不支持的视频生成类型：${kind}`);
-    if (!items.length) throw new Error('AI 未返回有效内容');
+    if (!items.length) throw new Error('AI未返回有效内容');
     return { items, meta: {} };
 }

@@ -260,7 +260,7 @@ const missingIdApi = createQuickReplyApiFixture({ set: {
     name: PHONE_QR_SET_NAME,
     qrList: [{ label: PHONE_QR_LABEL, message: PHONE_QR_MESSAGE, automationId: PHONE_QR_AUTOMATION_ID }],
 } });
-await assert.rejects(() => ensurePhoneQuickReply(missingIdApi), /缺少稳定数字 ID/);
+await assert.rejects(() => ensurePhoneQuickReply(missingIdApi), /缺少稳定数字ID/);
 
 const initialQrStorage = createStorageFixture();
 const initialQrApi = createQuickReplyApiFixture();
@@ -1652,7 +1652,7 @@ const galDuplicateContext = {
     extensionSettings: { regex: [...galRegexContext.extensionSettings.regex, { ...galRegexContext.extensionSettings.regex[0] }] },
     saveSettingsDebounced() {},
 };
-await assert.rejects(() => reconcileGalBubble(galDuplicateContext, true), /多条同 ID/,
+await assert.rejects(() => reconcileGalBubble(galDuplicateContext, true), /多条同ID/,
     '发现重复自有正则时不得猜测性删除任何宿主条目');
 assert.equal(galDuplicateContext.extensionSettings.regex.length, 2, '重复自有正则拒绝路径不得修改宿主配置');
 const galSaveFailureContext = {
@@ -1943,14 +1943,15 @@ globalThis.FileReader = class FakeFileReader {
 };
 const documentClickListeners = new Set();
 const dispatchDocumentClick = target => { for (const listener of [...documentClickListeners]) listener({ target }); };
-const generationCancelButtons = [{ hidden: true, disabled: true }];
+// 会话页发送键：生成中原位变成停止键（dataset.mode = 'stop'）。
+const chatSendButtons = [{ dataset: { mode: 'send' }, innerHTML: '', title: '', setAttribute() {} }];
 let worldBookToggleControls = [];
 globalThis.document = {
     getElementById: id => id === 'pm-overlay' && uiElements.get(id)?.removed ? null : uiElements.get(id) || null,
     querySelector: () => null,
     querySelectorAll: selector => {
         if (selector === '.pm-theme-chip') return themeChips;
-        if (selector === '.pm-generation-cancel') return generationCancelButtons;
+        if (selector === '.pm-chat-page .pm-up-btn') return chatSendButtons;
         if (selector === '[data-world-book]') return worldBookToggleControls.filter(control => control.dataset.worldBook);
         if (selector === '[data-world-entry]') return worldBookToggleControls.filter(control => control.dataset.worldEntry);
         if (selector === '[data-world-column]') return worldBookToggleControls.filter(control => control.dataset.worldColumn);
@@ -3547,8 +3548,8 @@ assert.deepEqual(accentToneTokens('rgba(1,2,3,.5)'), {}, '无法解析的强调�
 assert.equal(foundationDeps.cancelGeneration(), false, '没有进行中的生成时停止操作必须返回 false');
 const cancellableTask = foundationDeps.beginGeneration('story');
 assert.ok(cancellableTask, '有效会话必须能开始生成任务');
-assert.equal(generationCancelButtons[0].hidden, false, '生成开始后停止按钮必须可见');
-assert.equal(generationCancelButtons[0].disabled, false, '生成开始后停止按钮必须可用');
+assert.equal(chatSendButtons[0].dataset.mode, 'stop', '生成开始后发送键必须变成停止键');
+assert.equal(chatSendButtons[0].title, '停止回复', '停止键要标明用途');
 assert.equal(cancellableTask.signal.aborted, false, '新任务的中止信号初始必须未触发');
 assert.equal(foundationDeps.cancelGeneration(), true, '生成进行中必须允许停止');
 assert.equal(cancellableTask.signal.aborted, true, '停止生成必须中止请求信号');
@@ -3557,8 +3558,7 @@ assert.equal(cancellableTask.signal.reason, 'generation-cancelled-by-user', '停
 assert.equal(foundationDeps.isGenerationTaskActive(cancellableTask), false,
     '停止生成后任务不得再被判定为活跃，否则已返回的结果会继续渲染');
 assert.equal(foundationDeps.finishGeneration(cancellableTask), true, '取消后的任务必须能正常收尾');
-assert.equal(generationCancelButtons[0].hidden, true, '生成收尾后停止按钮必须隐藏');
-assert.equal(generationCancelButtons[0].disabled, true, '生成收尾后停止按钮必须禁用');
+assert.equal(chatSendButtons[0].dataset.mode, 'send', '生成收尾后停止键必须变回发送键');
 assert.equal(foundationState.isGenerating, false, '取消收尾后必须释放生成状态');
 
 window.__pmShowModelPicker();
@@ -3916,7 +3916,7 @@ localStorageControl.failSet.add('ST_SMS_CONFIG');
 assert.equal(window.__pmSaveConfig(), false);
 assert.equal(window.__pmConfig.apiUrl, 'https://old.example');
 assert.equal(uiElements.get('pm-overlay').removed, false);
-assert.match(uiAlerts.at(-1), /API 配置保存失败/);
+assert.match(uiAlerts.at(-1), /API配置保存失败/);
 
 uiElements.get('pm-overlay').removed = false;
 localStorageControl.failSet.add('ST_SMS_API_PROFILES');
@@ -3926,7 +3926,7 @@ assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).apiUrl, 'https://new.e
 assert.equal(window.__pmProfiles.length, 1);
 assert.equal(window.__pmProfiles[0].apiUrl, 'https://old.example');
 assert.equal(uiElements.get('pm-overlay').removed, true);
-assert.match(uiNotes.at(-1), /API 设置已保存；档案列表保存失败/,
+assert.match(uiNotes.at(-1), /API设置已保存；档案列表保存失败/,
     '档案列表保存失败不得回滚已经持久化的当前 API 配置');
 
 uiElements.get('pm-overlay').removed = false;
@@ -3940,7 +3940,7 @@ assert.equal(uiElements.get('pm-cfg-model').value, 'profile-model');
 assert.equal(uiElements.get('pm-cfg-temperature').value, '0.4');
 assert.equal(uiElements.get('pm-mode-main').classList.contains('pm-mode-active'), false);
 assert.equal(uiElements.get('pm-mode-indep').classList.contains('pm-mode-active'), true);
-assert.equal(uiElements.get('pm-mode-tip').textContent, '独立 API 必须填写地址、密钥和模型');
+assert.equal(uiElements.get('pm-mode-tip').textContent, '独立API必须填写地址、密钥和模型');
 assert.equal(window.__pmSaveConfig(), true);
 assert.equal(window.__pmConfig.apiUrl, 'https://profile.example/v1');
 assert.equal(window.__pmConfig.temperature, 0.4);
@@ -3950,6 +3950,32 @@ assert.equal(JSON.parse(localValues.get('ST_SMS_CONFIG')).useIndependent, true);
 assert.equal(JSON.parse(localValues.get('ST_SMS_API_PROFILES')).some(profile => profile.apiUrl === 'https://profile.example/v1' && profile.temperature === 0.4), true);
 assert.equal(uiElements.get('pm-overlay').removed, true);
 assert.match(uiNotes.at(-1), /独立API/);
+
+// 新建预设保留表单里正在用的地址、密钥、温度，只改模型就能另存为新预设；编辑已有预设只改模型则原地更新。
+uiElements.get('pm-overlay').removed = false;
+const profileCountBeforeNew = window.__pmProfiles.length;
+const profileIdBeforeNew = window.__pmProfiles[0].id;
+window.__pmNewProfile();
+assert.equal(uiElements.get('pm-cfg-url').value, 'https://profile.example/v1', '新建预设不得清空地址');
+assert.equal(uiElements.get('pm-cfg-key').value, 'profile-key', '新建预设不得清空密钥');
+assert.equal(uiElements.get('pm-cfg-model').value, 'profile-model', '新建预设不得清空模型');
+assert.equal(uiElements.get('pm-cfg-temperature').value, '0.4', '新建预设不得重置温度');
+uiElements.get('pm-cfg-model').value = 'profile-model-new';
+assert.equal(window.__pmSaveConfig(), true);
+assert.equal(window.__pmProfiles.length, profileCountBeforeNew + 1, '只改模型必须另存为新预设');
+assert.equal(window.__pmProfiles[0].id, profileIdBeforeNew, '原预设不得被新建覆盖');
+assert.equal(window.__pmProfiles[0].model, 'profile-model');
+assert.equal(window.__pmProfiles.at(-1).model, 'profile-model-new');
+assert.equal(window.__pmProfiles.at(-1).apiUrl, 'https://profile.example/v1');
+assert.notEqual(window.__pmProfiles.at(-1).id, profileIdBeforeNew);
+uiElements.get('pm-overlay').removed = false;
+window.__pmPickProfile(0);
+uiElements.get('pm-cfg-model').value = 'profile-model-edited';
+assert.equal(window.__pmSaveConfig(), true);
+assert.equal(window.__pmProfiles.length, profileCountBeforeNew + 1, '编辑已有预设只改模型不得新增');
+assert.equal(window.__pmProfiles[0].id, profileIdBeforeNew);
+assert.equal(window.__pmProfiles[0].model, 'profile-model-edited');
+assert.equal(window.__pmProfiles[0].apiUrl, 'https://profile.example/v1', '编辑预设只改模型不得要求重填地址');
 
 uiElements.get('pm-overlay').removed = false;
 uiElements.get('pm-cfg-temperature').value = '2.1';
@@ -6820,7 +6846,7 @@ assert.deepEqual(galBackupState, galBackupOriginal,
     '导入期间 GAL 宿主同步失败必须恢复导入前的本地开关状态');
 assert.deepEqual(galBackupSyncCalls, [false, true],
     '导入期间 GAL 宿主同步失败必须在回滚阶段恢复原宿主正则状态');
-assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复.*GAL 气泡正则同步失败/s);
+assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复.*GAL气泡正则同步失败/s);
 assert.equal(uiAlerts.length, galBackupAlertsBefore + 1);
 
 const galReloadOriginal = { galBubbleEnabled: false, model: 'reload-original' };
@@ -6845,7 +6871,7 @@ galReloadController.importData({ files: [{ text: '{}' }], value: 'gal-reload-fai
 await fileReadCompletion;
 assert.deepEqual(galBackupState, galReloadImported, 'GAL 聊天刷新失败不得回滚已成功导入的正则配置');
 assert.equal(galReloadCalls, 1, 'GAL 正则变更后必须尝试刷新当前聊天');
-assert.match(uiAlerts.at(-1), /数据导入成功，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天/, 'GAL 刷新失败时导入成功提示必须要求手动刷新');
+assert.match(uiAlerts.at(-1), /数据导入成功，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天/, 'GAL 刷新失败时导入成功提示必须要求手动刷新');
 
 const galRollbackRefreshOriginal = { galBubbleEnabled: false, model: 'rollback-refresh-original' };
 const galRollbackRefreshImported = { galBubbleEnabled: true, model: 'rollback-refresh-imported' };
@@ -6874,7 +6900,7 @@ await fileReadCompletion;
 assert.deepEqual(galBackupState, galRollbackRefreshOriginal, '导入回滚后必须恢复原数据');
 assert.equal(galRollbackRefreshCalls, 2, '导入与回滚的 GAL 正则变更都必须尝试刷新当前聊天');
 assert.equal(galRollbackPersistCalls, 2, '导入失败后必须持久化恢复原数据');
-assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天/, '导入回滚后刷新失败必须明确提示手动刷新');
+assert.match(uiAlerts.at(-1), /导入失败，原数据已恢复，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天/, '导入回滚后刷新失败必须明确提示手动刷新');
 
 galBackupState = structuredClone(galBackupOriginal);
 galBackupSyncCalls.length = 0;
@@ -6887,7 +6913,7 @@ assert.deepEqual(galBackupState, galBackupOriginal,
     '清理期间 GAL 宿主同步失败必须恢复清理前的本地开关状态');
 assert.deepEqual(galBackupSyncCalls, [false, true],
     '清理期间 GAL 宿主同步失败必须在回滚阶段恢复原宿主正则状态');
-assert.match(uiAlerts.at(-1), /清理失败，原数据已恢复.*GAL 气泡正则同步失败/s);
+assert.match(uiAlerts.at(-1), /清理失败，原数据已恢复.*GAL气泡正则同步失败/s);
 assert.equal(uiAlerts.length, galClearAlertsBefore + 1);
 if (previousConfirm === undefined) delete globalThis.confirm;
 else globalThis.confirm = previousConfirm;

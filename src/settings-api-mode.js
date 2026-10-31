@@ -12,7 +12,7 @@ export function createApiDraftMode(initial = false) {
             main?.classList.toggle('pm-mode-active', !useIndependent);
             independent?.classList.toggle('pm-mode-active', useIndependent);
             if (tip) tip.textContent = useIndependent
-                ? '独立 API 必须填写地址、密钥和模型'
+                ? '独立API必须填写地址、密钥和模型'
                 : '默认使用酒馆API预设';
             for (const id of FIELD_IDS) {
                 const fields = document.getElementById(id);

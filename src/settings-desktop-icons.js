@@ -16,7 +16,7 @@ function inspectImage(objectUrl, ImageCtor = globalThis.Image) {
         image.onload = () => {
             const width = image.naturalWidth, height = image.naturalHeight;
             image.src = '';
-            if (!width || !height || width > MAX_SOURCE_DIMENSION || height > MAX_SOURCE_DIMENSION) reject(new Error(`图片尺寸必须在 1–${MAX_SOURCE_DIMENSION}px 之间`));
+            if (!width || !height || width > MAX_SOURCE_DIMENSION || height > MAX_SOURCE_DIMENSION) reject(new Error(`图片尺寸必须在 1–${MAX_SOURCE_DIMENSION}px之间`));
             else resolve({ width, height });
         };
         image.onerror = () => { image.src = ''; reject(new Error('图片无法解码')); };
@@ -44,7 +44,7 @@ export function createDesktopIconSettings({
     const showPage = async () => {
         try { await loadIcons(); }
         catch (error) { if (windowRef) windowRef.__pmDesktopIcons = {}; console.warn('[phone-mode] 桌面图标读取失败', error); }
-        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持 PNG、WebP 或 JPEG，裁剪后统一保存为 256×256 PNG，并覆盖整个图标区域。</div><div class="pm-cfg-tip">在桌面长按图标可拖动排列；右侧开关控制图标是否显示在桌面，设置始终显示。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetDesktopLayout()">恢复默认排列</button><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认图标</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
+        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持PNG、WebP或JPEG，裁剪后统一保存为 256×256 PNG，并覆盖整个图标区域。</div><div class="pm-cfg-tip">在桌面长按图标可拖动排列；右侧开关控制图标是否显示在桌面，设置始终显示。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetDesktopLayout()">恢复默认排列</button><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认图标</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
     };
 
     let mutation = Promise.resolve();
@@ -65,8 +65,8 @@ export function createDesktopIconSettings({
         if (!file) return false;
         input.value = '';
         if (!DESKTOP_ICON_IDS.includes(appId)) { alert('桌面图标标识无效。'); return false; }
-        if (!ACCEPTED_TYPES.has(file.type)) { alert('仅支持 PNG、WebP 或 JPEG 图片。'); return false; }
-        if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_SOURCE_BYTES) { alert('原图片大小必须在 5MB 以内。'); return false; }
+        if (!ACCEPTED_TYPES.has(file.type)) { alert('仅支持PNG、WebP或JPEG图片。'); return false; }
+        if (!Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_SOURCE_BYTES) { alert('原图片大小必须在 5MB以内。'); return false; }
         const objectUrl = urlApi.createObjectURL(file);
         try {
             await inspectImage(objectUrl, ImageCtor);

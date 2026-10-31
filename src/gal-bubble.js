@@ -109,7 +109,7 @@ function getRegexList(context) {
     if (!settings) throw Object.assign(new Error('当前酒馆上下文不可用，无法访问全局正则列表'), { code: 'host-unavailable' });
     if (!Array.isArray(settings.regex)) throw Object.assign(new Error('酒馆正则模块尚未就绪，请稍后重试'), { code: 'regex-not-ready' });
     if (Array.isArray(settings.disabledExtensions) && settings.disabledExtensions.includes('regex')) {
-        throw Object.assign(new Error('酒馆正则扩展已禁用，请先启用 Regex 扩展'), { code: 'regex-disabled' });
+        throw Object.assign(new Error('酒馆正则扩展已禁用，请先启用Regex扩展'), { code: 'regex-disabled' });
     }
     return settings.regex;
 }
@@ -125,7 +125,7 @@ let galBubbleMutationQueue = Promise.resolve();
 
 async function reconcileGalBubbleNow(context, enabled) {
     const matches = getRegexList(context).filter(isOwnedScript);
-    if (matches.length > 1) throw Object.assign(new Error('发现多条同 ID 的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
+    if (matches.length > 1) throw Object.assign(new Error('发现多条同ID的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
     if (enabled === true) return installGalBubble(context);
     if (enabled !== true && matches.length) return uninstallGalBubble(context);
     return { changed: false, action: 'noop' };
@@ -140,7 +140,7 @@ export function reconcileGalBubble(context, enabled) {
 export async function installGalBubble(context) {
     const list = getRegexList(context);
     const matches = list.filter(isOwnedScript);
-    if (matches.length > 1) throw Object.assign(new Error('发现多条同 ID 的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
+    if (matches.length > 1) throw Object.assign(new Error('发现多条同ID的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
     if (!matches.length) {
         const script = getGalBubbleScriptDefinition();
         list.push(script);
@@ -170,7 +170,7 @@ export async function installGalBubble(context) {
 export async function uninstallGalBubble(context) {
     const list = getRegexList(context);
     const matches = list.filter(isOwnedScript);
-    if (matches.length > 1) throw Object.assign(new Error('发现多条同 ID 的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
+    if (matches.length > 1) throw Object.assign(new Error('发现多条同ID的天音小笺正则，已停止修改，请先在酒馆正则面板清理重复项'), { code: 'duplicate-script' });
     if (!matches.length) return { changed: false, action: 'noop' };
     const index = list.indexOf(matches[0]);
     const [script] = list.splice(index, 1);

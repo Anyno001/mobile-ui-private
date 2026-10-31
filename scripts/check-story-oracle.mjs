@@ -279,6 +279,6 @@ await assert.rejects(() => copyUserGenerationContent('复制失败', {
 }), /复制失败，请展开后手动选择/);
 await assert.rejects(() => copyUserGenerationContent('', {
     clipboard: { writeText: async () => assert.fail('空正文不得调用 Clipboard') }, documentRef: fallbackDocument,
-}), /没有可复制的 User 正文/);
+}), /没有可复制的User正文/);
 
 console.log('Story Oracle checks passed.');

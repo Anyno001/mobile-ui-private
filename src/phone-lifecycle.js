@@ -562,8 +562,7 @@ export function installPhoneLifecycle(state, deps) {
     <div class="pm-input-bar">
       <button type="button" onclick="window.__pmShowControlCenter()" class="pm-expand-btn" title="快捷工具" aria-haspopup="menu" aria-expanded="false">${CONTROL_ICON_SVG}</button>
       <input class="pm-input" placeholder="长按提交全部消息">
-      <button type="button" class="pm-generation-cancel" hidden disabled onclick="window.__pmCancelGeneration()" title="停止生成" aria-label="停止生成">停止</button>
-      <button type="button" class="pm-up-btn" title="点击加入暂存，长按最终提交给 AI">${SEND_ICON_SVG}</button>
+      <button type="button" class="pm-up-btn" data-mode="send" title="点击加入暂存，长按最终提交给AI" aria-label="发送">${SEND_ICON_SVG}</button>
     </div>
   </section>
   <section class="pm-phone-page pm-desktop-page" data-phone-page="desktop" hidden></section>
@@ -595,10 +594,12 @@ export function installPhoneLifecycle(state, deps) {
         state.phoneWindow.querySelector('.pm-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.__pmSend(); } });
         window.__pmCancelGeneration = () => cancelGeneration();
         const sendButton = state.phoneWindow.querySelector('.pm-up-btn');
+        // AI 回复中发送键是 ×：点一下停止，长按不做事。
         unbindSendGesture = bindPressGesture(sendButton, {
             delay: 550,
-            onPress: () => window.__pmSend(),
+            onPress: () => (sendButton.dataset.mode === 'stop' ? cancelGeneration() : window.__pmSend()),
             onHold: () => {
+                if (sendButton.dataset.mode === 'stop') return false;
                 const storageId = state.activeStorageId || getStorageId();
                 const saveKey = state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
                 const pending = storageId && saveKey ? getPendingMessages(runtime, storageId, saveKey) : [];
@@ -607,10 +608,10 @@ export function installPhoneLifecycle(state, deps) {
                     return;
                 }
                 if (state.isGenerating) {
-                    alert('AI 正在回复，请等待当前回复结束后再最终提交。');
+                    alert('AI正在回复，请等待当前回复结束后再最终提交。');
                     return;
                 }
-                if (confirm('确认将当前会话的全部暂存消息最终提交给 AI？')) {
+                if (confirm('确认将当前会话的全部暂存消息最终提交给AI？')) {
                     window.__pmSubmitPending();
                 }
             },

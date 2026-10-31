@@ -31,7 +31,7 @@ content: 完整 User Persona 正文，可多行
 
 export async function copyUserGenerationContent(content, { clipboard = globalThis.navigator?.clipboard, documentRef = globalThis.document } = {}) {
     const text = typeof content === 'string' ? content : '';
-    if (!text) throw new Error('没有可复制的 User 正文');
+    if (!text) throw new Error('没有可复制的User正文');
     try {
         if (typeof clipboard?.writeText === 'function') {
             await clipboard.writeText(text);

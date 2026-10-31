@@ -461,7 +461,7 @@ export function relativeCalendarLabel(reference, value) {
 export function parseCalendarInput(input, now = new Date(), dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
     const source = String(input ?? '').trim();
     const date = extractCalendarDate(source, now, dateTags);
-    if (!date) return { ok: false, reason: '未识别到日期，请使用 YYYY MM DD 或 <YYYY MM DD><日程>。' };
+    if (!date) return { ok: false, reason: '未识别到日期，请使用YYYY MM DD或 <YYYY MM DD><日程>。' };
     const configuredDates = new Set(extractCalendarDateTagContents(source, dateTags));
     const tagParts = [...source.matchAll(/<\s*([^<>]+?)\s*>/g)].map(match => match[1].trim());
     const dateTagIndex = tagParts.findIndex(part => extractCalendarDate(`<${part}>`, now, dateTags) === date);

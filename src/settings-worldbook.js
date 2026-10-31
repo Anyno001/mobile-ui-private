@@ -137,7 +137,7 @@ function renderColumnSelector({ title, module, scope, config, books, backAction 
     const rows = columns.length ? columns.map(name => {
         const checked = override?.columns?.[name]?.[module] ?? config.columns[name]?.[module] !== false;
         return `<div class="pm-li"><span><b>${escapeHtml(name)}</b></span>${eyeToggle(checked, `data-world-quick-column="${escapeAttr(name)}"`, `${title}：${name}读取开关`)}</div>`;
-    }).join('') : '<div class="pm-prof-empty">未发现符合 TavernDB-ACU 协议的栏目。</div>';
+    }).join('') : '<div class="pm-prof-empty">未发现符合TavernDB-ACU协议的栏目。</div>';
     const reset = scope ? '<button class="pm-action-button is-secondary" onclick="window.__pmResetWorldBookColumnOverride()">恢复跟随全局</button>' : '';
     return renderSettingsModal({ title, content: `<div class="pm-settings-page"><div class="pm-settings-note pm-cfg-tip">控制当前模块可读取的数据库条目。</div><div class="pm-settings-list">${rows}</div></div>`, footer: `<div class="pm-modal-add pm-worldbook-actions">${reset}<button class="pm-action-button is-accent" onclick="window.__pmSaveWorldBookColumns()">完成</button></div>`, backAction, backLabel });
 }

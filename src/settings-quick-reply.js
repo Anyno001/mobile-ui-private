@@ -15,7 +15,7 @@ export function installQuickReplySettings({ makeOverlay, addNote, saveTheme }) {
         const buttons = [...document.querySelectorAll('.pm-quick-reply-actions button')];
         buttons.forEach(button => { button.disabled = true; });
         if (status) {
-            status.textContent = '正在提交到宿主 Quick Reply…';
+            status.textContent = '正在提交到宿主Quick Reply…';
             status.dataset.state = 'pending';
         }
         try {
@@ -29,7 +29,7 @@ export function installQuickReplySettings({ makeOverlay, addNote, saveTheme }) {
                 status.textContent = `操作失败：${message}`;
                 status.dataset.state = 'error';
             }
-            alert(`Quick Reply 操作失败：${message}`);
+            alert(`Quick Reply操作失败：${message}`);
             return false;
         } finally {
             buttons.forEach(button => { button.disabled = false; });

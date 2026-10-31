@@ -23,7 +23,7 @@ export function createGalBubbleController({ getContext, reconcile, saveEnabled, 
     };
     const sync = async enabled => {
         const context = getContext?.();
-        if (!context) throw new Error('当前酒馆上下文不可用，无法修改 GAL 气泡正则');
+        if (!context) throw new Error('当前酒馆上下文不可用，无法修改GAL气泡正则');
         const result = await reconcile(context, enabled);
         window.__pmGalBubbleOperational = enabled === true;
         return { context, result };
@@ -44,7 +44,7 @@ export function createGalBubbleController({ getContext, reconcile, saveEnabled, 
             }
             window.__pmGalBubbleEnabled = next;
             try {
-                if (!saveEnabled()) throw new Error('GAL 气泡开关保存失败：浏览器存储不可用。');
+                if (!saveEnabled()) throw new Error('GAL气泡开关保存失败：浏览器存储不可用。');
             } catch (error) {
                 window.__pmGalBubbleEnabled = previous;
                 window.__pmGalBubbleOperational = previous;
@@ -62,7 +62,7 @@ export function createGalBubbleController({ getContext, reconcile, saveEnabled, 
                     await reloadCurrentChat(transaction.context);
                 } catch (error) {
                     console.warn('[phone-mode] GAL 气泡已更新，但当前聊天刷新失败', error?.name || 'Error');
-                    alert('GAL 气泡已更新，但当前聊天刷新失败，请手动刷新当前聊天。');
+                    alert('GAL气泡已更新，但当前聊天刷新失败，请手动刷新当前聊天。');
                 }
             }
             const element = document.getElementById('pm-gal-bubble-check');

@@ -41,22 +41,22 @@ export async function loadUserGenerationStore({ idbRead = pmIDBReadEntry, storag
             store: fallback.store, recovered: true, writable: !primaryBroken,
             writeHandle: primaryBroken ? null : createWritableHandle(),
             readOnlyReason: primaryBroken ? '主存储数据损坏或版本不兼容' : '',
-            warning: primaryBroken ? 'User 库主存储无法识别，已从本地后备数据恢复；当前为只读保护状态，原始数据未覆盖。' : '已从本地后备数据恢复；主存储不可用，后续保存将写入本地后备存储。',
+            warning: primaryBroken ? 'User库主存储无法识别，已从本地后备数据恢复；当前为只读保护状态，原始数据未覆盖。' : '已从本地后备数据恢复；主存储不可用，后续保存将写入本地后备存储。',
         };
     }
     if (idb?.ok && idb.value === undefined && !fallback.present) {
         return { store: createEmptyUserGenerationStore(), recovered: false, writable: true, writeHandle: createWritableHandle(), readOnlyReason: '', warning: null };
     }
     if (idb?.ok && idb.value !== undefined) {
-        return { store: createEmptyUserGenerationStore(), recovered: true, writable: false, writeHandle: null, readOnlyReason: '历史数据损坏或版本不兼容', warning: 'User 库数据损坏或版本不兼容，原始数据未覆盖，已使用只读空工作区。' };
+        return { store: createEmptyUserGenerationStore(), recovered: true, writable: false, writeHandle: null, readOnlyReason: '历史数据损坏或版本不兼容', warning: 'User库数据损坏或版本不兼容，原始数据未覆盖，已使用只读空工作区。' };
     }
     if (fallback.present) {
-        return { store: createEmptyUserGenerationStore(), recovered: false, writable: false, writeHandle: null, readOnlyReason: '后备数据损坏', warning: 'User 库后备数据损坏，原始数据未覆盖，本次会话不会持久化。' };
+        return { store: createEmptyUserGenerationStore(), recovered: false, writable: false, writeHandle: null, readOnlyReason: '后备数据损坏', warning: 'User库后备数据损坏，原始数据未覆盖，本次会话不会持久化。' };
     }
     return {
         store: createEmptyUserGenerationStore(), recovered: false, writable: Boolean(storage),
         writeHandle: storage ? createWritableHandle() : null, readOnlyReason: storage ? '' : '存储不可用',
-        warning: storage ? 'IndexedDB 不可用，后续保存将写入本地后备存储。' : 'User 库存储不可用，本次会话不会持久化。',
+        warning: storage ? 'IndexedDB不可用，后续保存将写入本地后备存储。' : 'User库存储不可用，本次会话不会持久化。',
     };
 }
 

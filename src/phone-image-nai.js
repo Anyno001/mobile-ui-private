@@ -78,9 +78,9 @@ const zipFail = (reason, message) => { throw Object.assign(new Error(message), {
 async function inflateRaw(bytes, expected) {
     let stream;
     try { stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')); }
-    catch (error) { zipFail('zip-deflate-unavailable', '当前浏览器不支持 ZIP 解压'); }
+    catch (error) { zipFail('zip-deflate-unavailable', '当前浏览器不支持ZIP解压'); }
     const out = new Uint8Array(await new Response(stream).arrayBuffer());
-    if (expected && out.length !== expected) zipFail('zip-truncated', 'ZIP 响应不完整');
+    if (expected && out.length !== expected) zipFail('zip-truncated', 'ZIP响应不完整');
     return out;
 }
 export async function readZipFirstImage(buffer) {
@@ -94,7 +94,7 @@ export async function readZipFirstImage(buffer) {
         const count = view.getUint16(end + 10, true);
         let p = view.getUint32(end + 16, true);
         for (let i = 0; i < count; i++) {
-            if (view.getUint32(p, true) !== 0x02014b50) zipFail('zip-truncated', 'ZIP 响应不完整');
+            if (view.getUint32(p, true) !== 0x02014b50) zipFail('zip-truncated', 'ZIP响应不完整');
             entries.push({ method: view.getUint16(p + 10, true), size: view.getUint32(p + 20, true), unpacked: view.getUint32(p + 24, true), offset: view.getUint32(p + 42, true) });
             p += 46 + view.getUint16(p + 28, true) + view.getUint16(p + 30, true) + view.getUint16(p + 32, true);
         }
@@ -103,18 +103,18 @@ export async function readZipFirstImage(buffer) {
     }
     for (const entry of entries) {
         const o = entry.offset;
-        if (view.getUint32(o, true) !== 0x04034b50) zipFail('zip-truncated', 'ZIP 响应不完整');
+        if (view.getUint32(o, true) !== 0x04034b50) zipFail('zip-truncated', 'ZIP响应不完整');
         const nameLength = view.getUint16(o + 26, true);
         const name = new TextDecoder().decode(new Uint8Array(buffer, o + 30, nameLength));
         if (name && !/\.(png|jpe?g|webp)$/i.test(name)) continue;
         const start = o + 30 + nameLength + view.getUint16(o + 28, true);
-        if (start + entry.size > view.byteLength) zipFail('zip-truncated', 'ZIP 响应不完整');
+        if (start + entry.size > view.byteLength) zipFail('zip-truncated', 'ZIP响应不完整');
         const raw = new Uint8Array(buffer, start, entry.size);
-        const bytes = entry.method === 8 ? await inflateRaw(raw, entry.unpacked) : entry.method === 0 ? raw : zipFail('zip-method', 'ZIP 压缩方式不受支持');
+        const bytes = entry.method === 8 ? await inflateRaw(raw, entry.unpacked) : entry.method === 0 ? raw : zipFail('zip-method', 'ZIP压缩方式不受支持');
         const ext = (name.match(/\.(png|jpe?g|webp)$/i) || [])[1]?.toLowerCase() || 'png';
         return { bytes, type: ext.startsWith('jp') ? 'image/jpeg' : `image/${ext}` };
     }
-    zipFail('zip-no-image', 'ZIP 响应中没有图片');
+    zipFail('zip-no-image', 'ZIP响应中没有图片');
 }
 const toBase64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
 export async function imageFromResponse(response) {
@@ -153,11 +153,11 @@ async function resolveTransport(transport, fetchImpl) {
 
 function describeStatus(status, detail) {
     const suffix = detail ? `：${detail}` : '';
-    if (status === 401) return 'NAI 鉴权失败（401），请检查 Key';
-    if (status === 402) return 'NAI 余额或订阅不足（402）';
-    if (status === 429) return `NAI 请求过于频繁（429），重试后仍失败${suffix}`;
-    if (status >= 500) return `NAI 服务端错误（HTTP ${status}）${suffix}`;
-    return `NAI 返回 HTTP ${status}${suffix}`;
+    if (status === 401) return 'NAI鉴权失败（401），请检查Key';
+    if (status === 402) return 'NAI余额或订阅不足（402）';
+    if (status === 429) return `NAI请求过于频繁（429），重试后仍失败${suffix}`;
+    if (status >= 500) return `NAI服务端错误（HTTP ${status}）${suffix}`;
+    return `NAI返回HTTP ${status}${suffix}`;
 }
 function safeDetail(text, apiKey) {
     let value = String(text || '');
@@ -170,7 +170,7 @@ const wait = (ms, signal) => new Promise(resolve => { const t = setTimeout(resol
 /** 发请求出图。429 最多重试 2 次；其余失败不补发（发送状态未知时补发可能重复扣点）。 */
 export async function paintNai(slot, settings = {}, { signal, fetchImpl = (...a) => globalThis.fetch(...a), random = Math.random } = {}) {
     const apiKey = String(settings.apiKey || '').trim();
-    if (!apiKey) return { ok: false, error: '请先在生图方案里填写 NAI Key' };
+    if (!apiKey) return { ok: false, error: '请先在生图方案里填写NAI Key' };
     if (!String(slot?.scene || '').trim() && !(slot?.chars || []).length) return { ok: false, error: '提示词为空，未出图' };
     const body = foldCharsForRelay(buildNaiRequest(slot, settings, random), settings.endpoint, settings.artistPositive);
     const wire = { ...body, parameters: { ...body.parameters } };
@@ -187,20 +187,20 @@ export async function paintNai(slot, settings = {}, { signal, fetchImpl = (...a)
                 body: JSON.stringify(wire) });
         } catch (error) {
             if (error?.name === 'AbortError') throw error;
-            return { ok: false, error: transport === 'st-proxy' ? '经酒馆代理请求 NAI 失败：无法连接酒馆'
-                : '浏览器直连 NAI 失败（可能是跨域或网络不通）。可在酒馆 config.yaml 开启 enableCorsProxy，并把传输方式改为「酒馆代理」或「自动」' };
+            return { ok: false, error: transport === 'st-proxy' ? '经酒馆代理请求NAI失败：无法连接酒馆'
+                : '浏览器直连NAI失败（可能是跨域或网络不通）。可在酒馆config.yaml开启enableCorsProxy，并把传输方式改为「酒馆代理」或「自动」' };
         }
         if (response.ok) {
             try { return { ok: true, dataUrl: await imageFromResponse(response), seed: body.parameters.seed }; }
-            catch (error) { return { ok: false, error: `NAI 图片解析失败：${error.message}` }; }
+            catch (error) { return { ok: false, error: `NAI图片解析失败：${error.message}` }; }
         }
         if (response.status === 429 && attempt < 2) { await wait(5000 * 2 ** attempt, signal); continue; }
         const text = await response.text().catch(() => '');
         if (transport === 'st-proxy' && response.status === 404 && PROXY_DISABLED.test(text)) {
             resetNaiProxyProbe();
-            return { ok: false, error: '酒馆 CORS 代理未开启：在酒馆 config.yaml 设置 enableCorsProxy: true 并重启酒馆' };
+            return { ok: false, error: '酒馆CORS代理未开启：在酒馆config.yaml设置enableCorsProxy: true并重启酒馆' };
         }
         return { ok: false, error: describeStatus(response.status, safeDetail(text, apiKey)), status: response.status };
     }
-    return { ok: false, error: 'NAI 请求失败' };
+    return { ok: false, error: 'NAI请求失败' };
 }

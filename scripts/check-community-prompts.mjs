@@ -127,7 +127,7 @@ check('parse comment_batch / style_prompt / danmaku_batch', () => {
 check('多余顶层键与 meta 归属', () => {
     assert.throws(() => parseCommunityResponse(env('feed_batch', SAMPLES.weibo.items, { extra: 1 }), 'feed_batch', 'weibo'), /额外字段/);
     assert.throws(() => parseCommunityResponse('{"version":1,"kind":"feed_batch","items":[]}', 'feed_batch', 'weibo'), /协议不匹配/);
-    assert.throws(() => parseCommunityResponse('抱歉，无法生成。', 'feed_batch', 'weibo'), /可解析的社区 JSON/);
+    assert.throws(() => parseCommunityResponse('抱歉，无法生成。', 'feed_batch', 'weibo'), /可解析的社区JSON/);
     for (const platform of ['douban', 'review', 'confess']) {
         const result = parseCommunityResponse(env('feed_batch', SAMPLES[platform].items, { meta: { hot: [{ title: 'x' }], tonight: { title: 'y' } } }), 'feed_batch', platform);
         assert.deepEqual(result.meta, {}, `${platform} 不应带 meta`);

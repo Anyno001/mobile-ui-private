@@ -167,11 +167,11 @@ export function renderVideoCompose({ form = {}, hosts = [], editing = false, sta
         ${topbar({ left: backButton(`data-video-action="${editing ? 'cancel-edit' : 'home'}"`), title: editing ? '编辑视频' : '投稿', right: '<span class="pm-live-topbar-gap" aria-hidden="true"></span>' })}
         ${statusStrip(status)}
         <div class="pm-live-scroll"><div class="pm-live-form">
-            <label class="pm-live-field"><span>标题</span><input id="pm-video-title" class="pm-live-input" maxlength="60" placeholder="${byUser || editing ? '给视频起个标题' : '留空让 AI 起标题'}" value="${escapeAttr(form.title || '')}"></label>
+            <label class="pm-live-field"><span>标题</span><input id="pm-video-title" class="pm-live-input" maxlength="60" placeholder="${byUser || editing ? '给视频起个标题' : '留空让AI起标题'}" value="${escapeAttr(form.title || '')}"></label>
             <div class="pm-live-field" role="group" aria-label="分区"><span>分区</span><div class="pm-live-chips">${categoryChips}</div><input id="pm-video-category-custom" class="pm-live-input" maxlength="12" placeholder="自定义分区" aria-label="自定义分区" value="${escapeAttr(customCategory)}"></div>
             ${editing ? '' : `<div class="pm-live-field" role="group" aria-label="UP主"><span>UP主</span><div class="pm-live-chips">${hostChips}</div>${otherField}</div>`}
-            <label class="pm-live-field"><span>${byUser || editing ? '简介' : '想让 TA 发一条什么视频'}</span><textarea id="pm-video-idea" class="pm-live-input pm-live-textarea" maxlength="500" placeholder="${byUser || editing ? '这条视频讲了什么，可以留空' : '一两句想法就够，可以留空'}">${escapeHtml(form.idea || '')}</textarea></label>
-            ${!editing && byUser ? sw('pm-video-ai-scenes', 'toggle-ai-scenes', '让 AI 写分镜', '关闭后只保留一段简单的画面说明', form.aiScenes !== false) : ''}
+            <label class="pm-live-field"><span>${byUser || editing ? '简介' : '想让TA发一条什么视频'}</span><textarea id="pm-video-idea" class="pm-live-input pm-live-textarea" maxlength="500" placeholder="${byUser || editing ? '这条视频讲了什么，可以留空' : '一两句想法就够，可以留空'}">${escapeHtml(form.idea || '')}</textarea></label>
+            ${!editing && byUser ? sw('pm-video-ai-scenes', 'toggle-ai-scenes', '让AI写分镜', '关闭后只保留一段简单的画面说明', form.aiScenes !== false) : ''}
             ${sw('pm-video-nsfw', 'toggle-nsfw', '成人内容', '开启后可以写露骨的成人内容', form.nsfw === true)}
             ${editing ? '<button type="button" class="pm-live-danger" data-video-action="delete-video">删除视频</button>' : ''}
         </div></div>

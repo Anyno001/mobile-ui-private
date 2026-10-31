@@ -253,7 +253,7 @@ export function openCropper(imgDataUrl, options = {}) {
                 currentQuality = Math.max(quality.min, currentQuality - quality.step);
                 output = canvas.toDataURL(mime, currentQuality);
             }
-            if (!output.startsWith(`data:${mime};`)) throw new Error(`浏览器不支持输出 MIME：${mime}`);
+            if (!output.startsWith(`data:${mime};`)) throw new Error(`浏览器不支持输出MIME：${mime}`);
             if (dispose()) onConfirm(output);
         } finally {
             canvas.width = 0;

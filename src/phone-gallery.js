@@ -136,7 +136,7 @@ export function installPhoneGallery(state, deps) {
     <p class="pm-gallery-dna-status" role="status" aria-live="polite" hidden></p>
   </div>
   <div class="pm-gallery-dna-actions">
-    <button type="button" class="pm-action-button is-flex-1" data-dna-action="rewrite">AI 重写</button>
+    <button type="button" class="pm-action-button is-flex-1" data-dna-action="rewrite">AI重写</button>
     ${record ? '<button type="button" class="pm-action-button is-flex-1" data-dna-action="clear">清空</button>' : ''}
     <button type="button" class="pm-action-button is-accent is-flex-1" data-dna-action="save">保存</button>
   </div>

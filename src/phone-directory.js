@@ -382,7 +382,7 @@ export function installPhoneDirectory(state, deps) {
 
         const emojiCheckHtml = mode === 'edit' && window.__pmEmojis.length ? `
         <section class="pm-settings-stack pm-settings-separator">
-            <div class="pm-cfg-label">允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label">允许AI使用的表情包套组</div>
             <div class="pm-settings-option-list">
                 ${window.__pmEmojis.map(set => `
                     <div class="pm-settings-option" onclick="this.querySelector('.pm-emoji-assign-check').click()">
@@ -509,7 +509,7 @@ export function installPhoneDirectory(state, deps) {
       <div class="pm-modal-header"><button type="button" onclick="${returnAction}" class="pm-modal-close" title="${returnLabel}" aria-label="${returnLabel}">${BACK_ICON_SVG}</button><b>群聊设置</b><button type="button" onclick="window.__pmCloseOverlay()" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
       <div class="pm-modal-scroll pm-group-settings-scroll">
         <div class="pm-settings-inline-row">
-          <div class="pm-settings-stack"><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip">开启后，AI 可以生成不在固定成员名单中的临时群友。</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
+          <div class="pm-settings-stack"><div class="pm-cfg-label">允许路人群友随机出现</div><div class="pm-cfg-tip">开启后，AI可以生成不在固定成员名单中的临时群友。</div></div><div id="pm-group-random-npc" class="pm-custom-check pm-bi-style ${groupMeta.randomNpcEnabled ? 'is-checked' : ''}" role="checkbox" tabindex="0" aria-checked="${groupMeta.randomNpcEnabled}" onclick="this.classList.toggle('is-checked');this.setAttribute('aria-checked',String(this.classList.contains('is-checked')))" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
         </div>
         <label class="pm-settings-field">群聊性质
           <textarea id="pm-group-nature" class="pm-cfg-input" maxlength="200" rows="3" placeholder="例如：这是一个气氛很好的同学群">${escapeHtml(groupMeta.groupNature)}</textarea></label>
@@ -659,8 +659,8 @@ export function installPhoneDirectory(state, deps) {
       </div>
     </section>` : ''}
     ${showGenerate ? `<section class="pm-contact-add-choice is-ai">
-      <b>AI 生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
-      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI 自动生成联系人与群聊"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>生成联系人与群聊</span></button>
+      <b>AI生成</b><span>根据当前剧情、世界书和已有联系人生成一批候选。</span>
+      <button type="button" id="pm-autogen-btn" class="pm-contact-add-ai" onclick="window.__pmConfirmAutoGen()" aria-label="AI自动生成联系人与群聊"><span class="pm-contact-add-icon">${SPARKLES_ICON_SVG}</span><span>生成联系人与群聊</span></button>
     </section>` : ''}
   </div>
 </div>`);

@@ -213,7 +213,7 @@ try {
         await act('compose');
         const hostKey = html().match(/data-host="(actor:[^"]+)"/)[1];
         await act('pick-host', { host: hostKey });
-        match(html(), /想让 TA 发一条什么视频/);
+        match(html(), /想让TA发一条什么视频/);
         setField('pm-video-idea', '雨中散步');
         await act('submit');
         video = await lastVideo();

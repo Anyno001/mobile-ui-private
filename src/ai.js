@@ -75,7 +75,7 @@ function cleanStructuredResponse(raw) {
     return cleaned.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, '').trim();
 }
 
-export function parseFirstJsonObject(raw, errorMessage = 'AI 未返回可解析的 JSON', accepts = null) {
+export function parseFirstJsonObject(raw, errorMessage = 'AI未返回可解析的JSON', accepts = null) {
     const source = cleanStructuredResponse(raw);
     let firstParsed;
     for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
@@ -106,10 +106,10 @@ export function generationErrorMessage(error) {
         || /fatal:\s+couldn't find remote ref refs\/heads\//i.test(message)
         || (/\bgiterror\b/i.test(identity) && /github/i.test(message) && networkFailure);
     if (extensionGitFailure) {
-        return 'SillyTavern 扩展版本检查或 AI 网络连接失败，请检查扩展仓库配置、GitHub 认证与网络后重试。';
+        return 'SillyTavern扩展版本检查或AI网络连接失败，请检查扩展仓库配置、GitHub认证与网络后重试。';
     }
     if (networkFailure) {
-        return 'AI 服务网络连接失败，请检查接口与网络后重试。';
+        return 'AI服务网络连接失败，请检查接口与网络后重试。';
     }
     return message;
 }
@@ -138,7 +138,7 @@ export function extractAiResponseContent(json) {
 export function corsProxyUrl(targetUrl) {
     const parsed = new URL(String(targetUrl));
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        throw new TypeError('API 地址仅支持 HTTP/HTTPS');
+        throw new TypeError('API地址仅支持HTTP/HTTPS');
     }
     return `/proxy/${encodeURIComponent(parsed.href)}`;
 }
@@ -241,9 +241,9 @@ export function createAiClient({
         throwIfAborted(signal);
 
         if (useIndependent) {
-            if (!String(cfg.apiUrl || '').trim()) throw new Error('独立 API 未填写地址');
-            if (!String(cfg.apiKey || '').trim()) throw new Error('独立 API 未填写密钥');
-            if (!String(cfg.model || '').trim()) throw new Error('独立 API 未选择模型');
+            if (!String(cfg.apiUrl || '').trim()) throw new Error('独立API未填写地址');
+            if (!String(cfg.apiKey || '').trim()) throw new Error('独立API未填写密钥');
+            if (!String(cfg.model || '').trim()) throw new Error('独立API未选择模型');
             const { chatUrl } = normalizeApiUrls(cfg.apiUrl);
             const messages = [];
             if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
@@ -268,7 +268,7 @@ export function createAiClient({
                 });
             } catch (error) {
                 if (signal?.aborted || error?.name === 'AbortError') throw abortError();
-                throw new Error(`独立 API 请求失败：${error?.message || '网络错误'}`);
+                throw new Error(`独立API请求失败：${error?.message || '网络错误'}`);
             }
             throwIfAborted(signal);
             if (!response.ok) {
@@ -283,22 +283,22 @@ export function createAiClient({
                 } catch (error) {
                     if (signal?.aborted || error?.name === 'AbortError') throw abortError();
                     const preview = raw.trim().replace(/\s+/g, ' ').slice(0, 120);
-                    throw new Error(`独立 API 返回了无法解析的 JSON${preview ? `：${preview}` : ''}`);
+                    throw new Error(`独立API返回了无法解析的JSON${preview ? `：${preview}` : ''}`);
                 }
             } else {
                 try { json = await response.json(); }
                 catch (error) {
                     if (signal?.aborted || error?.name === 'AbortError') throw abortError();
-                    throw new Error('独立 API 返回了无法解析的 JSON');
+                    throw new Error('独立API返回了无法解析的JSON');
                 }
             }
             const geminiFinishReason = String(json?.candidates?.[0]?.finishReason || '').toUpperCase();
             const openAiFinishReason = String(json?.choices?.[0]?.finish_reason || '').toLowerCase();
             if (geminiFinishReason === 'MAX_TOKENS' || openAiFinishReason === 'length') {
-                throw new Error('AI 输出达到 token 上限并被截断（MAX_TOKENS），未使用不完整结果。请重试或检查服务商的最大输出限制。');
+                throw new Error('AI输出达到token上限并被截断（MAX_TOKENS），未使用不完整结果。请重试或检查服务商的最大输出限制。');
             }
             const content = extractAiResponseContent(json);
-            if (!content) throw new Error('独立 API 响应缺少可用文本内容');
+            if (!content) throw new Error('独立API响应缺少可用文本内容');
             throwIfAborted(signal);
             return content;
         }
@@ -306,7 +306,7 @@ export function createAiClient({
         const context = getContext();
         if (!context) throw new Error('无上下文');
         if (options.isolated) {
-            if (typeof context.generateRaw !== 'function') throw new Error('当前 SillyTavern 版本不支持隔离生成，请升级后重试');
+            if (typeof context.generateRaw !== 'function') throw new Error('当前SillyTavern版本不支持隔离生成，请升级后重试');
             throwIfAborted(signal);
             const result = await raceAbort(context.generateRaw({
                 prompt: userPrompt,
@@ -316,7 +316,7 @@ export function createAiClient({
             throwIfAborted(signal);
             return result;
         }
-        if (typeof context.generateQuietPrompt !== 'function') throw new Error('当前 SillyTavern 上下文缺少 generateQuietPrompt');
+        if (typeof context.generateQuietPrompt !== 'function') throw new Error('当前SillyTavern上下文缺少generateQuietPrompt');
         const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
         throwIfAborted(signal);
         const result = await raceAbort(context.generateQuietPrompt({ quietPrompt: fullPrompt }), signal);

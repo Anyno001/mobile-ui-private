@@ -238,7 +238,7 @@ export function installPhoneChatPoke(state, deps) {
 
         const emojiCheckHtml = window.__pmEmojis.length ? `
         <section class="pm-settings-stack pm-settings-separator">
-            <div class="pm-cfg-label">允许 AI 使用的表情包套组</div>
+            <div class="pm-cfg-label">允许AI使用的表情包套组</div>
             <div class="pm-settings-option-list">
                 ${window.__pmEmojis.map(set => `
                     <div class="pm-settings-option"
@@ -253,7 +253,7 @@ export function installPhoneChatPoke(state, deps) {
                     </div>
                 `).join('')}
             </div>
-            <div class="pm-cfg-tip">勾选后 AI 会知道如何使用这些表情</div>
+            <div class="pm-cfg-tip">勾选后AI会知道如何使用这些表情</div>
         </section>` : '';
 
         makeOverlay(`

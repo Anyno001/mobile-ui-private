@@ -358,7 +358,7 @@ export function installCalendar(state, deps) {
         const directDate = parseCalendarDate(value);
         const extractedDate = directDate ? null : extractCalendarBaseDate(value);
         const parsed = directDate || parseCalendarDate(extractedDate);
-        if (!parsed) throw new Error('当前故事日期无效，请输入 YYYY-MM-DD、YYYY/MM/DD 或“YYYY年M月D日”');
+        if (!parsed) throw new Error('当前故事日期无效，请输入YYYY-MM-DD、YYYY/MM/DD或“YYYY年M月D日”');
         const normalizedDate = formatCalendarDate(parsed);
         await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate }), null, { refreshInjection: false });
         await ensureStoryWeatherEvent(storageId, { refreshInjection: false });

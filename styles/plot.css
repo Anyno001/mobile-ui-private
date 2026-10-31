@@ -1,0 +1,135 @@
+/* 剧情助手 · 剧情页（剧情注入器的项目、进度、设定、大纲）。只用设计令牌，不写死颜色和尺寸；按钮实色不描边。 */
+.pm-plot-card{display:flex;flex-direction:column;gap:var(--pm-space-2);padding:var(--pm-space-3);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);color:var(--pm-color-label);}
+.pm-plot-card.is-featured{background:var(--pm-color-accent-soft);box-shadow:none;color:var(--pm-color-on-accent-soft);}
+.pm-plot-card h3{margin:var(--pm-space-0);font-size:var(--pm-font-size-headline);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}
+.pm-plot-card-kicker{display:inline-flex;align-items:center;gap:var(--pm-space-1);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
+.pm-plot-card-kicker svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-plot-card-note{margin:var(--pm-space-0);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-plot-card-title{display:flex;flex-direction:column;align-items:flex-start;gap:var(--pm-space-0-5);padding:var(--pm-space-0);border:0;background:var(--pm-color-accent-soft);color:var(--pm-color-on-accent-soft);text-align:left;cursor:pointer;}
+.pm-plot-card-title b{font-size:var(--pm-font-size-headline);line-height:var(--pm-line-height-tight);}
+.pm-plot-card-title span{font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);}
+.pm-plot-card-meta{display:flex;justify-content:space-between;gap:var(--pm-space-2);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-control);}
+.pm-plot-card-actions{display:flex;flex-wrap:wrap;gap:var(--pm-space-1-5);}
+.pm-plot-card.is-featured .pm-plot-card-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+.pm-plot-progress{display:flex;gap:var(--pm-space-0-5);}
+.pm-plot-progress i{flex:1 1 0;height:var(--pm-space-1);border-radius:var(--pm-radius-pill);background:var(--pm-color-surface);}
+.pm-plot-progress i.is-active{background:var(--pm-color-accent);}
+.pm-plot-progress i.is-done{background:var(--pm-color-on-accent-soft);}
+/* 胶囊按钮：白底或墨色底，不描边 */
+.pm-plot-chip{display:inline-flex;align-items:center;justify-content:center;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-3);border:0;border-radius:var(--pm-radius-pill);background:var(--pm-color-surface);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);cursor:pointer;}
+.pm-plot-chip.is-ink{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
+.pm-plot-chip:disabled,.pm-plot-op:disabled{color:var(--pm-color-text-disabled);cursor:default;}
+.pm-plot-chip.is-ink:disabled,.pm-plot-op.is-ink:disabled{background:var(--pm-color-fill-strong);}
+/* 检测结果提示卡 */
+.pm-plot-notice{display:flex;flex-direction:column;gap:var(--pm-space-1);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);color:var(--pm-color-label);}
+.pm-plot-notice b{font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);}
+.pm-plot-notice p{margin:var(--pm-space-0);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-plot-notice-actions{display:flex;flex-wrap:wrap;gap:var(--pm-space-1-5);}
+.pm-plot-notice .pm-plot-chip:not(.is-ink){background:var(--pm-color-fill);}
+/* 项目切换条 */
+.pm-plot-switch{display:inline-flex;align-items:center;gap:var(--pm-space-1);align-self:flex-start;padding:var(--pm-space-0);border:0;background:var(--pm-color-bg-grouped);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);cursor:pointer;}
+.pm-plot-switch b{color:var(--pm-color-label);font-size:var(--pm-font-size-compact);}
+.pm-plot-switch svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-plot-tab{display:flex;flex-direction:column;gap:var(--pm-space-3);}
+.pm-plot-subtitle,.pm-plot-vol{margin:var(--pm-space-0);color:var(--pm-color-label-2);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
+.pm-plot-vol-head{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);}
+/* 时间线：已过实心，进行中主题色圆环，之后空心 */
+.pm-plot-tl{display:flex;flex-direction:column;gap:var(--pm-space-2);margin:var(--pm-space-0);padding:var(--pm-space-0) var(--pm-space-0) var(--pm-space-0) var(--pm-space-5);list-style:none;}
+.pm-plot-tl{position:relative;}
+.pm-plot-tl::before{content:'';position:absolute;left:calc(var(--pm-space-2) - var(--pm-space-0-5) / 2);top:var(--pm-space-3);bottom:var(--pm-space-3);width:var(--pm-space-0-5);border-radius:var(--pm-radius-pill);background:var(--pm-color-fill);}
+.pm-plot-tl-item{position:relative;}
+.pm-plot-tl-item::before{content:'';position:absolute;left:calc(var(--pm-space-5) * -1 + var(--pm-space-1));top:var(--pm-space-1-5);width:var(--pm-space-2);height:var(--pm-space-2);border-radius:var(--pm-radius-circle);background:var(--pm-color-fill-strong);}
+.pm-plot-tl-item.is-done::before{background:var(--pm-color-ink);}
+.pm-plot-tl-item.is-active::before{background:var(--pm-color-accent);box-shadow:var(--pm-shadow-segment);}
+.pm-plot-tl-head{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-sm);}
+.pm-plot-tl-name{flex:1 1 auto;min-width:0;font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
+.pm-plot-tl-item.is-done .pm-plot-tl-name,.pm-plot-tl-item.is-todo .pm-plot-tl-name,.pm-plot-tl-item.is-next .pm-plot-tl-name{color:var(--pm-color-label-2);font-weight:var(--pm-font-weight-regular);}
+.pm-plot-tl-head small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
+.pm-plot-nodes{display:flex;flex-direction:column;gap:var(--pm-space-0-5);margin:var(--pm-space-1) var(--pm-space-0) var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-panel);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);}
+.pm-plot-node{display:flex;align-items:center;gap:var(--pm-space-2);width:100%;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:var(--pm-color-surface);color:var(--pm-color-label);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);text-align:left;cursor:pointer;}
+.pm-plot-node.is-done .pm-plot-node-name{color:var(--pm-color-label-3);}
+.pm-plot-node small{flex:0 0 auto;margin-left:var(--pm-space-auto);color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
+.pm-plot-node-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pm-plot-check{display:grid;place-items:center;flex:0 0 auto;width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);border-radius:var(--pm-radius-sm);background:var(--pm-color-fill);color:var(--pm-color-on-ink);}
+.pm-plot-node.is-done .pm-plot-check{background:var(--pm-color-ink);}
+.pm-plot-check svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+/* 一行三个操作键 */
+.pm-plot-ops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-1-5);}
+.pm-plot-op{min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-1);border:0;border-radius:var(--pm-radius-pill);background:var(--pm-color-fill);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);cursor:pointer;}
+.pm-plot-op.is-ink{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
+/* 设定分块与草稿 */
+.pm-plot-block{display:flex;flex-direction:column;gap:var(--pm-space-1);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);color:var(--pm-color-label);}
+.pm-plot-block.is-draft{background:var(--pm-color-accent-soft);box-shadow:none;color:var(--pm-color-on-accent-soft);}
+.pm-plot-block-head{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-sm);}
+.pm-plot-block-head b,.pm-plot-block-title{flex:1 1 auto;min-width:0;font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
+.pm-plot-block-title{padding:var(--pm-space-0);border:0;background:var(--pm-color-surface);color:var(--pm-color-label);text-align:left;cursor:pointer;}
+.pm-plot-block-head small{flex:0 0 auto;color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
+.pm-plot-block.is-draft .pm-plot-block-head small{color:var(--pm-color-on-accent-soft);}
+.pm-plot-block p{display:-webkit-box;margin:var(--pm-space-0);overflow:hidden;color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);white-space:pre-wrap;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:3;}
+.pm-plot-block.is-draft p{color:var(--pm-color-on-accent-soft);}
+.pm-plot-draft-rows,.pm-plot-fixes{display:flex;flex-direction:column;gap:var(--pm-space-1);margin:var(--pm-space-0);padding:var(--pm-space-0);list-style:none;}
+.pm-plot-draft-rows .pm-plot-node{padding:var(--pm-space-1) var(--pm-space-2);border-radius:var(--pm-radius-panel);}
+.pm-plot-fixes li{display:flex;flex-direction:column;gap:var(--pm-space-1);}
+.pm-plot-fixes .pm-plot-chip{background:var(--pm-color-fill);}
+/* 列表行（大纲阶段、设置项） */
+.pm-plot-rows>li+li{box-shadow:0 -1px 0 var(--pm-color-fill);}
+.pm-plot-row{display:flex;align-items:center;gap:var(--pm-space-2);width:100%;min-height:var(--pm-size-control-lg);padding:var(--pm-space-1) var(--pm-space-0);border:0;background:var(--pm-color-surface);color:var(--pm-color-label);text-align:left;cursor:pointer;}
+.pm-plot-row-text{display:flex;flex:1 1 auto;flex-direction:column;gap:var(--pm-space-0-5);min-width:0;}
+.pm-plot-row-text b{font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-control);}
+.pm-plot-row-text small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-control);}
+.pm-plot-row-value{flex:0 0 auto;color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);}
+.pm-plot-row-empty{padding:var(--pm-space-3) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);}
+.pm-plot-chevron{display:grid;place-items:center;flex:0 0 auto;color:var(--pm-color-label-3);}
+.pm-plot-chevron svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-plot-toggle-row{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-lg);}
+.pm-plot-toggle-row .pm-story-oracle-row-label{flex:1 1 auto;font-size:var(--pm-font-size-compact);}
+.pm-plot-step{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-lg);padding:var(--pm-space-1) var(--pm-space-0);}
+.pm-plot-step+.pm-plot-step{box-shadow:0 -1px 0 var(--pm-color-fill);}
+.pm-plot-step>svg{flex:0 0 auto;width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);color:var(--pm-color-label-2);}
+.pm-plot-step span{display:flex;flex-direction:column;gap:var(--pm-space-0-5);}
+.pm-plot-step b{font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);}
+.pm-plot-step small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
+.pm-plot-stage-volume{flex:1 1 auto;text-align:center;font-size:var(--pm-font-size-compact);}
+/* AI 写作中的细条 */
+.pm-plot-busy{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);padding:var(--pm-space-1) var(--pm-space-1) var(--pm-space-1) var(--pm-space-3);border-radius:var(--pm-radius-pill);background:var(--pm-color-accent-soft);color:var(--pm-color-on-accent-soft);font-size:var(--pm-font-size-label);}
+/* 项目面板 */
+.pm-plot-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);padding:var(--pm-space-0) var(--pm-space-1) var(--pm-space-1);}
+.pm-plot-sheet-head b{font-size:var(--pm-font-size-headline);}
+.pm-plot-sheet-links{display:flex;gap:var(--pm-space-3);}
+.pm-plot-sheet-links .pm-story-oracle-link{display:inline-flex;align-items:center;gap:var(--pm-space-0-5);}
+.pm-plot-sheet-links svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-plot-sheet-list{display:flex;flex-direction:column;gap:var(--pm-space-0-5);max-height:60vh;overflow-y:auto;}
+.pm-plot-sheet-group{margin:var(--pm-space-2) var(--pm-space-2) var(--pm-space-0-5);color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);font-weight:var(--pm-font-weight-regular);}
+.pm-plot-sheet-item{display:flex;align-items:center;gap:var(--pm-space-2);width:100%;padding:var(--pm-space-2);border:0;border-radius:var(--pm-radius-large);background:var(--pm-color-surface-raised);color:var(--pm-color-label);text-align:left;cursor:pointer;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+.pm-plot-sheet-item.is-selected{background:var(--pm-color-accent-soft);color:var(--pm-color-on-accent-soft);}
+.pm-plot-sheet-item.is-selected .pm-story-oracle-seal{background:var(--pm-color-surface);}
+.pm-plot-sheet-item .pm-story-oracle-seal{width:var(--pm-size-control-sm);height:var(--pm-size-control-sm);font-size:var(--pm-font-size-compact);}
+.pm-plot-sheet-menu{display:flex;flex-direction:column;gap:var(--pm-space-0-5);}
+.pm-plot-sheet-menu button{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-lg);padding:var(--pm-space-0) var(--pm-space-2);border:0;border-radius:var(--pm-radius-panel);background:var(--pm-color-surface-raised);color:var(--pm-color-label);font-size:var(--pm-font-size-compact);text-align:left;cursor:pointer;}
+.pm-plot-sheet-menu button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-plot-sheet-menu .pm-control-menu-danger{color:var(--pm-color-danger);}
+.pm-plot-sheet-menu button:disabled{color:var(--pm-color-text-disabled);cursor:default;}
+/* 弹窗里的单选、多选、长文 */
+.pm-plot-choice{display:flex;flex-direction:column;gap:var(--pm-space-1);}
+.pm-plot-choice-item{display:flex;align-items:flex-start;gap:var(--pm-space-2);padding:var(--pm-space-2);border-radius:var(--pm-radius-panel);background:var(--pm-color-fill);cursor:pointer;}
+.pm-plot-choice-item span{display:flex;flex-direction:column;gap:var(--pm-space-0-5);min-width:0;}
+.pm-plot-choice-item b{font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);}
+.pm-plot-choice-item small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);overflow-wrap:anywhere;}
+.pm-plot-dialog-hint{margin:var(--pm-space-0);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-plot-pre{margin:var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-panel);background:var(--pm-color-fill);color:var(--pm-color-label);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);white-space:pre-wrap;overflow-wrap:anywhere;}
+.pm-plot-fieldset{display:flex;flex-direction:column;gap:var(--pm-space-2);margin:var(--pm-space-0);padding:var(--pm-space-0);border:0;}
+.pm-plot-fieldset legend{padding:var(--pm-space-0);color:var(--pm-color-label);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);}
+/* 剧情助手对话：标签一行、回复中的停止键、没收到回复的「重新发送」、回复下的「送到大纲」 */
+.pm-story-oracle-chips{display:flex;flex-wrap:wrap;gap:var(--pm-space-1-5);}
+.pm-story-oracle-chip.is-off{color:var(--pm-color-label-3);}
+.pm-story-oracle-stop{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);padding:var(--pm-space-0);border:0;border-radius:var(--pm-radius-circle);background:var(--pm-color-fill-strong);color:var(--pm-color-label);cursor:pointer;}
+.pm-story-oracle-stop svg{display:block;width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);pointer-events:none;}
+.pm-story-oracle-message.is-failed .pm-bubble{color:var(--pm-color-label-2);}
+.pm-story-oracle-retry{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--pm-space-2);color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-control);}
+.pm-story-oracle-retry .pm-story-oracle-link{display:inline-flex;align-items:center;gap:var(--pm-space-0-5);}
+.pm-story-oracle-retry svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+.pm-story-oracle-to-outline{align-self:flex-start;}
+@media(hover:hover){.pm-plot-row:hover,.pm-plot-node:hover,.pm-plot-block-title:hover{color:var(--pm-color-label-2);}.pm-plot-sheet-item:not(.is-selected):hover{background:var(--pm-color-fill);}}
+/* 会话 App：没收到回复的「重新发送」 */
+.pm-resend-row{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:var(--pm-space-2);margin:var(--pm-space-1) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);line-height:var(--pm-line-height-control);}
+.pm-resend-btn{min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-3);border:0;border-radius:var(--pm-radius-pill);background:var(--pm-color-fill);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);cursor:pointer;}

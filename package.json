@@ -1,6 +1,6 @@
 {
   "name": "tianyin-xiaojian-st",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "private": true,
   "type": "module",
   "description": "Build tooling for the personal Tianyin Xiaojian project.",
@@ -38,7 +38,9 @@
     "check:b2-feeds": "node scripts/check-b2-feeds.mjs",
     "check:origin-core": "node scripts/check-origin-core.mjs",
     "check:origin-host": "node scripts/check-origin-host.mjs",
-    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:storage-emoji && npm run check:behavior && npm run check:interactive && npm run check:community-prompts && npm run check:community-desktop && npm run check:live && npm run check:video && npm run check:shop && npm run check:origin-core && npm run check:origin-host && npm run check:igs-feed && npm run check:b2-feeds && npm run check:pending && npm run check:chat-metadata && npm run check:phone-images && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend && npm run check:desktop-icons && npm run check:appearance-pack"
+    "check:plot-core": "node scripts/check-plot-core.mjs",
+    "check:plot-host": "node scripts/check-plot-host.mjs",
+    "check": "npm run build && npm run check:syntax && npm run check:ai && npm run check:emoji && npm run check:storage-emoji && npm run check:behavior && npm run check:interactive && npm run check:community-prompts && npm run check:community-desktop && npm run check:live && npm run check:video && npm run check:shop && npm run check:origin-core && npm run check:origin-host && npm run check:plot-core && npm run check:plot-host && npm run check:igs-feed && npm run check:b2-feeds && npm run check:pending && npm run check:chat-metadata && npm run check:phone-images && npm run check:press && npm run check:ambient && npm run check:cropper && npm run check:calendar && npm run check:budget && npm run check:permissions && npm run check:contracts && npm run check:story-oracle && npm run check:today-trend && npm run check:desktop-icons && npm run check:appearance-pack"
 
   },
   "devDependencies": {

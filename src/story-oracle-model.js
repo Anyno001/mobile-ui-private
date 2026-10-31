@@ -306,7 +306,7 @@ export function parseStoryPlans(value) {
     const plans = [], seen = new Set();
     for (const [index, block] of blocks.entries()) {
         const goal = tagValue(block, ['goal', '目标']);
-        if (!goal) return { plans: [], hadBlocks: true, invalid: true, reason: `第 ${index + 1} 个方案缺少 goal` };
+        if (!goal) return { plans: [], hadBlocks: true, invalid: true, reason: `第 ${index + 1} 个方案缺少goal` };
         const title = tagValue(block, ['title', '标题', '方案']);
         const seed = tagValue(block, ['seed', '起始迹象', '种子']);
         const why = tagValue(block, ['why', '契合点', '理由']);
@@ -371,22 +371,22 @@ export function parseUserGenerationResponse(value) {
     const hadBlocks = stateBlocks.opening || resultBlocks.opening;
     const invalid = reason => ({ status: '', state: null, result: null, displayText: stripUserGenerationMarkup(source), hadBlocks, invalid: true, reason });
     if (!hadBlocks) return { status: '', state: null, result: null, displayText: source.trim(), hadBlocks: false, invalid: false, reason: '' };
-    if (stateBlocks.unclosed || resultBlocks.unclosed) return invalid('User 生成控制区块未闭合');
-    if (stateBlocks.blocks.length !== 1) return invalid('每轮必须且只能包含一个 UserGenerationState 区块');
-    if (resultBlocks.blocks.length > 1) return invalid('每轮最多包含一个 UserGenerationResult 区块');
+    if (stateBlocks.unclosed || resultBlocks.unclosed) return invalid('User生成控制区块未闭合');
+    if (stateBlocks.blocks.length !== 1) return invalid('每轮必须且只能包含一个UserGenerationState区块');
+    if (resultBlocks.blocks.length > 1) return invalid('每轮最多包含一个UserGenerationResult区块');
     const parsedState = parseProtocolFields(stateBlocks.blocks[0], ['status', 'missing', 'question'], {
         status: 20, missing: USER_GENERATION_PROTOCOL_LIMITS.missingChars, question: USER_GENERATION_PROTOCOL_LIMITS.questionChars,
     });
     if (parsedState.invalid) return invalid(parsedState.reason);
     const status = String(parsedState.fields.status || '').toLowerCase();
-    if (!['collecting', 'complete', 'revision'].includes(status)) return invalid('User 生成状态无效');
+    if (!['collecting', 'complete', 'revision'].includes(status)) return invalid('User生成状态无效');
     const state = { status, missing: parsedState.fields.missing || '', question: parsedState.fields.question || '' };
     if (status === 'collecting') {
-        if (!state.question) return invalid('collecting 状态缺少 question');
-        if (resultBlocks.blocks.length) return invalid('collecting 状态不得包含成品区块');
+        if (!state.question) return invalid('collecting状态缺少question');
+        if (resultBlocks.blocks.length) return invalid('collecting状态不得包含成品区块');
         return { status, state, result: null, displayText: stripUserGenerationMarkup(source) || state.question, hadBlocks: true, invalid: false, reason: '' };
     }
-    if (resultBlocks.blocks.length !== 1) return invalid(`${status} 状态缺少 UserGenerationResult 区块`);
+    if (resultBlocks.blocks.length !== 1) return invalid(`${status} 状态缺少UserGenerationResult区块`);
     const parsedResult = parseProtocolFields(resultBlocks.blocks[0], ['title', 'summary', 'content'], {
         title: USER_GENERATION_PROTOCOL_LIMITS.titleChars,
         summary: USER_GENERATION_PROTOCOL_LIMITS.summaryChars,
@@ -396,7 +396,7 @@ export function parseUserGenerationResponse(value) {
     const result = {
         title: parsedResult.fields.title || '', summary: parsedResult.fields.summary || '', content: parsedResult.fields.content || '',
     };
-    if (!result.title || !result.content) return invalid(`${status} 状态缺少 title 或 content`);
+    if (!result.title || !result.content) return invalid(`${status} 状态缺少title或content`);
     const safetyIssue = userGenerationAdultSafetyIssue(result);
     if (safetyIssue) return invalid(safetyIssue);
     return { status, state, result, displayText: stripUserGenerationMarkup(source), hadBlocks: true, invalid: false, reason: '' };

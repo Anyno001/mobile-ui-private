@@ -1,15 +1,22 @@
+import { CLOSE_ICON_SVG, SEND_ICON_SVG } from './icons.js';
+
 export function createPhoneGenerationController({ state, getCtx, getStorageId, hideTyping }) {
     function syncGenerationControls() {
         const disabled = !!state.isGenerating;
         for (const button of document.querySelectorAll('.pm-submit-pending-btn')) {
             button.disabled = disabled || button.dataset.empty === 'true';
         }
-        for (const button of document.querySelectorAll('.pm-generation-cancel')) {
-            button.hidden = !disabled;
-            button.disabled = !disabled;
+        // 会话页发送键：AI 回复中原位变成 ×，点一下停止（按键行为见 phone-lifecycle.js）。
+        for (const button of document.querySelectorAll('.pm-chat-page .pm-up-btn')) {
+            const mode = disabled ? 'stop' : 'send';
+            if (button.dataset.mode === mode) continue;
+            button.dataset.mode = mode;
+            button.innerHTML = disabled ? CLOSE_ICON_SVG : SEND_ICON_SVG;
+            button.title = disabled ? '停止回复' : '点击加入暂存，长按最终提交给AI';
+            button.setAttribute?.('aria-label', disabled ? '停止回复' : '发送');
         }
         const status = document.querySelector('.pm-control-generation-status');
-        if (status) status.textContent = disabled ? 'AI 正在回复，暂存仍可继续编辑' : '';
+        if (status) status.textContent = disabled ? 'AI正在回复，暂存仍可继续编辑' : '';
     }
 
     function beginGeneration(storageId) {

@@ -67,7 +67,7 @@ export function normalizeImageDnaStore(value) {
 
 /** 写词回复 → DNA。三景别至少要有一个非空。 */
 export function parseDnaResponse(raw) {
-    const data = parseFirstJsonObject(raw, '角色形象回复不是 JSON');
+    const data = parseFirstJsonObject(raw, '角色形象回复不是JSON');
     const negative = text(data.negative);
     const views = {};
     for (const view of VIEWS) {
@@ -108,7 +108,7 @@ export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPe
     };
     const save = async next => {
         const ok = await writeStore(next);
-        if (ok === false) throw new Error('角色形象保存失败：IndexedDB 不可用');
+        if (ok === false) throw new Error('角色形象保存失败：IndexedDB不可用');
         cache = next;
     };
 

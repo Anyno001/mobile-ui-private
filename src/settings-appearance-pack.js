@@ -118,7 +118,7 @@ export function createAppearancePackController({
         try {
             const fileName = String(file.name || '');
             const fileType = String(file.type || '').toLowerCase();
-            if (fileType && fileType !== 'application/json' && fileType !== 'text/json') throw new Error('只支持 JSON 美化包');
+            if (fileType && fileType !== 'application/json' && fileType !== 'text/json') throw new Error('只支持JSON美化包');
             if (fileName && !fileName.toLowerCase().endsWith('.json')) throw new Error('美化包文件扩展名必须是 .json');
             if (Number(file.size) > APPEARANCE_PACK_MAX_BYTES) throw new Error('美化包总容量超过 12MiB');
             const text = typeof file.text === 'function' ? await file.text() : String(file.content || '');

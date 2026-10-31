@@ -19,11 +19,11 @@ const text = (value, max) => {
 
 function parseEnvelope(raw, kind) {
     const value = parseFirstJsonObject(
-        raw, 'AI 未返回可解析的桃宝 JSON',
+        raw, 'AI未返回可解析的桃宝JSON',
         candidate => isRecord(candidate) && candidate.version === 2 && candidate.kind === kind && Array.isArray(candidate.items),
     );
-    if (!isRecord(value) || value.version !== 2 || value.kind !== kind || !Array.isArray(value.items)) throw new Error('AI 返回协议不匹配');
-    if (Object.keys(value).some(key => !ENVELOPE_KEYS.includes(key))) throw new Error('AI 返回协议包含额外字段');
+    if (!isRecord(value) || value.version !== 2 || value.kind !== kind || !Array.isArray(value.items)) throw new Error('AI返回协议不匹配');
+    if (Object.keys(value).some(key => !ENVELOPE_KEYS.includes(key))) throw new Error('AI返回协议包含额外字段');
     return value.items;
 }
 
@@ -91,6 +91,6 @@ export function parseShopResponse(raw, kind, options = {}) {
     const items = kind === 'shop_items'
         ? entries.map(item => cleanItem(item, query)).filter(Boolean).slice(0, max)
         : entries.map(review => cleanReview(review, Array.isArray(options.specs) ? options.specs : null)).filter(Boolean).slice(0, max);
-    if (!items.length) throw new Error('AI 未返回有效内容');
+    if (!items.length) throw new Error('AI未返回有效内容');
     return items;
 }

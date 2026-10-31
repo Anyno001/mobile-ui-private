@@ -138,7 +138,7 @@ export function createImageStore({ getCtx, fetchImpl, readCatalog = () => pmIDBG
         return loading;
     };
     const persist = async next => {
-        if (await writeCatalog(next) === false) throw new Error('图片目录保存失败：IndexedDB 不可用');
+        if (await writeCatalog(next) === false) throw new Error('图片目录保存失败：IndexedDB不可用');
         catalog = next;
     };
 

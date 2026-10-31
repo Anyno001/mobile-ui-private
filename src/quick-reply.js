@@ -30,7 +30,7 @@ const qrList = set => Array.isArray(set?.qrList) ? set.qrList : [];
 const ownedReplies = set => qrList(set).filter(qr => qr?.automationId === PHONE_QR_AUTOMATION_ID);
 function replyIdentifier(qr) {
     if (!Number.isInteger(qr?.id)) {
-        throw new Error('宿主 Quick Reply 缺少稳定数字 ID，无法安全修改或删除');
+        throw new Error('宿主Quick Reply缺少稳定数字ID，无法安全修改或删除');
     }
     return qr.id;
 }
@@ -68,7 +68,7 @@ export async function ensurePhoneQuickReply(api = globalThis.quickReplyApi, labe
     let set = host.getSetByName(PHONE_QR_SET_NAME);
     let createdSet = false;
     if (set && !ownedReplies(set).length) {
-        throw new Error('存在同名 Quick Reply 集合，但无法证明属于天音小笺；已停止，未覆盖用户数据');
+        throw new Error('存在同名Quick Reply集合，但无法证明属于天音小笺；已停止，未覆盖用户数据');
     }
     if (!set) {
         set = await host.createSet(PHONE_QR_SET_NAME, { disableSend: false, placeBeforeInput: false, injectInput: false });
@@ -114,14 +114,14 @@ export async function clearPhoneQuickReply(api = globalThis.quickReplyApi) {
     const set = host.getSetByName(PHONE_QR_SET_NAME);
     if (!set) return { state: 'absent', active: false };
     const owned = ownedReplies(set);
-    if (!owned.length) throw new Error('同名 Quick Reply 集合不属于天音小笺，未执行清除');
+    if (!owned.length) throw new Error('同名Quick Reply集合不属于天音小笺，未执行清除');
     const wasActive = host.listGlobalSets().includes(PHONE_QR_SET_NAME);
     const ownsWholeSet = qrList(set).length === owned.length;
     if (wasActive) host.removeGlobalSet(PHONE_QR_SET_NAME);
     try {
         if (ownsWholeSet) {
             await host.deleteSet(PHONE_QR_SET_NAME);
-            if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error('宿主未确认删除 Quick Reply 集合');
+            if (host.getSetByName(PHONE_QR_SET_NAME)) throw new Error('宿主未确认删除Quick Reply集合');
         } else {
             for (const qr of owned) await host.deleteQuickReply(PHONE_QR_SET_NAME, replyIdentifier(qr));
             if (wasActive && !host.listGlobalSets().includes(PHONE_QR_SET_NAME)) {
@@ -161,5 +161,5 @@ export async function ensureInitialPhoneQuickReplyWithRetry({
             await new Promise(resolve => setTimeoutImpl(resolve, delay));
         }
     }
-    throw new Error('Quick Reply 初始化重试耗尽');
+    throw new Error('Quick Reply初始化重试耗尽');
 }

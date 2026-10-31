@@ -710,8 +710,8 @@ assert.match(updatingFloorHtml, /data-today-trend-floor="13" data-state="updatin
 assert.match(updatingFloorHtml, /同步任务 #12/, '宿主继续增长时必须把生成目标明确标为任务楼层，不能伪装成当前楼层');
 assert.doesNotMatch(updatingFloorHtml, /pm-today-trend-floor-value">#12<\/strong>/, '尚未提交的目标楼层不得冒充当前楼层主值');
 const failedFloorHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
-    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: 'AI 请求失败' }, currentFloor: 12 });
-assert.match(failedFloorHtml, /data-state="failed"[\s\S]*pm-today-trend-floor-status" title="AI 请求失败">同步失败<\/span>/, '生成失败后必须显示同步失败并保留错误说明');
+    generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: 'AI请求失败' }, currentFloor: 12 });
+assert.match(failedFloorHtml, /data-state="failed"[\s\S]*pm-today-trend-floor-status" title="AI请求失败">同步失败<\/span>/, '生成失败后必须显示同步失败并保留错误说明');
 const escapedFailureHtml = renderTodayTrendApp({ scope: valid.scopes.chat, presets: Object.values(valid.presets), view: { name: 'reputation', mode: 'content' },
     generation: { phase: 'failed', task: { kind: 'auto', storageId: 'chat', floor: 12, target: null }, lastError: '"失败" <script> & more' }, currentFloor: 12 });
 assert.match(escapedFailureHtml, /title="&quot;失败&quot; &lt;script&gt; &amp; more"/, '同步失败说明必须按 HTML 属性语境转义');
@@ -733,7 +733,7 @@ assert.doesNotMatch(appHtml, /today-trend-open-batch-settings|手动批量更新
 assert.match(appHtml, /data-action="today-trend-generate-all"[^>]*aria-label="手动更新所有今日风向"/,
     '主页面单次生成入口不得被批量更新功能替换');
 const firstUseAppHtml = renderTodayTrendApp({ worldBooks: ['厨房设定'] });
-assert.match(firstUseAppHtml, /data-action="today-trend-open-settings"[^>]*aria-label="APP 总设置"/,
+assert.match(firstUseAppHtml, /data-action="today-trend-open-settings"[^>]*aria-label="APP总设置"/,
     '首次创建页必须提供 APP 总设置入口');
 assert.match(renderTodayTrendApp({ worldBooks: ['厨房设定'], view: { name: 'settings' } }), /请先创建或绑定世界预设。/,
     '首次创建页的 APP 总设置入口必须能打开无 scope 设置页');
@@ -759,7 +759,7 @@ assert.doesNotMatch(reinitializeHtml, /pm-today-trend-mode-switch/, '重新初�
 assert.match(reinitializeHtml, /class="pm-today-trend-secondary-action" type="button" data-action="today-trend-cancel-initialize">取消<\/button>/, '重新初始化取消必须保持次操作语义');
 const appSettingsHtml = renderTodayTrendSettingsView({ scope: valid.scopes.chat, presets: Object.values(valid.presets) });
 for (const name of ['presetId', 'mode', 'intervalFloors', 'injectionEnabled', 'minimalUi']) assert.match(appSettingsHtml, new RegExp(`name="${name}"`), `APP 总设置必须提供 ${name}`);
-assert.match(appSettingsHtml, /自动调用：每 N 楼执行一次/, '自动推进设置必须明确每 N 楼执行一次');
+assert.match(appSettingsHtml, /自动调用：每N楼执行一次/, '自动推进设置必须明确每N楼执行一次');
 assert.ok(appSettingsHtml.indexOf('name="injectionEnabled"') < appSettingsHtml.indexOf('name="minimalUi"'), '极简 UI 开关必须位于正文注入开关之后');
 assert.match(appSettingsHtml, /name="minimalUi" type="checkbox" role="switch" aria-checked="false"/, '极简 UI 开关必须暴露关闭状态语义');
 for (const action of ['today-trend-new-preset', 'today-trend-reinitialize', 'today-trend-delete-preset']) assert.match(appSettingsHtml, new RegExp(action), `APP 总设置必须提供 ${action}`);
@@ -7335,7 +7335,7 @@ const phase12FailedBatchHtml = renderTodayTrendSettingsView({
     batchDraft: { enabled: true, recentAssistantCount: 5, mergeAssistantCount: 2 },
 });
 assert.match(phase12FailedBatchHtml, /已成功更新<\/span><b>3<\/b>/, '第二批失败后必须按最新成功边界显示已成功更新层数');
-assert.match(phase12FailedBatchHtml, /当前未更新的 AI 回复累计层数<\/span><b>5<\/b>/, '第二批失败后必须按最新成功边界显示可续填累计层数');
+assert.match(phase12FailedBatchHtml, /当前未更新的AI回复累计层数<\/span><b>5<\/b>/, '第二批失败后必须按最新成功边界显示可续填累计层数');
 assert.match(phase12FailedBatchHtml, /第 2\/3 批失败：事件生命周期无效。已成功批次已保留；可按未更新累计层数重填后继续。/,
     '第二批失败后必须显示精确批号、原始错误和续填提示');
 const phase12BatchListeners = [];

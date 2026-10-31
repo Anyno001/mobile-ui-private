@@ -357,8 +357,8 @@ await check('界面：投稿页字段、分区胶囊、UP主选项与编辑态',
     match(mine, /data-video-action="submit">投稿</);
     match(mine, /placeholder="给视频起个标题"/);
     const role = renderVideoCompose({ form: { hostKey: 'actor:a1' }, hosts });
-    match(role, /placeholder="留空让 AI 起标题"/);
-    match(role, /想让 TA 发一条什么视频/);
+    match(role, /placeholder="留空让AI起标题"/);
+    match(role, /想让TA发一条什么视频/);
     nomatch(role, /pm-video-ai-scenes/);
     match(renderVideoCompose({ form: { hostKey: 'other', hostName: '阿夏' }, hosts }), /id="pm-video-host-name"[^>]*value="阿夏"/);
     const editing = renderVideoCompose({ form: { title: 'x', category: '修仙' }, hosts, editing: true });

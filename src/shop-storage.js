@@ -49,7 +49,7 @@ export function saveShopStore(store, { idbSet = pmIDBSet, storage = globalThis.l
             storage.setItem(SHOP_FALLBACK_KEY, JSON.stringify(normalized));
             return true;
         } catch (error) {
-            throw new Error('桃宝数据保存失败：IndexedDB 与本地后备存储均不可用');
+            throw new Error('桃宝数据保存失败：IndexedDB与本地后备存储均不可用');
         }
     };
     const result = saveQueue.then(operation, operation);

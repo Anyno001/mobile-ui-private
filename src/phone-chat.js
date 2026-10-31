@@ -308,10 +308,33 @@ export function installPhoneChat(state, deps) {
         }
     };
 
+    // 发出去但没收到回复（报错或被停止）：消息列表末尾放一行「重新发送」，点了把同一批暂存重新提交。
+    function clearResendRow() {
+        state.phoneWindow?.querySelectorAll('.pm-resend-row').forEach(node => node.remove());
+    }
+    function addResendRow(text) {
+        const list = state.phoneWindow?.querySelector('.pm-chat-page .pm-msg-list');
+        if (!list) return;
+        clearResendRow();
+        const row = document.createElement('div');
+        row.className = 'pm-resend-row';
+        const note = document.createElement('span');
+        note.textContent = text;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pm-resend-btn';
+        button.textContent = '重新发送';
+        button.addEventListener('click', () => { void window.__pmSubmitPending(); });
+        row.append(note, button);
+        list.appendChild(row);
+        list.scrollTop = list.scrollHeight;
+    }
+
     window.__pmSubmitPending = async () => {
         if (state.isGenerating) return;
         const target = getPendingTarget();
         if (!target) return;
+        clearResendRow();
         const combined = combinePendingMessages(runtime, target.storageId, target.saveKey);
         const batch = combined.items;
         if (!batch.length) return;
@@ -334,9 +357,10 @@ export function installPhoneChat(state, deps) {
             descriptors: combined.bubbleParts,
             storyDate,
         }), storyDate);
-        const isStillTarget = () => isGenerationTaskActive(task)
+        const isSameConversation = () => state.phoneActive && state.hostEpoch === task.hostEpoch
             && state.activeStorageId === target.storageId
             && (state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona) === target.saveKey;
+        const isStillTarget = () => isGenerationTaskActive(task) && isSameConversation();
         if (isStillTarget()) showTyping();
         try {
             const result = await fetchSMS(combined.plainText, combined.directorNote, task, request);
@@ -404,11 +428,10 @@ export function installPhoneChat(state, deps) {
             const status = cancelled ? 'pending' : 'failed';
             setPendingBatchStatus(runtime, target.storageId, target.saveKey, itemIds, status);
             updatePendingDomStatus(itemIds, status);
-            if (cancelled) {
-                if (isStillTarget()) hideTyping();
-            } else if (isStillTarget()) {
+            // 停止时任务已中止，isStillTarget 恒为假；这里只看用户是否还在同一个会话。
+            if (isSameConversation()) {
                 hideTyping();
-                addNote(`（发送失败：${error?.message || error}，暂存内容已保留）`);
+                addResendRow(cancelled ? '已停止，暂存内容已保留' : `没有收到回复：${error?.message || error}`);
             }
             if (!cancelled) console.error('[phone-mode] __pmSubmitPending 异常', error);
         } finally {

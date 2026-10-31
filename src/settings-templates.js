@@ -33,10 +33,10 @@ export function renderSettingsHome() {
           aria-checked="${loadImageSettings().enabled}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
-      <button type="button" class="pm-settings-home-link" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><span class="pm-settings-home-hint">数据库生图插件或内置 NAI、CORS 代理、画师串</span></span><span aria-hidden="true">›</span></button>
+      <button type="button" class="pm-settings-home-link" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><span class="pm-settings-home-hint">数据库生图插件或内置NAI、CORS代理、画师串</span></span><span aria-hidden="true">›</span></button>
       </div>
       ${SHOW_GAL_BUBBLE_SETTING ? `<div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
-        <span><b id="pm-gal-bubble-label">GAL 气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用 GAL 台词格式</span></span>
+        <span><b id="pm-gal-bubble-label">GAL气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用GAL台词格式</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
           class="pm-custom-check ${window.__pmGalBubbleOperational === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmGalBubbleOperational === true}"
@@ -54,7 +54,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml, routesHtm
           <div id="pm-mode-main" class="pm-mode-opt ${!useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(false)">主API</div>
           <div id="pm-mode-indep" class="pm-mode-opt ${useIndependent ? 'pm-mode-active' : ''}" onclick="window.__pmSetMode(true)">独立API</div>
         </div>
-        <div id="pm-mode-tip" class="pm-cfg-tip">${useIndependent ? '独立 API 必须填写地址、密钥和模型' : '默认使用酒馆API预设'}</div>
+        <div id="pm-mode-tip" class="pm-cfg-tip">${useIndependent ? '独立API必须填写地址、密钥和模型' : '默认使用酒馆API预设'}</div>
       </div>
       <div id="pm-indep-profile-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
         <div class="pm-api-profile-head"><span class="pm-cfg-label">API预设</span><button type="button" class="pm-action-button is-secondary pm-api-profile-new" onclick="window.__pmNewProfile()">新建预设</button></div>
@@ -62,7 +62,7 @@ export function renderApiSettings({ cfg, useIndependent, profilesHtml, routesHtm
       </div>
       <div id="pm-indep-config-fields" class="pm-independent-api-fields pm-settings-section" ${useIndependent ? '' : 'hidden'}>
         <label class="pm-settings-field"><span class="pm-cfg-label">预设名称</span><input id="pm-cfg-name" class="pm-cfg-input" placeholder="留空则用模型名" maxlength="24" value="${cfg.name}"></label>
-        <label class="pm-settings-field"><span class="pm-cfg-label">API地址</span><input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com 或 .../v1" value="${cfg.apiUrl}"></label>
+        <label class="pm-settings-field"><span class="pm-cfg-label">API地址</span><input id="pm-cfg-url" class="pm-cfg-input" placeholder="https://api.xxx.com/v1" value="${cfg.apiUrl}"></label>
         <label class="pm-settings-field"><span class="pm-cfg-label">API Key</span><input id="pm-cfg-key" class="pm-cfg-input" placeholder="sk-..." value="${cfg.apiKey}" maxlength="999"></label>
         <div class="pm-settings-field"><span class="pm-cfg-label">模型名称</span><div class="pm-model-row"><input id="pm-cfg-model" class="pm-cfg-input" placeholder="手动输入或选择" value="${cfg.model}"><button id="pm-model-arrow" type="button" aria-label="选择模型" onclick="window.__pmShowModelPicker()">▼</button></div></div>
         <label class="pm-settings-field" for="pm-cfg-temperature"><span class="pm-cfg-label">温度</span><input id="pm-cfg-temperature" class="pm-cfg-input" type="number" min="0" max="2" step="0.1" inputmode="decimal" value="${cfg.temperature}"><span class="pm-cfg-help">范围 0–2；数值越高，回复越随机。默认 1.2。</span></label>
@@ -278,7 +278,7 @@ export function renderBudgetSettings({ config }) {
     return `
     <div class="pm-settings-page">
       <div class="pm-settings-section">
-        <label class="pm-settings-field" for="pm-budget-target"><span class="pm-cfg-label">总目标（估算 token）</span><input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}"></label>
+        <label class="pm-settings-field" for="pm-budget-target"><span class="pm-cfg-label">总目标（估算token）</span><input id="pm-budget-target" class="pm-cfg-input" type="number" min="1" max="12000" step="1" value="${config.targetTokens}"></label>
         <div class="pm-budget-weight-list">
           <label class="pm-cfg-label">手机会话占比 (%)<input id="pm-budget-phone-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.phone}" data-initial-value="${percentages.phone}"></label>
           <label class="pm-cfg-label">互动社区占比 (%)<input id="pm-budget-community-weight" class="pm-cfg-input" type="number" min="0" max="100" step="0.0001" value="${percentages.community}" data-initial-value="${percentages.community}"></label>

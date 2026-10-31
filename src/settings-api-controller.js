@@ -51,7 +51,7 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
         window.__pmProfiles.splice(idx, 1);
         // 指向该预设的模块改回跟随默认。
         for (const [module, route] of Object.entries(window.__pmApiRoutes || {})) if (route === profile.id) delete window.__pmApiRoutes[module];
-        if (!saveProfiles() || !saveApiRoutes()) { window.__pmProfiles = previous; window.__pmApiRoutes = previousRoutes; alert('API 档案删除失败：浏览器存储不可用。'); return false; }
+        if (!saveProfiles() || !saveApiRoutes()) { window.__pmProfiles = previous; window.__pmApiRoutes = previousRoutes; alert('API档案删除失败：浏览器存储不可用。'); return false; }
         if (editingId === profile.id) editingId = '';
         showApi();
         return true;
@@ -63,9 +63,20 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
         markEditing();
         apiDraftMode.set(true);
     };
+    // 新建预设：保留表单里正在用的地址、密钥、模型、温度，只清空名称并脱离正在编辑的预设，
+    // 用户改个模型即可存成新预设。表单为空时回落到当前生效的配置。
     const newProfile = () => {
+        const field = id => document.getElementById(id);
+        const config = window.__pmConfig || {};
+        const formValue = (id, fallback) => (field(id)?.value || '').trim() || fallback || '';
+        const base = {
+            apiUrl: formValue('pm-cfg-url', config.apiUrl),
+            apiKey: formValue('pm-cfg-key', config.apiKey),
+            model: formValue('pm-cfg-model', config.model),
+            temperature: formValue('pm-cfg-temperature', config.temperature),
+        };
         editingId = '';
-        fillForm(null);
+        fillForm({ ...base, name: '' });
         markEditing();
         apiDraftMode.set(true);
         document.getElementById('pm-cfg-name')?.focus();
@@ -82,19 +93,19 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
         const apiUrl = document.getElementById('pm-cfg-url')?.value.trim() ?? '', apiKey = document.getElementById('pm-cfg-key')?.value.trim() ?? '', model = document.getElementById('pm-cfg-model')?.value.trim() ?? '';
         const temperatureText = document.getElementById('pm-cfg-temperature')?.value.trim() ?? String(defaultTemperature);
         const parsedTemperature = Number(temperatureText), useIndependent = apiDraftMode.current();
-        if (useIndependent && (!apiUrl || !apiKey || !model)) { setStatus('独立 API 必须填写地址、密钥和模型', 'error'); return false; }
+        if (useIndependent && (!apiUrl || !apiKey || !model)) { setStatus('独立API必须填写地址、密钥和模型', 'error'); return false; }
         if (useIndependent && (!temperatureText || !Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2)) { setStatus('温度必须是 0 到 2 之间的数字', 'error'); return false; }
         const temperature = useIndependent ? parsedTemperature : normalizeIndependentApiTemperature(temperatureText);
         const previous = clone(window.__pmConfig), candidate = { apiUrl, apiKey, model, temperature, useIndependent };
         window.__pmConfig = candidate;
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(candidate)); }
-        catch (error) { window.__pmConfig = previous; alert('API 配置保存失败：浏览器存储不可用。'); return false; }
+        catch (error) { window.__pmConfig = previous; alert('API配置保存失败：浏览器存储不可用。'); return false; }
         const name = (document.getElementById('pm-cfg-name')?.value || '').trim().slice(0, 24);
         const savedId = !apiUrl || !apiKey ? true : addOrUpdateProfile({ ...(editingId ? { id: editingId } : {}), name, apiUrl, apiKey, model, temperature });
         if (typeof savedId === 'string') editingId = savedId;
         const profileSaved = savedId !== false;
         document.getElementById('pm-overlay')?.remove();
-        addNote(profileSaved ? `已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}` : 'API 设置已保存；档案列表保存失败，不影响当前配置。');
+        addNote(profileSaved ? `已保存：${window.__pmConfig.useIndependent && apiUrl ? '独立API' : '主API'}` : 'API设置已保存；档案列表保存失败，不影响当前配置。');
         return true;
     };
     const getPageState = () => {
@@ -126,7 +137,7 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
     const testApi = async button => {
         const url = document.getElementById('pm-cfg-url')?.value.trim() || '';
         const key = document.getElementById('pm-cfg-key')?.value.trim() || '';
-        if (!url || !key) { setStatus('请填写 API 地址和密钥', 'error'); return false; }
+        if (!url || !key) { setStatus('请填写API地址和密钥', 'error'); return false; }
         return runAction(button, '拉取中…', async () => {
             setStatus('正在拉取模型…', 'info');
             const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000);
@@ -146,7 +157,7 @@ export function createApiRequestController({ runtime, normalizeApiUrls, fetchWit
     };
     const testModel = async button => {
         const url = document.getElementById('pm-cfg-url')?.value.trim() || '', key = document.getElementById('pm-cfg-key')?.value.trim() || '', model = document.getElementById('pm-cfg-model')?.value.trim() || '';
-        if (!url || !key || !model) { setStatus('请填写完整的 API 地址、密钥与模型', 'error'); return false; }
+        if (!url || !key || !model) { setStatus('请填写完整的API地址、密钥与模型', 'error'); return false; }
         return runAction(button, '测试中…', async () => {
             setStatus(`正在测试「${model}」…`, 'info');
             const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000);

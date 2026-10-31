@@ -298,7 +298,7 @@ export function createTodayTrendGenerationController({
             const prompts = buildRuleRegeneration({ context, rule, currentRule: rules[field] });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'trend', signal });
             assertActive(signal);
-            const parsed = parseFirstJsonObject(raw, '今日风向规则重生成未返回可解析 JSON');
+            const parsed = parseFirstJsonObject(raw, '今日风向规则重生成未返回可解析JSON');
             if (!parsed || Object.keys(parsed).length !== 1 || !own(parsed, 'rule') || !ruleText(parsed.rule)) throw new Error('今日风向规则重生成结果无效');
             return ruleText(parsed.rule);
         } catch (error) {
@@ -331,7 +331,7 @@ export function createTodayTrendGenerationController({
             input.onPhase?.('parsing');
             let delta = null;
             if (Array.isArray(input.historyBatch)) {
-                delta = materializeTodayTrendBatchDelta(parseFirstJsonObject(raw, '历史批增量 JSON 无效'), input.scope, now());
+                delta = materializeTodayTrendBatchDelta(parseFirstJsonObject(raw, '历史批增量JSON无效'), input.scope, now());
                 // Reuse the established module validators, without changing ordinary generation.
                 delta.parsed = parseGeneration(JSON.stringify(delta.parsed), { requireHistory: true });
             }

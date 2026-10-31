@@ -10,6 +10,7 @@ import {
 } from './story-oracle-model.js';
 import { loadStoryOracleStore, saveStoryOracleStore } from './story-oracle-storage.js';
 import { MAX_QUESTION_CHARS, renderStoryOracleShell, TOP_VIEWS } from './story-oracle-views.js';
+import { createStoryPlot } from './story-plot.js';
 import { addUserGenerationItem, createEmptyUserGenerationStore, removeUserGenerationItem, userGenerationItems } from './user-generation-model.js';
 import { loadUserGenerationStore, saveUserGenerationStore } from './user-generation-storage.js';
 import { buildStoryOracleUserPrompt, copyUserGenerationContent, USER_GENERATION_SYSTEM_PROMPT } from './user-generation-support.js';
@@ -68,6 +69,10 @@ export function installStoryOracle(_state, deps = {}) {
     let draft = '';
     let pendingUserResult = null;
     let revisionTarget = null;
+    // 发出去还没回来的问题、没收到回复的问题（可重新发送）；讨论时是否附带剧情项目的设定与大纲。
+    let inflightQuestion = '';
+    let failedTurn = null;
+    let plotContextOn = true;
 
     let writable = false;
     let readOnlyReason = '';
@@ -144,6 +149,24 @@ export function installStoryOracle(_state, deps = {}) {
             seal: Array.from(character)[0] || '剧',
             subtitle: [character, floors ? `第 ${floors} 楼` : '', availableNames.length ? `读 ${selectedNames.length} 本世界书` : ''].filter(Boolean).join(' · '),
             statusText: [status || (valid ? '' : '请先打开有效的角色聊天，再使用剧情助手。'), persistenceHint].filter(Boolean).join(' '),
+            busy: Boolean(controller), inflight: inflightQuestion,
+            failedTurn: failedTurn && failedTurn.storageId === activeStorageId && failedTurn.mode === activeMode && !controller ? failedTurn : null,
+            ...plotViewModel(),
+        };
+    };
+    // 剧情注入器的片段只在用到的页上生成。
+    const plotViewModel = () => {
+        const opts = { openMenuId };
+        const onPlot = storyOracleView === 'plot' || storyOracleView === 'stage';
+        return {
+            plotHome: storyOracleView === 'home' ? storyPlot.homeCard(opts) : '',
+            plotPage: storyOracleView === 'plot' ? storyPlot.page(opts) : null,
+            plotStage: storyOracleView === 'stage' ? storyPlot.stagePage(opts) : null,
+            plotSettings: storyOracleView === 'settings' ? storyPlot.settingsHtml(opts) : '',
+            plotPrefs: storyOracleView === 'prefs' ? storyPlot.prefsHtml(opts) : '',
+            plotSheet: onPlot && storyPlot.hasSheet() ? storyPlot.sheetHtml(opts) : '',
+            plotProjectName: storyOracleView === 'conversation' ? storyPlot.advisorProjectName() : '',
+            plotContextOn,
         };
     };
     const render = (nextStatus = status) => {
@@ -163,6 +186,7 @@ export function installStoryOracle(_state, deps = {}) {
         if (scroller && vm.view === 'conversation') scroller.scrollTop = scroller.scrollHeight;
         else if (scroller && previousView === vm.view && Number.isFinite(bodyScrollTop)) scroller.scrollTop = bodyScrollTop;
         setBusy(Boolean(controller));
+        storyPlot.afterRender(page, vm.view);
         const nextTextarea = typing ? page.querySelector('[data-story-oracle-form] textarea') : null;
         if (nextTextarea && !nextTextarea.disabled) { nextTextarea.focus({ preventScroll: true }); nextTextarea.setSelectionRange?.(...caret); }
         if (nextStatus && activeStorageId) statusTimer = setTimeout(() => render(''), 3000);
@@ -181,9 +205,15 @@ export function installStoryOracle(_state, deps = {}) {
         modeSheetOpen = false;
         render(nextStatus);
     };
+    const storyPlot = createStoryPlot(deps, {
+        rerender: () => render(),
+        navigate: view => navigate(view),
+        getAdvisorMessages: () => (store && isUsableStorageId(activeStorageId) ? storyOracleMessages(store, activeStorageId, 'advisor') : []),
+        openAdvisor: seed => openConversation('advisor', seed),
+    });
     const syncModeSheet = () => {
         const currentPage = getPage();
-        const layer = currentPage?.querySelector('.pm-story-oracle-sheet-layer');
+        const layer = currentPage?.querySelector('.pm-story-oracle-sheet-layer:not(.pm-plot-sheet-layer)');
         const toggle = currentPage?.querySelector('[data-story-oracle-action="toggle-mode"]');
         layer?.toggleAttribute('hidden', !modeSheetOpen);
         toggle?.setAttribute('aria-expanded', String(modeSheetOpen));
@@ -213,9 +243,11 @@ export function installStoryOracle(_state, deps = {}) {
             form.querySelector('textarea')?.toggleAttribute('disabled', busy || !writable || !valid);
             const submit = form.querySelector('[type="submit"]');
             if (submit) submit.disabled = busy || !writable || !valid;
+            // 回复中发送键已换成停止键（见视图），这里只保证停止键可点。
             const cancel = form.querySelector('[data-story-oracle-action="cancel"]');
-            if (cancel) { cancel.hidden = !busy; cancel.disabled = !busy; }
+            if (cancel) cancel.disabled = !busy;
         }
+        page.querySelector('[data-story-oracle-action="resend"]')?.toggleAttribute('disabled', busy || !writable || !valid);
         page.querySelector('[data-story-oracle-action="toggle-mode"]')?.toggleAttribute('disabled', busy);
         page.querySelectorAll('[data-story-oracle-action="mode"]').forEach(button => { button.disabled = busy; });
         page.querySelectorAll(STORY_WRITE_ACTIONS).forEach(button => {
@@ -384,7 +416,7 @@ export function installStoryOracle(_state, deps = {}) {
             if (requestIsCurrent(request)) render(`剧情线路操作失败：${generationErrorMessage(error)}`);
         }
     };
-    const CLEAR_CONFIRMS = Object.freeze({ question: '清空当前聊天的剧情聊天记录？', advisor: '清空当前聊天的剧情参谋记录？已整理出的路线会保留。', 'user-generation': '清空当前聊天的 User 生成记录？User 库里已保存的成品不受影响。' });
+    const CLEAR_CONFIRMS = Object.freeze({ question: '清空当前聊天的剧情聊天记录？', advisor: '清空当前聊天的剧情参谋记录？已整理出的路线会保留。', 'user-generation': '清空当前聊天的User生成记录？User库里已保存的成品不受影响。' });
     const clearHistory = mode => {
         if (!activeStorageId || !writable || controller || !STORY_ORACLE_MODES.includes(mode)) return;
         if (!confirmAction(CLEAR_CONFIRMS[mode])) return;
@@ -406,11 +438,11 @@ export function installStoryOracle(_state, deps = {}) {
     const handleUserAction = async button => {
         const action = button.dataset.storyOracleAction;
         const item = userItemForButton(button);
-        if (!item) { render('User 成品不存在或已被删除。'); return; }
+        if (!item) { render('User成品不存在或已被删除。'); return; }
         if (action === 'copy-user') {
             try {
                 await copyUserGenerationContent(item.content);
-                render('已复制 User 正文。');
+                render('已复制User正文。');
             } catch (error) { render(generationErrorMessage(error)); }
             return;
         }
@@ -421,7 +453,7 @@ export function installStoryOracle(_state, deps = {}) {
             return;
         }
         if (!userWritable || !userWriteHandle || controller || userMutationBusy) return;
-        if (action === 'delete-user' && !confirmAction(`删除 User 成品“${item.title}”？此操作不会影响访谈历史。`)) return;
+        if (action === 'delete-user' && !confirmAction(`删除User成品“${item.title}”？此操作不会影响访谈历史。`)) return;
         const mutationPage = page;
         userMutationBusy = true;
         try {
@@ -444,8 +476,8 @@ export function installStoryOracle(_state, deps = {}) {
                 pendingUserResult = null;
                 if (storyOracleView === 'user' && detailId === 'pending') detailId = item.id;
             }
-            render(action === 'save-user' ? 'User 成品已保存到全局共享库。' : 'User 成品已删除。');
-        } catch (error) { render(`User 库操作失败：${generationErrorMessage(error)}`); }
+            render(action === 'save-user' ? 'User成品已保存到全局共享库。' : 'User成品已删除。');
+        } catch (error) { render(`User库操作失败：${generationErrorMessage(error)}`); }
         finally {
             userMutationBusy = false;
             if (page === mutationPage) setBusy(Boolean(controller));
@@ -462,9 +494,21 @@ export function installStoryOracle(_state, deps = {}) {
         closeStoryOracleMenus();
     };
     const onClick = event => {
+        const plotButton = event.target.closest?.('[data-plot-action]');
+        if (plotButton && boundWindow?.contains(plotButton) && !plotButton.disabled) {
+            if (openMenuId) { openMenuId = ''; syncMoreMenu(); }
+            if (storyPlot.handleClick(plotButton, message => render(message))) return;
+        }
         const button = event.target.closest?.('[data-story-oracle-action]');
         if (!button || !boundWindow?.contains(button)) return;
         const action = button.dataset.storyOracleAction;
+        if (action === 'resend') { if (failedTurn && failedTurn.mode === activeMode && !controller) void sendQuestion(failedTurn.question); return; }
+        if (action === 'toggle-plot-context') { plotContextOn = !plotContextOn; render(); return; }
+        if (action === 'to-outline') {
+            const message = storyOracleMessages(store, activeStorageId, activeMode)[Number(button.dataset.storyOracleMessage)];
+            if (message) storyPlot.sendOutlineDraft(message.content);
+            return;
+        }
         if (action === 'toggle-mode') { event.preventDefault(); setModeSheetOpen(!modeSheetOpen); return; }
         if (action === 'close-mode-sheet') { setModeSheetOpen(false); return; }
         if (action === 'mode') {
@@ -485,7 +529,7 @@ export function installStoryOracle(_state, deps = {}) {
         if (action === 'open-conversation') { openConversation(button.dataset.storyOracleMode || activeMode); return; }
         if (action === 'view') {
             const nextView = button.dataset.storyOracleView;
-            if (TOP_VIEWS.includes(nextView)) navigate(nextView);
+            if (TOP_VIEWS.includes(nextView) || nextView === 'prefs') navigate(nextView);
             return;
         }
         if (action === 'back') { navigate(returnView); return; }
@@ -533,6 +577,13 @@ export function installStoryOracle(_state, deps = {}) {
         const questionInput = form.querySelector('textarea');
         if (questionInput) questionInput.value = '';
         draft = '';
+        await sendQuestion(question);
+    };
+    // 发问：失败或被停止时问题留在对话里，下面给「重新发送」；成功才写进记录。
+    const sendQuestion = async question => {
+        if (controller || !writable || !isUsableStorageId(activeStorageId)) return;
+        failedTurn = null;
+        inflightQuestion = question;
         const serial = ++requestSerial;
         controller = new AbortController();
         const request = Object.freeze({ serial, storageId: activeStorageId, mode: activeMode, page, controller, signal: controller.signal, readOnlyReason, writeHandle });
@@ -540,6 +591,8 @@ export function installStoryOracle(_state, deps = {}) {
         const history = storyOracleMessages(store, request.storageId, request.mode);
         let parsedResult = { plans: [], hadBlocks: false, invalid: false };
         let parsedUserResult = null;
+        let completed = false;
+        let failReason = '';
         render('正在读取当前聊天上下文…');
         try {
             const worldBookState = getSelectedWorldBookNames();
@@ -547,10 +600,13 @@ export function installStoryOracle(_state, deps = {}) {
             if (!requestIsCurrent(request)) return;
             render('正在请求剧情助手…');
             const systemPrompt = buildStoryOracleSystemPrompt(request.mode, storyOracleSettings(store, request.storageId));
-            const answer = await deps.callAI?.(systemPrompt, buildStoryOracleUserPrompt(context || {}, history, question, request.mode === 'user-generation' ? revisionTarget : null), { isolated: true, module: 'oracle', signal: request.signal });
+            const basePrompt = buildStoryOracleUserPrompt(context || {}, history, question, request.mode === 'user-generation' ? revisionTarget : null);
+            const plotContext = request.mode !== 'user-generation' && plotContextOn ? storyPlot.advisorContext() : '';
+            const userPrompt = plotContext ? `【当前聊天的剧情项目（只读参考）】\n${plotContext}\n\n${basePrompt}` : basePrompt;
+            const answer = await deps.callAI?.(systemPrompt, userPrompt, { isolated: true, module: 'oracle', signal: request.signal });
             if (!requestIsCurrent(request)) return;
             const answerText = String(answer || '').trim();
-            if (!answerText) throw new Error('AI 未返回可用文本');
+            if (!answerText) throw new Error('AI未返回可用文本');
             parsedResult = request.mode === 'advisor' ? parseStoryPlans(answerText) : parsedResult;
             parsedUserResult = request.mode === 'user-generation' ? parseUserGenerationResponse(answerText) : null;
             const nextStore = appendStoryOracleTurn(store, request.storageId, question, answerText, request.mode, {
@@ -572,44 +628,65 @@ export function installStoryOracle(_state, deps = {}) {
             }
             const receipt = request.mode === 'user-generation'
                 ? parsedUserResult?.invalid
-                    ? `本轮回复已保存，但未识别到可保存的 User 成品：${parsedUserResult.reason}`
+                    ? `本轮回复已保存，但未识别到可保存的User成品：${parsedUserResult.reason}`
                     : parsedUserResult?.result
-                        ? 'User 成品已生成，等待你确认保存或复制。'
+                        ? 'User成品已生成，等待你确认保存或复制。'
                         : parsedUserResult?.status === 'collecting'
                             ? '本轮追问已保存，请继续补充关键素材。'
-                            : '本轮回复已保存，但没有识别到 User 生成状态。'
+                            : '本轮回复已保存，但没有识别到User生成状态。'
                 : parsedResult.plans.length
                 ? `本轮生成 ${parsedResult.plans.length} 条路线，已加入路线页。`
                 : parsedResult.invalid
                     ? '本轮文本已保存，路线格式未识别。'
                     : '本轮已保存，但没有识别到可操作路线。';
+            completed = true;
+            inflightQuestion = '';
             render(receipt);
         } catch (error) {
-            if (error?.name !== 'AbortError' && error?.message !== 'story-oracle-cancelled') render(`请求失败：${generationErrorMessage(error)}`);
-            else render('请求已取消，未写入未完成结果。');
+            const cancelled = error?.name === 'AbortError' || error?.message === 'story-oracle-cancelled';
+            failReason = cancelled ? '已停止，没有保存这次回复' : `没有收到回复：${generationErrorMessage(error)}`;
+            // 原因写在问题下面的「重新发送」行里，顶部状态条清掉，不重复显示。
+            if (requestIsCurrentOrCancelled(request)) status = '';
         } finally {
-            if (serial === requestSerial) { controller = null; setBusy(false); }
+            // 提前返回（停止、存储没写成）也要给出准确原因，免得用户以为没回复又多花一次请求。
+            if (!completed && !failReason) failReason = request.signal.aborted ? '已停止，没有保存这次回复' : '回复没能保存，请重新发送';
+            if (!completed && request.storageId === activeStorageId) failedTurn = { storageId: request.storageId, mode: request.mode, question, reason: failReason };
+            if (serial === requestSerial) {
+                controller = null;
+                inflightQuestion = '';
+                if (!completed) status = '';
+                render();
+            }
         }
     };
+    // 用户点了停止：请求已中止但仍是这一轮，照常更新界面。
+    const requestIsCurrentOrCancelled = request => request.serial === requestSerial && request.storageId === activeStorageId && request.page === page;
     const bind = phoneWindow => {
         if (!phoneWindow || typeof phoneWindow.addEventListener !== 'function' || boundWindow === phoneWindow) return false;
         if (boundWindow) {
             boundWindow.removeEventListener?.('click', onClick);
             boundWindow.removeEventListener?.('submit', onSubmit);
+            boundWindow.removeEventListener?.('contextmenu', onContextMenu);
         }
         document.removeEventListener('click', onDocumentClick, true);
         document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = phoneWindow;
         boundWindow.addEventListener('click', onClick);
         boundWindow.addEventListener('submit', onSubmit);
+        boundWindow.addEventListener('contextmenu', onContextMenu);
         document.addEventListener('click', onDocumentClick, true);
         document.addEventListener('keydown', onDocumentKeyDown, true);
         return true;
     };
+    // 项目面板里电脑右键 = 长按。
+    const onContextMenu = event => { if (boundWindow?.contains(event.target)) storyPlot.onContextMenu(event); };
+    const resetTurnState = () => { inflightQuestion = ''; failedTurn = null; plotContextOn = true; storyPlot.reset(); };
     const destroy = () => {
         invalidate('story-oracle-closed');
+        resetTurnState();
         boundWindow?.removeEventListener?.('click', onClick);
         boundWindow?.removeEventListener?.('submit', onSubmit);
+        boundWindow?.removeEventListener?.('contextmenu', onContextMenu);
         document.removeEventListener('click', onDocumentClick, true);
         document.removeEventListener('keydown', onDocumentKeyDown, true);
         boundWindow = null;
@@ -632,6 +709,7 @@ export function installStoryOracle(_state, deps = {}) {
         const nextId = String(storageId || '').trim();
         const showSerial = requestSerial + 1;
         invalidate('story-oracle-scope-changed');
+        resetTurnState();
         page = deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="story-oracle"]');
         if (!page) return false;
         activeStorageId = nextId;
@@ -657,7 +735,7 @@ export function installStoryOracle(_state, deps = {}) {
         } catch (error) {
             if (showSerial !== requestSerial) return false;
             userStore = createEmptyUserGenerationStore(); userWritable = false; userWriteHandle = null;
-            userReadOnlyReason = 'User 库读取失败'; warning = `User 库读取失败：${generationErrorMessage(error)}`;
+            userReadOnlyReason = 'User库读取失败'; warning = `User库读取失败：${generationErrorMessage(error)}`;
         }
         if (isUsableStorageId(nextId)) {
             try {

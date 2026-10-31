@@ -88,7 +88,7 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
   <div class="pm-modal-scroll pm-emoji-manager-body">
     <div id="pm-emoji-set-list"></div>
     <button type="button" class="pm-emoji-action is-full" onclick="window.__pmAddEmojiSet()">添加新套组</button>
-    <div class="pm-cfg-tip">每套表情独立管理；图片描述会提供给 AI 判断使用场景。</div>
+    <div class="pm-cfg-tip">每套表情独立管理；图片描述会提供给AI判断使用场景。</div>
   </div>
 </div>`);
         window.__pmRenderEmojiSetList();
@@ -172,13 +172,13 @@ export function installEmojiUi({ makeOverlay, saveEmojis }) {
 <div class="pm-modal">
   <div class="pm-modal-header"><span></span><b>添加图片 — ${escapeHtml(set.name)}</b><button type="button" onclick="document.getElementById('pm-overlay-sub').remove();" class="pm-modal-close" title="关闭" aria-label="关闭">${CLOSE_ICON_SVG}</button></div>
   <div class="pm-emoji-form">
-    <div class="pm-cfg-label">图片 URL 或本地上传</div>
+    <div class="pm-cfg-label">图片URL或本地上传</div>
     <input id="pm-emo-url" class="pm-cfg-input" placeholder="https://... 或点下方选择文件">
     <button type="button" class="pm-emoji-upload" onclick="document.getElementById('pm-emo-file').click()">上传本地图片</button>
     <input id="pm-emo-file" type="file" accept="image/*" hidden onchange="window.__pmEmoFileRead(${setIndex},this)">
     <div id="pm-emo-preview" class="pm-emoji-preview"><img id="pm-emo-preview-img" decoding="async" width="120" height="120"></div>
     <input id="pm-emo-desc" class="pm-cfg-input" placeholder="图片描述（必填，如：猫猫开心）">
-    <div class="pm-cfg-tip">描述将告诉 AI 这张图在什么情形下使用</div>
+    <div class="pm-cfg-tip">描述将告诉AI这张图在什么情形下使用</div>
   </div>
   <div class="pm-modal-add"><button type="button" class="pm-action-button is-accent" data-layout="full" onclick="window.__pmConfirmAddEmojiImage(${setIndex})">确认添加</button></div>
 </div>`);

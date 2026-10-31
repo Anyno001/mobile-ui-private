@@ -75,8 +75,8 @@ assert.deepEqual(parseInteractiveResponse(
     '{"trace":1}\n最终：{"version":1,"kind":"style_prompt","items":[{"title":"后置协议","prompt":"跳过前置元数据"}]}',
     'style_prompt',
 ), [{ title: '后置协议', prompt: '跳过前置元数据' }]);
-assert.throws(() => parseInteractiveResponse('抱歉，当前无法生成。', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
-assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</title></html>', 'feed_batch'), /AI 未返回可解析的社区 JSON/);
+assert.throws(() => parseInteractiveResponse('抱歉，当前无法生成。', 'feed_batch'), /AI未返回可解析的社区JSON/);
+assert.throws(() => parseInteractiveResponse('<html><title>502 Bad Gateway</title></html>', 'feed_batch'), /AI未返回可解析的社区JSON/);
 
 assert.deepEqual(parseInteractiveResponse('{"version":1,"kind":"comment_batch","items":[{"author":"甲","content":"评论"}]}', 'comment_batch'), [{ author: '甲', content: '评论', tags: [] }]);
 const danmakuRequest = buildInteractiveRequest({ kind: 'danmaku_batch', presetKey: 'weibo', context: '直播上下文', actorRoster: ['甲', '乙'] });
@@ -495,7 +495,7 @@ for (const comments of [
 ]) {
     assert.throws(() => parseInteractiveResponse(JSON.stringify({
         version: 1, kind: 'feed_batch', items: [{ author: '甲', content: '主楼', comments }],
-    }), 'feed_batch'), /comments .*不足 2 条/);
+    }), 'feed_batch'), /comments.*不足 2 条/);
 }
 const cappedComments = parseInteractiveResponse(JSON.stringify({
     version: 1, kind: 'feed_batch', items: [{
@@ -514,7 +514,7 @@ const commentsAfterInvalidPrefix = parseInteractiveResponse(JSON.stringify({
     }],
 }), 'feed_batch');
 assert.deepEqual(commentsAfterInvalidPrefix[0].comments.map(item => item.content), ['后置有效一', '后置有效二']);
-assert.throws(() => parseInteractiveResponse('{"version":1,"kind":"feed_batch","items":[{"author":"甲","content":"主楼","comments":null}]}', 'feed_batch'), /comments 必须是数组/);
+assert.throws(() => parseInteractiveResponse('{"version":1,"kind":"feed_batch","items":[{"author":"甲","content":"主楼","comments":null}]}', 'feed_batch'), /comments必须是数组/);
 assert.throws(() => parseInteractiveResponse('{"version":1,"kind":"feed_batch","items":[{"author":"甲","content":"伪造","actorId":"forged"}]}', 'feed_batch'), /有效内容/);
 assert.throws(() => parseInteractiveResponse('{"version":1,"kind":"live_batch","items":[]}', 'feed_batch'), /协议不匹配/);
 assert.throws(() => parseInteractiveResponse('{"version":1,"kind":"feed_batch","items":[]}', 'feed_batch'), /有效内容/);
@@ -2413,7 +2413,7 @@ const failureRunner = createCommunityGenerationRunner({
 });
 await assert.rejects(failureRunner.generateFeed(), /Getting extension version failed/);
 assert.equal(failureStatuses.length, 1);
-assert.match(failureStatuses[0], /扩展仓库配置|GitHub 认证/);
+assert.match(failureStatuses[0], /扩展仓库配置|GitHub认证/);
 assert.doesNotMatch(failureStatuses[0], /Username for|refs\/heads\/release/,
     '社区状态不得暴露扩展更新器的原始认证与分支日志');
 
@@ -2639,7 +2639,7 @@ try {
     Object.defineProperty(status, 'textContent', {
         set(value) {
             this.value = value;
-            if (value && value !== 'AI 正在生成…') failInstallationAction(new Error(value));
+            if (value && value !== 'AI正在生成…') failInstallationAction(new Error(value));
         },
         get() { return this.value; },
     });

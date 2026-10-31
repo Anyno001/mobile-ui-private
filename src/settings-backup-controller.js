@@ -1,7 +1,7 @@
 async function requireGalBubbleSync(syncGalBubble, enabled) {
-    if (typeof syncGalBubble !== 'function') throw new Error('GAL 气泡正则同步接口不可用');
+    if (typeof syncGalBubble !== 'function') throw new Error('GAL气泡正则同步接口不可用');
     const transaction = await syncGalBubble(enabled);
-    if (!transaction || transaction.ok !== true) throw new Error('GAL 气泡正则同步失败');
+    if (!transaction || transaction.ok !== true) throw new Error('GAL气泡正则同步失败');
     return transaction;
 }
 
@@ -87,11 +87,11 @@ export function createBackupController({
             if (transactionError) {
                 const error = transactionError;
                 if (error.backupPhase === 'rollback-failed') alert(`导入失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}`);
-                else if (error.backupPhase === 'rolled-back') alert(`导入失败，原数据已恢复${galRefreshFailed ? '，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天' : ''}。\n${error.message}`);
+                else if (error.backupPhase === 'rolled-back') alert(`导入失败，原数据已恢复${galRefreshFailed ? '，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天' : ''}。\n${error.message}`);
                 else alert(`导入失败，未修改现有数据。\n${error.message}`);
                 return;
             }
-            alert(galRefreshFailed ? '数据导入成功，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天。' : '数据导入成功，请重新打开界面生效。');
+            alert(galRefreshFailed ? '数据导入成功，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天。' : '数据导入成功，请重新打开界面生效。');
             document.getElementById('pm-overlay')?.remove();
             closePhone(true);
         };
@@ -119,7 +119,7 @@ export function createBackupController({
                 invalidateInteractiveStore?.();
                 await requireInjectionSuccess(() => clearBidirectionalInjection(), '应用空状态后清理注入失败');
             } });
-            alert(galRefreshFailed ? '天音小笺数据已清理，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天。' : '天音小笺数据已清理。');
+            alert(galRefreshFailed ? '天音小笺数据已清理，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天。' : '天音小笺数据已清理。');
             document.getElementById('pm-overlay')?.remove();
             closePhone(true);
             return true;
@@ -135,7 +135,7 @@ export function createBackupController({
                 await requireInjectionSuccess(() => applyBidirectionalInjection(), '恢复原数据后的注入刷新失败');
             } catch (failure) { rollbackError = failure; }
             if (rollbackError) alert(`清理失败，原数据回滚也失败。请勿刷新，并立即导出当前内存备份。\n${error.message}；${rollbackError.message}`);
-            else alert(`清理失败，原数据已恢复${galRefreshFailed ? '，但 GAL 气泡当前聊天刷新失败，请手动刷新当前聊天' : ''}。\n${error.message}`);
+            else alert(`清理失败，原数据已恢复${galRefreshFailed ? '，但GAL气泡当前聊天刷新失败，请手动刷新当前聊天' : ''}。\n${error.message}`);
             return false;
         }
     };

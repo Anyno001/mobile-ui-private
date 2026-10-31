@@ -146,7 +146,7 @@ export function renderCommentActions(post, comment) {
 
 // 从 gal 正文导入的帖子：原楼层改了或删了，但用户动过这条，所以保留并标一个小字「原文已变」。
 export const renderStaleMark = post => (post?.source?.stale === true
-    ? '<span class="pm-scene-stale" title="gal 正文里的原楼层已修改或删除">原文已变</span>' : '');
+    ? '<span class="pm-scene-stale" title="gal正文里的原楼层已修改或删除">原文已变</span>' : '');
 
 export const renderEmptyState = (title = '这里还很安静', hint = '发第一篇帖子，或者拍一拍让社区动起来。') => `<div class="pm-scene-empty"><b>${escapeHtml(title)}</b><span>${escapeHtml(hint)}</span></div>`;
 

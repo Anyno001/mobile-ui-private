@@ -22,7 +22,7 @@ export function createBudgetController({ normalizeBudgetConfig, resolveBudgetPer
         try { await requireInjectionSuccess(() => applyBidirectionalInjection(), '配置已保存，但注入刷新失败'); }
         catch (error) { alert(`配置已保存，但注入刷新失败：${error.message}`); return false; }
         document.getElementById('pm-overlay')?.remove();
-        addNote('上下文预算已保存（token 为估算值）');
+        addNote('上下文预算已保存（token为估算值）');
         return true;
     };
     const reset = async () => {

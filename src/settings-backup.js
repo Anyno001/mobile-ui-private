@@ -219,9 +219,9 @@ export function createBackupStateHandlers(deps = {}) {
         deps.markChatMetadataLocalAuthoritative?.(Object.keys(window.__pmHistories || {}));
         deps.markCommunityFilesLocalAuthoritative?.(Object.keys(interactiveScenes?.scopes || {}));
         try { localStorage.setItem('ST_SMS_CONFIG', JSON.stringify(window.__pmConfig)); }
-        catch { throw new Error('API 配置保存失败：浏览器存储不可用'); }
+        catch { throw new Error('API配置保存失败：浏览器存储不可用'); }
         if (!saveTheme()) throw new Error('主题配置保存失败：浏览器存储不可用');
-        if (!saveProfiles()) throw new Error('API 档案保存失败：浏览器存储不可用');
+        if (!saveProfiles()) throw new Error('API档案保存失败：浏览器存储不可用');
         await saveGroupMeta();
         if (!saveCharacterBehavior() || !savePokeConfig() || !saveBidirectional() || !saveInjectionConfig() || !saveBudgetConfig(state.budgetConfig) || !saveWordyLimit() || !saveGalBubbleEnabled() || !saveWorldBookConfig()) {
             throw new Error('插件配置保存失败：浏览器存储不可用');
@@ -255,7 +255,7 @@ export function createBackupStateHandlers(deps = {}) {
         try {
             const userGeneration = normalizeUserGenerationStore(state.userGeneration);
             if (!userGenerationWriteState) userGenerationWriteState = await loadUserGenerationStore();
-            if (!userGenerationWriteState.writable) throw new Error(`User 库保存失败：${userGenerationWriteState.readOnlyReason || '当前为只读保护状态'}`);
+            if (!userGenerationWriteState.writable) throw new Error(`User库保存失败：${userGenerationWriteState.readOnlyReason || '当前为只读保护状态'}`);
             await saveUserGenerationStore(userGeneration, {
                 readOnlyReason: userGenerationWriteState.readOnlyReason,
                 writeHandle: userGenerationWriteState.writeHandle,

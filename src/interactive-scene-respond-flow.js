@@ -87,7 +87,7 @@ export function createRespondFlow({
                     const answers = items.filter(item => item.author !== userName).map(item => ({
                         author: item.author, content: item.content, tags: [], comments: [], question: currentPost.question, ...(item.authorBio ? { authorBio: item.authorBio } : {}),
                     }));
-                    if (!appendScenePosts(resolved.scope, resolved.scopeId, resolved.scene, answers, [seeds.story, seeds.user]).length) throw new Error('AI 未返回有效内容');
+                    if (!appendScenePosts(resolved.scope, resolved.scopeId, resolved.scene, answers, [seeds.story, seeds.user]).length) throw new Error('AI未返回有效内容');
                     return;
                 }
                 ensureInteractiveActor(resolved.scope, resolved.scopeId, seeds.story);
@@ -98,7 +98,7 @@ export function createRespondFlow({
                     ...(item.quote ? { quoteName: item.quote } : {}),
                     ...(item.rating ? { rating: item.rating } : {}),
                 }));
-                if (!generated.length) throw new Error('AI 未返回有效内容');
+                if (!generated.length) throw new Error('AI未返回有效内容');
                 // 用户评论从原位取出，随机放进这一批里；位置只在这里决定一次，写进数组顺序，之后渲染不再变。
                 const mine = kind === 'comment' ? currentPost.comments.find(item => item.id === commentId) || null : null;
                 const merged = mergeRespondComments({

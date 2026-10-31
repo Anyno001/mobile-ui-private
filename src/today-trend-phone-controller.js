@@ -222,7 +222,7 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
             const recentAssistantCount = Number(data?.get('recentAssistantCount'));
             const mergeAssistantCount = Number(data?.get('mergeAssistantCount'));
             if (!Number.isSafeInteger(currentCount) || currentCount < 1) {
-                return report(new Error('当前聊天没有可处理的 AI 回复楼层'));
+                return report(new Error('当前聊天没有可处理的AI回复楼层'));
             }
             if (!Number.isSafeInteger(recentAssistantCount) || recentAssistantCount < 1 || recentAssistantCount > currentCount) {
                 return report(new Error('最近处理层数必须在当前聊天AI回复累计层数范围内'));

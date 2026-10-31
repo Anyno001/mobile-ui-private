@@ -43,15 +43,15 @@ export async function loadStoryOracleStore({ idbRead = pmIDBReadEntry, storage =
     };
     if (idb?.ok) return {
         store: createEmptyStoryOracleStore(), recovered: true, writable: false,
-        readOnlyReason: '历史数据损坏或版本不兼容', warning: 'Story Oracle 历史数据损坏或版本不兼容，原始数据未覆盖，已使用只读空工作区。',
+        readOnlyReason: '历史数据损坏或版本不兼容', warning: 'Story Oracle历史数据损坏或版本不兼容，原始数据未覆盖，已使用只读空工作区。',
     };
     if (fallback.present) return {
         store: createEmptyStoryOracleStore(), recovered: false, writable: false,
-        readOnlyReason: '后备历史损坏', warning: 'Story Oracle 后备历史损坏，原始数据未覆盖，本次会话不会持久化。',
+        readOnlyReason: '后备历史损坏', warning: 'Story Oracle后备历史损坏，原始数据未覆盖，本次会话不会持久化。',
     };
     return {
         store: createEmptyStoryOracleStore(), recovered: false, writable: Boolean(storage), writeHandle: storage ? createWritableHandle() : null, readOnlyReason: storage ? '' : '存储不可用',
-        warning: storage ? 'IndexedDB 不可用，后续保存将写入本地后备存储。' : 'Story Oracle 存储不可用，本次会话不会持久化。',
+        warning: storage ? 'IndexedDB不可用，后续保存将写入本地后备存储。' : 'Story Oracle存储不可用，本次会话不会持久化。',
     };
 }
 

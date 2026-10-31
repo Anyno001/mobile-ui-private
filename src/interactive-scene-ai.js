@@ -13,13 +13,13 @@ export {
 
 function parseEnvelope(raw, expectedKind) {
     const value = parseFirstJsonObject(
-        raw, 'AI 未返回可解析的社区 JSON',
+        raw, 'AI未返回可解析的社区JSON',
         candidate => !!candidate && typeof candidate === 'object' && !Array.isArray(candidate)
             && candidate.version === 1 && candidate.kind === expectedKind && Array.isArray(candidate.items),
     );
-    if (!value || Array.isArray(value) || value.version !== 1 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI 返回协议不匹配');
+    if (!value || Array.isArray(value) || value.version !== 1 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI返回协议不匹配');
     const keys = Object.keys(value).sort();
-    if (keys.length !== 3 || keys[0] !== 'items' || keys[1] !== 'kind' || keys[2] !== 'version') throw new Error('AI 返回协议包含额外字段');
+    if (keys.length !== 3 || keys[0] !== 'items' || keys[1] !== 'kind' || keys[2] !== 'version') throw new Error('AI返回协议包含额外字段');
     return value.items;
 }
 
@@ -27,7 +27,7 @@ const clean = (value, max) => String(value ?? '').trim().slice(0, max);
 
 function cleanFeedComments(value) {
     if (value === undefined) return [];
-    if (!Array.isArray(value)) throw new Error('AI 返回的 comments 必须是数组');
+    if (!Array.isArray(value)) throw new Error('AI返回的comments必须是数组');
     const comments = value.flatMap(comment => {
         if (!comment || typeof comment !== 'object' || Array.isArray(comment)) return [];
         if (Object.keys(comment).some(key => !['author', 'content'].includes(key))) return [];
@@ -35,7 +35,7 @@ function cleanFeedComments(value) {
         if (!content) return [];
         return [{ author: clean(comment.author, 80) || '匿名用户', content }];
     });
-    if (comments.length < 2) throw new Error('AI 返回的 comments 有效内容不足 2 条');
+    if (comments.length < 2) throw new Error('AI返回的comments有效内容不足 2 条');
     return comments.slice(0, 5);
 }
 
@@ -67,7 +67,7 @@ export function parseInteractiveResponse(raw, kind) {
             ...(kind === 'feed_batch' ? cleanReviewFields(item) : {}),
         }];
     });
-    if (!items.length) throw new Error('AI 未返回有效内容');
+    if (!items.length) throw new Error('AI未返回有效内容');
     return items;
 }
 
@@ -85,12 +85,12 @@ const QUOTE_PLATFORMS = ['douban', 'tieba', 'moments'];
 
 function parseCommunityEnvelope(raw, expectedKind) {
     const value = parseFirstJsonObject(
-        raw, 'AI 未返回可解析的社区 JSON',
+        raw, 'AI未返回可解析的社区JSON',
         candidate => !!candidate && typeof candidate === 'object' && !Array.isArray(candidate)
             && candidate.version === 2 && candidate.kind === expectedKind && Array.isArray(candidate.items),
     );
-    if (!value || Array.isArray(value) || value.version !== 2 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI 返回协议不匹配');
-    if (Object.keys(value).some(key => !COMMUNITY_ENVELOPE_KEYS.includes(key))) throw new Error('AI 返回协议包含额外字段');
+    if (!value || Array.isArray(value) || value.version !== 2 || value.kind !== expectedKind || !Array.isArray(value.items)) throw new Error('AI返回协议不匹配');
+    if (Object.keys(value).some(key => !COMMUNITY_ENVELOPE_KEYS.includes(key))) throw new Error('AI返回协议包含额外字段');
     return value;
 }
 
@@ -260,6 +260,6 @@ export function parseCommunityResponse(raw, kind, platform, options = {}) {
     else if (kind === 'comment_batch') items = cleanCommunityComments(envelope.items, key, 12);
     else if (kind === 'danmaku_batch') items = cleanCommunityDanmaku(envelope.items, options?.hostIsUser === true);
     else throw new Error(`不支持的社区生成类型：${kind}`);
-    if (!items.length) throw new Error('AI 未返回有效内容');
+    if (!items.length) throw new Error('AI未返回有效内容');
     return { items, meta: cleanCommunityMeta(envelope.meta, kind, key) };
 }

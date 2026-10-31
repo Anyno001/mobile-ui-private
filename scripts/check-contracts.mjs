@@ -19,6 +19,7 @@ const CSS_MODULE_FILES = [
   'styles/video.css',
   'styles/shop.css',
   'styles/origin.css',
+  'styles/plot.css',
   'styles/overrides.css',
 ];
 const [srcEntries, bundle, cssEntry, manifestText, packageText, lockText, readme, projectText, baselineText, cssTokensText, lifecycleResourcesText, governanceRegistryText, ...cssModules] = await Promise.all([
@@ -58,6 +59,11 @@ const sourceModuleByRelativePath = new Map();
 for (const module of sourceModules) {
   const name = path.basename(module.file);
   const relativePath = `src/${path.relative(srcRoot, module.file).replaceAll(path.sep, '/')}`;
+  // 剧情注入器核心逐字拷自 PlotInjector，文件名不能改（目录内互相 import），由 check-plot-core 哈希把关；不参与按文件名查找。
+  if (relativePath.startsWith('src/plot-injector/core/')) {
+    sourceModuleByRelativePath.set(relativePath, module);
+    continue;
+  }
   if (sourceModuleByName.has(name)) {
     failures.push(`src: duplicate module basename prevents unambiguous contract lookup: ${name}`);
   }
@@ -2970,7 +2976,7 @@ for (const expected of [
 ]) requireText('interactive scene AI', `${interactiveAiCode}\n${interactivePromptCode}`, expected);
 for (const expected of [
   'parseFirstJsonObject', 'generationErrorMessage', 'getting extension version failed',
-  '扩展仓库配置、GitHub 认证与网络',
+  '扩展仓库配置、GitHub认证与网络',
 ]) requireText('ai.js', aiCode, expected);
 if (interactiveAiCode.includes('function parseFirstJsonObject')) {
   failures.push('interactive-scene-ai.js: structured AI JSON extraction must stay owned by ai.js');
@@ -3265,7 +3271,7 @@ for (const expected of ['required value="${autoPoke.probability}"', '请输入 0
 if (controlCenterTemplate.includes('data-action="desktop"') || controlCenterTemplate.includes('返回桌面')) {
   failures.push('phone-control-center.js: compact control menu must not duplicate the chat navbar desktop action');
 }
-for (const title of ['API 设置', '主题颜色', '数据备份', '互动场景']) {
+for (const title of ['API设置', '主题颜色', '数据备份', '互动场景']) {
   if (controlCenterTemplate.includes(title)) failures.push(`phone-control-center.js: compact control menu must not contain removed shortcut ${title}`);
 }
 for (const expected of [
@@ -4206,7 +4212,7 @@ requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js
 requireText('contact-generator.js', sourceModuleByName.get('contact-generator.js')?.code || '', '!state.generationTask');
 for (const expected of [
   "window.__pmShowAddContact = (resultMessage = '', mode = 'all')", 'escapeHtml(resultMessage)',
-  '<b>手动添加</b>', '<b>AI 生成</b>', 'id="pm-autogen-btn"',
+  '<b>手动添加</b>', '<b>AI生成</b>', 'id="pm-autogen-btn"',
   'pm-contact-add-manual', 'pm-contact-add-primary', 'pm-contact-add-ai', 'pm-contact-add-icon',
   '新建联系人', '新建群聊', '生成联系人与群聊',
   'pm-directory-actions', 'is-primary', 'is-wide',
@@ -4259,9 +4265,12 @@ for (const expected of [
 if (storyOracleAllCode.includes('输入问题，剧情助手会基于当前聊天上下文回答')) failures.push('story-oracle: empty message hint must not occupy the message list; use the textarea placeholder instead');
 if (storyOracleAllCode.includes('pm-scene-header')) failures.push('story-oracle: session UI must not retain the old scene header');
 if (storyOracleAllCode.includes('data-story-oracle-mode-select') || storyOracleAllCode.includes('pm-story-oracle-mode-row')) failures.push('story-oracle: mode switching must use the title trigger, not a standalone select row');
-if (!/<button type="button" class="pm-generation-cancel"[\s\S]*?<button type="submit" class="pm-up-btn"/.test(storyOracleViewsCode)) {
-  failures.push('story-oracle-views.js: cancel button must precede the icon send button');
+// 10-31 用户定：回复中发送键原位变成 ×（停止），不再另放一个「停止」按钮；没收到回复的问题可「重新发送」。
+if (!/vm\.busy\s*\?\s*`<button type="button" class="pm-story-oracle-stop" data-story-oracle-action="cancel"[\s\S]*?:\s*`<button type="submit" class="pm-up-btn"/.test(storyOracleViewsCode)) {
+  failures.push('story-oracle-views.js: while busy the send button must turn into the stop (cancel) button in place');
 }
+if (storyOracleViewsCode.includes('class="pm-generation-cancel"')) failures.push('story-oracle-views.js: do not render a separate cancel button next to the send button');
+if (!storyOracleViewsCode.includes('data-story-oracle-action="resend"')) failures.push('story-oracle-views.js: an unanswered question must offer resend');
 if (!/function renderPlanToggle[\s\S]*?'开始引导'/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: each StoryPlan must expose the start-guidance action');
 // 参谋回复下方挂出本轮路线，按 sourceMessageId 对应到具体回复，并可直接开始引导
 if (!/function renderMessages[\s\S]*?renderReceipt\(plansBySource\.get\(storyOracleMessageId\(message\)\)/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: advisor replies must render their own route receipt bound by sourceMessageId');
@@ -4303,8 +4312,8 @@ if (!/class="pm-story-oracle-chip" data-story-oracle-action="view" data-story-or
 if (storyOracleAllCode.includes('pm-story-oracle-world-book-modal')) failures.push('story-oracle: world-book selection must not keep a duplicate modal');
 if (!/class="pm-name-trigger pm-story-oracle-mode-trigger"[\s\S]*CHEVRON_DOWN_ICON_SVG/.test(storyOracleViewsCode)) failures.push('story-oracle-views.js: mode title must expose the chevron trigger');
 for (const expected of [
-  "'user-generation': 'User 生成'", 'data-story-oracle-action="copy-user"', 'data-story-oracle-action="save-user"',
-  'data-story-oracle-action="revise-user"', 'data-story-oracle-action="delete-user"', 'data-story-oracle-action="open-user"', '保存到 User 库',
+  "'user-generation': 'User生成'", 'data-story-oracle-action="copy-user"', 'data-story-oracle-action="save-user"',
+  'data-story-oracle-action="revise-user"', 'data-story-oracle-action="delete-user"', 'data-story-oracle-action="open-user"', '保存到User库',
 ]) requireText('story-oracle-views.js User generation contract', storyOracleViewsCode, expected);
 for (const expected of [
   'USER_GENERATION_SYSTEM_PROMPT', 'parseUserGenerationResponse', '全局共享库',
@@ -5076,7 +5085,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.9.0') failures.push('version: expected release version 1.9.0');
+if (packageJson.version !== '1.10.0') failures.push('version: expected release version 1.10.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

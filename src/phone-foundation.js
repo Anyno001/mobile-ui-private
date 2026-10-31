@@ -49,7 +49,7 @@ export function handlePhonePageSuspension(deps, reason, {
         console.warn('[phone-mode] 页面挂起前保存活动手机会话失败，将继续写入当前历史快照。', errorType);
     }
     save();
-    try { deps.flushChatMetadata?.(); deps.flushCommunityFiles?.(); }
+    try { deps.flushChatMetadata?.(); deps.flushCommunityFiles?.(); deps.plotInjector?.flush?.(); }
     catch (error) { console.warn('[phone-mode] 页面挂起前写入聊天元数据失败', error?.name || 'Error'); }
     deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);

@@ -208,7 +208,7 @@ export function installInteractiveScenes(_state, deps) {
         runtime.busy = true;
         runtime.requestController = controller;
         const requestId = ++runtime.requestId;
-        setStatus('AI 正在生成…');
+        setStatus('AI正在生成…');
         try {
             const currentStorySeed = actorSeeds(scopeId).story;
             const actorRoster = [...Object.values(scope.actors || {})
@@ -311,7 +311,7 @@ export function installInteractiveScenes(_state, deps) {
             try {
                 await communityRunner.generateFeed();
             } catch (error) {
-                if (error.message !== '生成已取消') setStatus(`社区已创建；AI 热场失败：${generationErrorMessage(error)}`);
+                if (error.message !== '生成已取消') setStatus(`社区已创建；AI热场失败：${generationErrorMessage(error)}`);
             }
         } catch (error) {
             if (runtime.openSceneId === createdSceneId) runtime.openSceneId = null;

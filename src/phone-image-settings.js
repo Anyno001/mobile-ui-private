@@ -6,7 +6,7 @@ import { NAI_DEFAULTS, NAI_NOISE_SCHEDULES, NAI_SAMPLERS, NAI_TRANSPORTS } from 
 
 export const IMAGE_SETTINGS_KEY = 'ST_SMS_IMAGE_SETTINGS_V1';
 export const IMAGE_RATIO_LABELS = Object.freeze({ portrait: '竖图', square: '方图', landscape: '横图' });
-export const IMAGE_SOURCE_LABELS = Object.freeze({ dbgen: '数据库生图插件', nai: '内置 NAI' });
+export const IMAGE_SOURCE_LABELS = Object.freeze({ dbgen: '数据库生图插件', nai: '内置NAI' });
 export const IMAGE_MODULES = Object.freeze({ chat: '聊天', community: '社区', video: '视频' });
 export const IMAGE_PRESET_LIMIT = 12;
 export const GLOBAL_PROFILE_ID = 'global';

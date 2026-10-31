@@ -17,17 +17,17 @@ assert.deepEqual(parseFirstJsonObject('说明 {not json} 后续 {"value":"保留
 assert.deepEqual(parseFirstJsonObject('{"trace":1}\n最终：{"contacts":["甲"],"groups":[]}', 'missing', value => Array.isArray(value?.contacts)), {
     contacts: ['甲'], groups: [],
 });
-assert.throws(() => parseFirstJsonObject('只有终端日志：fatal: no json'), /可解析的 JSON/);
-assert.match(generationErrorMessage(Object.assign(new Error("Username for 'https://github.com':"), { name: 'GitError' })), /扩展仓库配置|GitHub 认证/);
-assert.match(generationErrorMessage(new Error("fatal: couldn't find remote ref refs/heads/release")), /扩展仓库配置|GitHub 认证/);
+assert.throws(() => parseFirstJsonObject('只有终端日志：fatal: no json'), /可解析的JSON/);
+assert.match(generationErrorMessage(Object.assign(new Error("Username for 'https://github.com':"), { name: 'GitError' })), /扩展仓库配置|GitHub认证/);
+assert.match(generationErrorMessage(new Error("fatal: couldn't find remote ref refs/heads/release")), /扩展仓库配置|GitHub认证/);
 assert.equal(generationErrorMessage(new Error('角色名 GitHub 不符合协议')), '角色名 GitHub 不符合协议');
 assert.equal(generationErrorMessage(new Error('GitHub webhook failed to fetch profile')), 'GitHub webhook failed to fetch profile');
 assert.equal(generationErrorMessage(new TypeError('Failed to fetch GitHub API webhook metadata')), 'Failed to fetch GitHub API webhook metadata');
 assert.equal(generationErrorMessage(Object.assign(new Error('联系人协议校验失败'), { name: 'GitError' })), '联系人协议校验失败');
-assert.match(generationErrorMessage(new TypeError('Failed to fetch')), /AI 服务网络连接失败/);
+assert.match(generationErrorMessage(new TypeError('Failed to fetch')), /AI服务网络连接失败/);
 
 assert.equal(corsProxyUrl('https://api.example.com/v1/models'), '/proxy/https%3A%2F%2Fapi.example.com%2Fv1%2Fmodels');
-assert.throws(() => corsProxyUrl('file:///etc/passwd'), /仅支持 HTTP\/HTTPS/);
+assert.throws(() => corsProxyUrl('file:///etc/passwd'), /仅支持HTTP\/HTTPS/);
 const modelFetchCalls = [];
 const modelResponse = { ok: true };
 assert.equal(await fetchWithCorsProxy('https://api.example.com/v1/models', { method: 'GET' }, async url => {
@@ -164,15 +164,15 @@ assert.deepEqual(parseGeneratedDirectory('说明 {"trace":1}\n最终 {"contacts"
 assert.deepEqual(parseGeneratedDirectory('{"contacts":["<think>字面角色</think>"]}'), {
     contacts: ['<think>字面角色</think>'], groups: [],
 });
-assert.throws(() => parseGeneratedDirectory('{"characters":["甲"]}'), /缺少 contacts 或 groups/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":"甲"}'), /contacts 必须是数组/);
+assert.throws(() => parseGeneratedDirectory('{"characters":["甲"]}'), /缺少contacts或groups/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":"甲"}'), /contacts必须是数组/);
 assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[],"debug":true}'), /额外字段：debug/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":[{"name":"甲"}],"groups":[]}'), /contacts 每项必须是字符串/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":["群"]}'), /groups 每项必须是对象/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":[{"name":"甲"}],"groups":[]}'), /contacts每项必须是字符串/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":["群"]}'), /groups每项必须是对象/);
 assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":"群","members":["甲","乙"],"debug":true}]}'), /群聊包含额外字段：debug/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":1,"members":["甲","乙"]}]}'), /群聊 name 必须是字符串/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":"群","members":"甲、乙"}]}'), /群聊 members 必须是数组/);
-assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":"群","members":["甲",{"name":"乙"}]}]}'), /members 每项必须是字符串/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":1,"members":["甲","乙"]}]}'), /群聊name必须是字符串/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":"群","members":"甲、乙"}]}'), /群聊members必须是数组/);
+assert.throws(() => parseGeneratedDirectory('{"contacts":[],"groups":[{"name":"群","members":["甲",{"name":"乙"}]}]}'), /members每项必须是字符串/);
 assert.deepEqual(buildGeneratedDirectoryCandidates({
     contacts: [' 已有 ', '用户', '新角色', '新角色'],
     groups: [
@@ -718,7 +718,7 @@ for (const [label, payload] of [
     await assert.rejects(
         () => truncatedClient('', label),
         error => {
-            assert.match(error.message, /token 上限|MAX_TOKENS/);
+            assert.match(error.message, /token上限|MAX_TOKENS/);
             assert.equal(generationErrorMessage(error), error.message);
             assert.doesNotMatch(error.message, /\{"items":/);
             return true;
@@ -733,7 +733,7 @@ const nonJsonClient = createAiClient({
     fetchImpl: async () => ({ ok: true, async text() { return '<html>502 Bad Gateway</html>'; } }),
 });
 await assert.rejects(() => nonJsonClient('', 'user'), error => {
-    assert.match(error.message, /独立 API 返回了无法解析的 JSON/);
+    assert.match(error.message, /独立API返回了无法解析的JSON/);
     assert.match(error.message, /502 Bad Gateway/);
     return true;
 });

@@ -39,7 +39,7 @@ export function emojiFileError(file) {
 
 export function emojiSourceError(url, sets = []) {
     const source = String(url || '').trim();
-    if (!source) return '请输入图片 URL 或上传图片。';
+    if (!source) return '请输入图片URL或上传图片。';
     if (!source.toLowerCase().startsWith('data:')) return '为防止远程动图导致界面卡死，请上传本地图片。';
     if (!source.toLowerCase().startsWith('data:image/')) return '内联内容必须是图片。';
     const bytes = emojiDataUrlBytes(source);

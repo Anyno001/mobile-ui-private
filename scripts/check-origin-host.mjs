@@ -278,7 +278,7 @@ await check('设置页：署名与原作链接、本聊天组只在有聊天时�
     assert.match(html, /is-danger[^>]*data-origin-action="reset"/);
     assert.doesNotMatch(renderOriginSettings(s, { available: false }), /本聊天/);
     assert.doesNotMatch(renderOriginSettings(normalizeOriginSettings(null), { available: true }), /本聊天/, '未开启时不出本聊天组');
-    assert.doesNotMatch(html, /API 地址|密钥/, '不做原插件的独立 API');
+    assert.doesNotMatch(html, /API地址|密钥/, '不做原插件的独立 API');
 });
 
 await check('表单：字段齐全、必填为空返回空、拼成核心 op 字段', () => {

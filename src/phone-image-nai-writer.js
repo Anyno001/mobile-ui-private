@@ -35,7 +35,7 @@ export function buildNaiWriterUserPrompt(description, characters = []) {
 
 /** 模型回复 + 角色资料 → 出图 slot。资料里有的人合上 DNA；模型多写出的人（路人）只用它写的标签。 */
 export function mergeNaiSlot(raw, characters = [], framing = 'half_body') {
-    const data = parseFirstJsonObject(raw, '写词回复不是 JSON');
+    const data = parseFirstJsonObject(raw, '写词回复不是JSON');
     const scene = text(data.scene);
     const byName = new Map(characters.map(c => [text(c.characterKey), c]));
     const rows = (Array.isArray(data.chars) ? data.chars : []).filter(c => c && typeof c === 'object').slice(0, 6);
@@ -56,7 +56,7 @@ export function mergeNaiSlot(raw, characters = [], framing = 'half_body') {
 }
 
 export async function writeNaiSlot({ description, characters, framing, callAI, signal }) {
-    if (typeof callAI !== 'function') throw new Error('内置生图需要先在手机设置里配置 API，用来写提示词');
+    if (typeof callAI !== 'function') throw new Error('内置生图需要先在手机设置里配置API，用来写提示词');
     const raw = await callAI(NAI_WRITER_PROMPT, buildNaiWriterUserPrompt(description, characters), { isolated: true, module: 'image', signal });
     return mergeNaiSlot(raw, characters, framing);
 }

@@ -1310,7 +1310,9 @@
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-ink) !important",
     "styles/gallery.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub)[data-image-gen=\"off\"] :is([data-image-action=\"generate\"],[data-action=\"photo-shot\"],.pm-desktop-app[data-app=\"gallery\"])::display::none !important",
     "styles/shop.css::root::#pm-iphone .pm-shop-search-input::background-color::transparent !important",
-    "styles/origin.css::root::#pm-iphone .pm-origin-composer input::background-color::var(--pm-color-surface) !important"
+    "styles/origin.css::root::#pm-iphone .pm-origin-composer input::background-color::var(--pm-color-surface) !important",
+    "styles/core.css::root::.pm-up-btn[data-mode=\"stop\"]::background::var(--pm-color-fill-strong) !important",
+    "styles/core.css::root::.pm-up-btn[data-mode=\"stop\"]::color::var(--pm-color-label) !important"
   ],
   "incrementalHardcodeBaseline": [
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::min-height::72px !important",

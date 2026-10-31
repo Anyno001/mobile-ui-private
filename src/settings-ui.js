@@ -220,8 +220,8 @@ export function installSettingsUi(deps) {
         if (page === 'api') {
             apiDraftMode.set(window.__pmConfig.useIndependent);
             const content = renderApiSettings(apiSettings.getPageState());
-            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-accent is-full" onclick="window.__pmSaveConfig()">保存 API 设置</button></div>';
-            makeOverlay(renderSettingsModal({ title: 'API 设置', content, footer }));
+            const footer = '<div class="pm-modal-add"><button class="pm-action-button is-accent is-full" onclick="window.__pmSaveConfig()">保存API设置</button></div>';
+            makeOverlay(renderSettingsModal({ title: 'API设置', content, footer }));
             return;
         }
         await appearanceSettings.showPage();

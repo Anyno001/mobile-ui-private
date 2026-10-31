@@ -78,7 +78,7 @@ export function createBackgroundSettings({
             input.value = '';
         },
         setUrl(scope) {
-            const url = prompt('输入图片 URL：');
+            const url = prompt('输入图片URL：');
             if (!url?.trim()) return;
             const key = `${getStorageId()}_${getCurrentPersona()}`;
             return queueMutation(scope, () => {

@@ -15,7 +15,7 @@ export function createCalendarOutfitController({ tasks, getStorageId, gatherCont
         const existing = window.dates.map(date => profileSnapshot.days[date]).filter(Boolean);
         const hasExistingAi = existing.some(outfit => outfit.source === 'ai');
         if (hasExistingAi && (typeof confirmImpl !== 'function'
-            || !confirmImpl(`${window.label}已有 AI 生成的穿搭，重新生成将覆盖这些内容；手动记录会保留。是否继续？`))) return false;
+            || !confirmImpl(`${window.label}已有AI生成的穿搭，重新生成将覆盖这些内容；手动记录会保留。是否继续？`))) return false;
         const windowSnapshot = JSON.stringify(window.dates.map(date => [date, profileSnapshot.days[date] || null]));
         const preferencesSnapshot = JSON.stringify({
             colorPreference: profileSnapshot.colorPreference, preference: profileSnapshot.preference, generationRule: profileSnapshot.generationRule,

@@ -207,7 +207,7 @@ function renderSceneMenu(scene, uiScope, autoActive) {
 function renderIgsSyncSwitch(scene, igs) {
     if (igs?.enabled !== true || !IGS_SYNC_PLATFORMS.includes(platformOf(scene))) return '';
     const enabled = scene.igsSync === true;
-    return `<div class="pm-scene-switch-row"><span class="pm-scene-switch-text"><b>接收正文的${escapeHtml(platformLabel(platformOf(scene)))}帖子</b><small>gal 正文里出现的同平台帖子放进这个社区</small></span><button type="button" id="pm-scene-igs-sync" class="pm-scene-switch ${enabled ? 'is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="接收正文帖子" data-action="toggle-igs-sync"></button></div>`;
+    return `<div class="pm-scene-switch-row"><span class="pm-scene-switch-text"><b>接收正文的${escapeHtml(platformLabel(platformOf(scene)))}帖子</b><small>gal正文里出现的同平台帖子放进这个社区</small></span><button type="button" id="pm-scene-igs-sync" class="pm-scene-switch ${enabled ? 'is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="接收正文帖子" data-action="toggle-igs-sync"></button></div>`;
 }
 
 // 风格页：社区名称、主题色（只换点缀色）、成人内容开关、风格提示词。

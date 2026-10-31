@@ -32,6 +32,7 @@ import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
 import { createChatMetadataSync } from './chat-metadata-sync.js';
 import { setFloorMarkProvider } from './chat-message-model.js';
 import { startOriginHost, trackBackgroundCalls } from './origin-host.js';
+import { startPlotInjector } from './plot-injector/plot-injector.js';
 import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
 
 (async function bootstrapPhoneMode() {
@@ -82,6 +83,8 @@ import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
         getContext: getCtx,
     }));
     deps.originRuntime = startOriginHost({ getCtx, callAI: deps.callAI });
+    // 剧情注入器（大纲注入与进度检测）：启动即运行，不等打开手机；同页有独立版时由独立版接管。
+    deps.plotInjector = startPlotInjector({ getCtx, callAI: deps.callAI });
 
     installPhoneFoundation(state, deps);
     installConversation(state, deps);

@@ -18,31 +18,31 @@ function setGenerationLoading(active) {
 
 export function parseGeneratedDirectory(raw) {
     const text = String(raw ?? '').trim();
-    if (!text) throw new Error('AI 返回了空内容');
+    if (!text) throw new Error('AI返回了空内容');
     const parsed = parseFirstJsonObject(
-        text, 'AI 返回格式无法解析，未找到有效的联系人 JSON',
+        text, 'AI返回格式无法解析，未找到有效的联系人JSON',
         value => !!value && typeof value === 'object' && !Array.isArray(value)
             && Object.keys(value).some(key => key === 'contacts' || key === 'groups'),
     );
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('AI 返回的联系人 JSON 顶层必须是对象');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('AI返回的联系人JSON顶层必须是对象');
     const keys = Object.keys(parsed);
-    if (!keys.some(key => key === 'contacts' || key === 'groups')) throw new Error('AI 返回的联系人 JSON 缺少 contacts 或 groups');
+    if (!keys.some(key => key === 'contacts' || key === 'groups')) throw new Error('AI返回的联系人JSON缺少contacts或groups');
     const extra = keys.find(key => key !== 'contacts' && key !== 'groups');
-    if (extra) throw new Error(`AI 返回的联系人 JSON 包含额外字段：${extra}`);
-    if (parsed.contacts !== undefined && !Array.isArray(parsed.contacts)) throw new Error('AI 返回的 contacts 必须是数组');
-    if (parsed.groups !== undefined && !Array.isArray(parsed.groups)) throw new Error('AI 返回的 groups 必须是数组');
+    if (extra) throw new Error(`AI返回的联系人JSON包含额外字段：${extra}`);
+    if (parsed.contacts !== undefined && !Array.isArray(parsed.contacts)) throw new Error('AI返回的contacts必须是数组');
+    if (parsed.groups !== undefined && !Array.isArray(parsed.groups)) throw new Error('AI返回的groups必须是数组');
     for (const contact of parsed.contacts || []) {
-        if (typeof contact !== 'string') throw new Error('AI 返回的 contacts 每项必须是字符串');
+        if (typeof contact !== 'string') throw new Error('AI返回的contacts每项必须是字符串');
     }
     for (const group of parsed.groups || []) {
-        if (!group || typeof group !== 'object' || Array.isArray(group)) throw new Error('AI 返回的 groups 每项必须是对象');
+        if (!group || typeof group !== 'object' || Array.isArray(group)) throw new Error('AI返回的groups每项必须是对象');
         const groupKeys = Object.keys(group);
         const groupExtra = groupKeys.find(key => key !== 'name' && key !== 'members');
-        if (groupExtra) throw new Error(`AI 返回的群聊包含额外字段：${groupExtra}`);
-        if (typeof group.name !== 'string') throw new Error('AI 返回的群聊 name 必须是字符串');
-        if (!Array.isArray(group.members)) throw new Error('AI 返回的群聊 members 必须是数组');
+        if (groupExtra) throw new Error(`AI返回的群聊包含额外字段：${groupExtra}`);
+        if (typeof group.name !== 'string') throw new Error('AI返回的群聊name必须是字符串');
+        if (!Array.isArray(group.members)) throw new Error('AI返回的群聊members必须是数组');
         for (const member of group.members) {
-            if (typeof member !== 'string') throw new Error('AI 返回的群聊 members 每项必须是字符串');
+            if (typeof member !== 'string') throw new Error('AI返回的群聊members每项必须是字符串');
         }
     }
     return { contacts: parsed.contacts || [], groups: parsed.groups || [] };
@@ -79,7 +79,7 @@ export function buildGeneratedDirectoryCandidates(parsed, existingNames, current
         groups.push({ name, members });
         knownNames.add(normalized);
     }
-    if (!contacts.length && !groups.length) throw new Error('AI 未返回可添加的联系人或群聊');
+    if (!contacts.length && !groups.length) throw new Error('AI未返回可添加的联系人或群聊');
     return { contacts, groups };
 }
 
@@ -170,7 +170,7 @@ export function installContactGenerator(state, deps) {
     window.__pmConfirmAutoGen = () => {
         const id = getStorageId();
         if (!id || id === 'sms_unknown__default') return;
-        if (!confirm(`AI 将根据当前剧情信息自动生成一批联系人和群聊（本次最多 ${AUTO_GENERATION_BATCH} 个），直接写入列表，是否继续？`)) return;
+        if (!confirm(`AI将根据当前剧情信息自动生成一批联系人和群聊（本次最多 ${AUTO_GENERATION_BATCH} 个），直接写入列表，是否继续？`)) return;
         window.__pmAutoGenContacts();
     };
 
