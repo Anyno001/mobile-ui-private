@@ -153,6 +153,8 @@ export function installSettingsUi(deps) {
     window.__pmUploadDesktopIcon = (input, appId) => desktopIconSettings.upload(input, appId);
     window.__pmResetDesktopIcon = appId => desktopIconSettings.reset(appId);
     window.__pmResetAllDesktopIcons = () => desktopIconSettings.resetAll();
+    window.__pmToggleDesktopApp = appId => desktopIconSettings.toggleHidden(appId);
+    window.__pmResetDesktopLayout = () => desktopIconSettings.resetLayout();
     window.__pmExportAppearancePack = () => appearancePackSettings.exportPack();
     window.__pmImportAppearancePack = input => appearancePackSettings.importPack(input);
     window.__pmConfirmAppearanceImport = () => appearancePackSettings.confirmImport();

@@ -5,6 +5,7 @@ import {
 } from '../src/desktop-icon-storage.js';
 import { createDesktopIconSettings } from '../src/settings-desktop-icons.js';
 import { renderPhoneDesktop, resolveDesktopAppIcon } from '../src/interactive-scene-views.js';
+import { DESKTOP_APPS, mergeVisibleOrder, normalizeDesktopLayout, setDesktopAppHidden } from '../src/desktop-layout.js';
 
 const png = size => `data:image/png;base64,${'A'.repeat(Math.ceil(size / 3) * 4)}`;
 const valid = png(12);
@@ -183,4 +184,30 @@ try {
 const cleanup = await import('../src/storage.js');
 assert(cleanup.PLUGIN_IDB_STATIC_KEYS.includes(DESKTOP_ICON_STORAGE_KEY));
 assert(cleanup.PLUGIN_IDB_DYNAMIC_PREFIXES.includes(DESKTOP_ICON_RESOURCE_PREFIX));
+{
+    // 桌面排列：新图标补到末尾、设置不可隐藏、拖动后隐藏图标留在原槽位。
+    const ids = DESKTOP_APPS.map(app => app.id);
+    assert.deepEqual([...ids].sort(), [...DESKTOP_ICON_IDS].sort(), '桌面排列与图标存储的应用清单必须一致');
+    const normalized = normalizeDesktopLayout({ order: ['shop', 'bogus', 'shop', 'chat'], hidden: ['settings', 'gallery', 'bogus'] });
+    assert.deepEqual(normalized.order.slice(0, 2), ['shop', 'chat']);
+    assert.equal(normalized.order.length, ids.length);
+    assert.deepEqual(normalized.hidden, ['gallery'], '设置不能被隐藏');
+    const layout = { order: ['chat', 'directory', 'calendar'], hidden: ['directory'] };
+    assert.deepEqual(mergeVisibleOrder(layout, ['calendar', 'chat']), ['calendar', 'directory', 'chat']);
+    const previous = globalThis.window, storage = globalThis.localStorage;
+    const saved = {};
+    globalThis.localStorage = { setItem: (key, value) => { saved[key] = value; }, getItem: key => saved[key] ?? null };
+    try {
+        globalThis.window = { __pmTheme: { desktopLayout: { order: ['shop', ...ids.filter(id => id !== 'shop')], hidden: [] } } };
+        assert.ok(renderPhoneDesktop().indexOf('data-app="shop"') < renderPhoneDesktop().indexOf('data-app="chat"'), '桌面按保存的顺序渲染');
+        assert.equal(setDesktopAppHidden('settings', true), false);
+        assert.equal(setDesktopAppHidden('community', true), true);
+        assert.doesNotMatch(renderPhoneDesktop(), /data-app="community"/, '隐藏的图标不渲染');
+        assert.match(renderPhoneDesktop(), /data-app="settings"/);
+        assert.deepEqual(JSON.parse(saved.ST_SMS_THEME).desktopLayout.hidden, ['community'], '隐藏状态随主题保存');
+    } finally {
+        if (previous === undefined) delete globalThis.window; else globalThis.window = previous;
+        if (storage === undefined) delete globalThis.localStorage; else globalThis.localStorage = storage;
+    }
+}
 console.log('desktop icon storage checks passed');

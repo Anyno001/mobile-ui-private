@@ -3492,7 +3492,8 @@ for (const expected of [
   'data-action="desktop"', 'data-action="exit"', 'class="pm-scene-card-actions"',
   'data-action="toggle-scene-pin"', 'data-action="delete-scene"', 'pm-desktop-app-icon',
   'class="pm-scene-pin-action"', 'aria-pressed="${pinned}"', 'aria-label="${pinLabel}"', 'aria-label="删除社区"', '${COMMUNITY_ICON_SVG}', '${TRASH_ICON_SVG}',
-  'pm-desktop-app-label', 'data-app="chat"', 'data-app="directory"', 'data-app="settings"', 'data-app="calendar"', 'data-app="today-trend"', "resolveDesktopAppIcon('todayTrend', TREND_ICON_SVG)",
+  'pm-desktop-app-label', 'data-app="${DATA_APP_OF[appId]}"', 'visibleDesktopApps().map(renderDesktopApp)', 'resolveDesktopAppIcon(appId, meta.icon)',
+  "todayTrend: { label: '今日风向', action: 'desktop-today-trend', icon: TREND_ICON_SVG }",
 ]) {
   requireText('interactive-scene-views.js', interactiveViewsCode, expected);
 }
@@ -3869,7 +3870,9 @@ for (const selector of ['.pm-calendar-round.is-loading svg', '.pm-calendar-shell
 // 视觉 v2：组件规则禁止可见描边与渐变；毛玻璃只允许磨砂气泡、桌面置顶条、今日风向标签栏、桌面图标与桌面发布按钮。功能性边框（手机外壳、裁剪框、勾选笔画）为精确例外；渐变只用于桌面底图与聊天底图的柔光层。
 {
   const visualV2BorderAllowed = new Set(['#pm-iphone', '.pm-crop-mask', '.pm-today-trend-first-use .pm-today-trend-book-input:checked+.pm-today-trend-book-check::after']);
-  const visualV2GradientAllowed = new Set(['.pm-phone-screen:has(.pm-main-ui[data-page="desktop"])', '.pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="calendar"]))']);
+  // 底图柔光与用户可选的「灿烂」背景（同一组光斑加浓）。
+  const visualV2GradientAllowed = new Set(['.pm-phone-screen:has(.pm-main-ui[data-page="desktop"])', '.pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="calendar"]))',
+    '#pm-iphone[data-wallpaper="bright"] .pm-phone-screen:has(.pm-main-ui[data-page="desktop"])', '#pm-iphone[data-wallpaper="bright"] .pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="calendar"]))']);
   // 奶油渐层图标是用户在设置中主动选择的图标风格，渐变只作用于桌面图标底块。
   const visualV2CreamIcon = selector => selector.startsWith('#pm-iphone[data-icon-style="cream"]') && selector.endsWith('.pm-desktop-app-icon');
   // 直播间评论区与横飞区边缘的渐隐遮罩只改透明度、不产生色彩渐变，仅限 mask-image。
@@ -5068,7 +5071,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.8.1') failures.push('version: expected release version 1.8.1');
+if (packageJson.version !== '1.8.2') failures.push('version: expected release version 1.8.2');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

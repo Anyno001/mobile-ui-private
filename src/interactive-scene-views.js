@@ -2,6 +2,7 @@ import { APP_NAMES, appNameOf } from './app-names.js';
 import { createCommunityTemplate } from './interactive-scene-model.js';
 import { COMMUNITY_PLATFORMS, IGS_SYNC_PLATFORMS } from './interactive-scene-constants.js';
 import { DESKTOP_ICON_SIZE, isValidDesktopIconRuntimeData } from './desktop-icon-storage.js';
+import { DESKTOP_APPS, visibleDesktopApps } from './desktop-layout.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG, SHOP_APP_ICON_SVG,
@@ -85,20 +86,31 @@ function renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now) {
     return `<section class="pm-desktop-pins">${pinGroup}${templateGroup}</section>`;
 }
 
+// 桌面图标：显示名、点击动作与默认图标；顺序与隐藏由 desktop-layout.js 决定。
+const DESKTOP_APP_META = Object.freeze({
+    chat: { label: '会话', action: 'desktop-chat', icon: CHAT_ICON_SVG },
+    directory: { label: '联系人', action: 'desktop-directory', icon: CONTACTS_ICON_SVG },
+    calendar: { label: '日历', action: 'desktop-calendar', icon: CALENDAR_ICON_SVG },
+    todayTrend: { label: '今日风向', action: 'desktop-today-trend', icon: TREND_ICON_SVG },
+    community: { label: '社区', action: 'desktop-community', icon: COMMUNITY_ICON_SVG },
+    live: { label: appNameOf('live'), action: 'desktop-live', icon: LIVE_APP_ICON_SVG },
+    storyOracle: { label: '剧情助手', action: 'desktop-story-oracle', icon: SPARKLES_ICON_SVG },
+    settings: { label: '设置', action: 'desktop-settings', icon: SETTINGS_ICON_SVG },
+    gallery: { label: '相册', action: 'desktop-gallery', icon: PHOTO_ICON_SVG },
+    shop: { label: appNameOf('shop'), action: 'desktop-shop', icon: SHOP_APP_ICON_SVG },
+});
+const DATA_APP_OF = Object.fromEntries(DESKTOP_APPS.map(app => [app.id, app.dataApp]));
+
+function renderDesktopApp(appId) {
+    const meta = DESKTOP_APP_META[appId];
+    const label = escapeAttr(meta.label);
+    return `<button type="button" class="pm-desktop-app" data-app="${DATA_APP_OF[appId]}" data-action="${meta.action}" aria-label="${label}" title="${label}"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon(appId, meta.icon)}</span><span class="pm-desktop-app-label">${escapeHtml(meta.label)}</span></button>`;
+}
+
 export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedCommunityTemplates = [], { now = Date.now() } = {}) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || '').trim() || DEFAULT_DESKTOP_TITLE;
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
-        <div class="pm-desktop-grid" aria-label="应用">
-            <button type="button" class="pm-desktop-app" data-app="chat" data-action="desktop-chat" aria-label="会话" title="会话"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('chat', CHAT_ICON_SVG)}</span><span class="pm-desktop-app-label">会话</span></button>
-            <button type="button" class="pm-desktop-app" data-app="directory" data-action="desktop-directory" aria-label="联系人" title="联系人"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('directory', CONTACTS_ICON_SVG)}</span><span class="pm-desktop-app-label">联系人</span></button>
-            <button type="button" class="pm-desktop-app" data-app="calendar" data-action="desktop-calendar" aria-label="日历" title="日历"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('calendar', CALENDAR_ICON_SVG)}</span><span class="pm-desktop-app-label">日历</span></button>
-            <button type="button" class="pm-desktop-app" data-app="today-trend" data-action="desktop-today-trend" aria-label="今日风向" title="今日风向"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('todayTrend', TREND_ICON_SVG)}</span><span class="pm-desktop-app-label">今日风向</span></button>
-            <button type="button" class="pm-desktop-app" data-app="community" data-action="desktop-community" aria-label="社区" title="社区"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('community', COMMUNITY_ICON_SVG)}</span><span class="pm-desktop-app-label">社区</span></button>
-            <button type="button" class="pm-desktop-app" data-app="live" data-action="desktop-live" aria-label="${escapeAttr(appNameOf('live'))}" title="${escapeAttr(appNameOf('live'))}"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('live', LIVE_APP_ICON_SVG)}</span><span class="pm-desktop-app-label">${escapeHtml(appNameOf('live'))}</span></button>
-            <button type="button" class="pm-desktop-app" data-app="story-oracle" data-action="desktop-story-oracle" aria-label="剧情助手" title="剧情助手"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('storyOracle', SPARKLES_ICON_SVG)}</span><span class="pm-desktop-app-label">剧情助手</span></button>
-            <button type="button" class="pm-desktop-app" data-app="settings" data-action="desktop-settings" aria-label="设置" title="设置"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('settings', SETTINGS_ICON_SVG)}</span><span class="pm-desktop-app-label">设置</span></button>
-            <button type="button" class="pm-desktop-app" data-app="gallery" data-action="desktop-gallery" aria-label="相册" title="相册"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('gallery', PHOTO_ICON_SVG)}</span><span class="pm-desktop-app-label">相册</span></button>
-            <button type="button" class="pm-desktop-app" data-app="shop" data-action="desktop-shop" aria-label="${escapeAttr(appNameOf('shop'))}" title="${escapeAttr(appNameOf('shop'))}"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon('shop', SHOP_APP_ICON_SVG)}</span><span class="pm-desktop-app-label">${escapeHtml(appNameOf('shop'))}</span></button>
+        <div class="pm-desktop-grid" aria-label="应用">${visibleDesktopApps().map(renderDesktopApp).join('')}
         </div>
         ${renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now)}`;
 }

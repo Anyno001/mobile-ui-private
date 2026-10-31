@@ -2,6 +2,7 @@ import { DESKTOP_ICON_IDS, DESKTOP_ICON_MAX_ITEM_BYTES, DESKTOP_ICON_SIZE, loadD
 import { CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, CONTACTS_ICON_SVG, LIVE_APP_ICON_SVG, PHOTO_ICON_SVG, SETTINGS_ICON_SVG, SHOP_APP_ICON_SVG, SPARKLES_ICON_SVG, TREND_ICON_SVG } from './icons.js';
 
 import { appNameOf } from './app-names.js';
+import { DESKTOP_APPS, DESKTOP_UNHIDEABLE, currentDesktopLayout, resetDesktopLayout, setDesktopAppHidden } from './desktop-layout.js';
 
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 const MAX_SOURCE_DIMENSION = 4096;
@@ -35,15 +36,15 @@ export function createDesktopIconSettings({
     confirmAction = globalThis.confirm,
 }) {
     const refresh = () => { if (typeof refreshDesktop === 'function') refreshDesktop(); };
-    const rows = () => DESKTOP_ICON_IDS.map(appId => {
+    const rows = () => { const hidden = new Set(currentDesktopLayout().hidden); return DESKTOP_APPS.map(({ id: appId }) => {
         const custom = windowRef?.__pmDesktopIcons?.[appId];
         const preview = custom ? `<img src="${escapeAttr(custom)}" alt="">` : FALLBACKS[appId];
-        return `<div class="pm-desktop-icon-row"><span class="pm-desktop-icon-preview${custom ? ' is-custom' : ''}">${preview}</span><span><b>${LABELS[appId]}</b><small>${custom ? '自定义图标' : '默认图标'}</small></span><span class="pm-desktop-icon-actions"><input id="pm-desktop-icon-file-${appId}" type="file" accept="image/png,image/webp,image/jpeg" onchange="window.__pmUploadDesktopIcon(this,'${appId}')" hidden><button type="button" class="pm-bg-btn" aria-label="选择${LABELS[appId]}图标" onclick="document.getElementById('pm-desktop-icon-file-${appId}').click()">选择图片</button>${custom ? `<button type="button" class="pm-bg-btn pm-bg-del" onclick="window.__pmResetDesktopIcon('${appId}')">重置</button>` : ''}</span></div>`;
-    }).join('');
+        return `<div class="pm-desktop-icon-row"><span class="pm-desktop-icon-preview${custom ? ' is-custom' : ''}">${preview}</span><span><b>${LABELS[appId]}</b><small>${hidden.has(appId) ? '桌面已隐藏' : custom ? '自定义图标' : '默认图标'}</small></span><span class="pm-desktop-icon-actions"><input id="pm-desktop-icon-file-${appId}" type="file" accept="image/png,image/webp,image/jpeg" onchange="window.__pmUploadDesktopIcon(this,'${appId}')" hidden><button type="button" class="pm-bg-btn" aria-label="选择${LABELS[appId]}图标" onclick="document.getElementById('pm-desktop-icon-file-${appId}').click()">选择图片</button>${custom ? `<button type="button" class="pm-bg-btn pm-bg-del" onclick="window.__pmResetDesktopIcon('${appId}')">重置</button>` : ''}${DESKTOP_UNHIDEABLE.has(appId) ? '' : `<div class="pm-custom-check ${hidden.has(appId) ? '' : 'is-checked'}" role="switch" tabindex="0" aria-checked="${!hidden.has(appId)}" aria-label="在桌面显示${LABELS[appId]}" onclick="window.__pmToggleDesktopApp('${appId}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>`}</span></div>`;
+    }).join(''); };
     const showPage = async () => {
         try { await loadIcons(); }
         catch (error) { if (windowRef) windowRef.__pmDesktopIcons = {}; console.warn('[phone-mode] 桌面图标读取失败', error); }
-        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持 PNG、WebP 或 JPEG，裁剪后统一保存为 256×256 PNG，并覆盖整个图标区域。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
+        makeOverlay(renderSettingsModal({ title: '桌面图标', content: `<div class="pm-settings-page"><div class="pm-settings-section"><div class="pm-cfg-tip">支持 PNG、WebP 或 JPEG，裁剪后统一保存为 256×256 PNG，并覆盖整个图标区域。</div><div class="pm-cfg-tip">在桌面长按图标可拖动排列；右侧开关控制图标是否显示在桌面，设置始终显示。</div><div class="pm-desktop-icon-list">${rows()}</div></div><div class="pm-settings-tail"></div></div>`, footer: '<div class="pm-modal-add"><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetDesktopLayout()">恢复默认排列</button><button type="button" class="pm-action-button is-secondary is-full" onclick="window.__pmResetAllDesktopIcons()">全部恢复默认图标</button></div>', backAction: "window.__pmShowConfig('look')", backLabel: '返回主题设置' }));
     };
 
     let mutation = Promise.resolve();
@@ -107,5 +108,14 @@ export function createDesktopIconSettings({
         try { await replaceIcons({}); refresh(); await showPage(); return true; }
         catch (error) { return handleFailure('全部图标重置', error); }
     });
-    return Object.freeze({ showPage, upload, reset, resetAll });
+    const toggleHidden = async appId => {
+        const hidden = currentDesktopLayout().hidden.includes(appId);
+        if (!setDesktopAppHidden(appId, !hidden)) { alert('桌面图标设置保存失败：浏览器存储不可用。'); return false; }
+        refresh(); await showPage(); return true;
+    };
+    const resetLayout = async () => {
+        if (!resetDesktopLayout()) { alert('桌面排列保存失败：浏览器存储不可用。'); return false; }
+        refresh(); await showPage(); return true;
+    };
+    return Object.freeze({ showPage, upload, reset, resetAll, toggleHidden, resetLayout });
 }

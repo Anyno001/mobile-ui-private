@@ -16,6 +16,11 @@ const profileSummary = profile => [IMAGE_SOURCE_LABELS[profile.source], IMAGE_RA
 export function renderImageSettingsPage(header) {
     const settings = loadImageSettings();
     const status = dbgenStatus();
+    const naiReady = !!settings.global.nai.apiKey;
+    const sourceOk = settings.global.source === 'nai' ? naiReady : status.ok;
+    const sourceStatus = settings.global.source === 'nai'
+        ? (naiReady ? '当前使用内置 NAI' : '当前使用内置 NAI，尚未填写 Key')
+        : (status.ok ? '当前使用数据库生图插件（已连接）' : status.error);
     const toggle = (key, title, hint) => `<button type="button" class="pm-gallery-toggle-row" role="switch" aria-checked="${settings[key]}" data-gallery-action="toggle" data-key="${key}"><span><b>${title}</b>${hint ? `<small>${hint}</small>` : ''}</span><i class="pm-control-toggle ${settings[key] ? 'is-checked' : ''}" aria-hidden="true"></i></button>`;
     const profiles = [settings.global, ...settings.presets];
     const moduleRows = Object.entries(IMAGE_MODULES).map(([key, label]) => {
@@ -26,7 +31,10 @@ export function renderImageSettingsPage(header) {
     return `<div class="pm-gallery-shell">
   ${header('生图设置', { back: 'grid' })}
   <div class="pm-gallery-scroll">
-    <p class="pm-gallery-plugin ${status.ok ? 'is-ok' : 'is-missing'}" role="status">${status.ok ? '已连接数据库生图插件' : escapeHtml(status.error)}</p>
+    <p class="pm-gallery-plugin ${sourceOk ? 'is-ok' : 'is-missing'}" role="status">${escapeHtml(sourceStatus)}</p>
+    <section class="pm-gallery-section"><b class="pm-gallery-section-title">出图来源（全局方案）</b>
+      <div class="pm-gallery-tabs" role="radiogroup" aria-label="全局出图来源">${Object.entries(IMAGE_SOURCE_LABELS).map(([key, label]) => `<button type="button" role="radio" class="pm-gallery-tab" data-gallery-action="global-source" data-source="${key}" aria-checked="${settings.global.source === key}">${label}</button>`).join('')}</div>
+      <small class="pm-gallery-hint">接口地址、Key、画师串在下方「生图方案 → 全局方案」里填写</small></section>
     <section class="pm-gallery-section">
       ${toggle('enabled', '启用生图', '关闭后，图片消息与配图仅显示文字描述')}
       ${toggle('chatAuto', '聊天图片自动生成', '收到图片消息时自动出图；关闭时需手动点击「生成图片」')}

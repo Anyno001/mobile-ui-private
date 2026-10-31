@@ -46,7 +46,9 @@
       "--lane",
       "--delay",
       "--duration",
-      "--offset"
+      "--offset",
+      "--pm-desktop-drag-x",
+      "--pm-desktop-drag-y"
     ]
   },
   "componentRoots": {
@@ -326,6 +328,14 @@
           "width"
         ],
         "reason": "主题继承、列表行数及 anchor 定位"
+      },
+      {
+        "file": "src/desktop-layout.js",
+        "properties": [
+          "--pm-desktop-drag-x",
+          "--pm-desktop-drag-y"
+        ],
+        "reason": "桌面长按拖动时图标跟随指针的位移，由指针坐标实时计算，松手即清除"
       }
     ]
   },

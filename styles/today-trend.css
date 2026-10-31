@@ -14,7 +14,7 @@
 .pm-today-trend-header button:disabled{opacity:var(--pm-opacity-disabled);cursor:not-allowed;}
 .pm-today-trend-header button svg,.pm-today-trend-icon-button svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);pointer-events:none;}
 .pm-today-trend-seal{display:grid;flex:0 0 auto;place-items:center;width:var(--pm-today-trend-seal-size);height:var(--pm-today-trend-seal-size);border-radius:var(--pm-radius-circle);background:var(--pm-color-ink);color:var(--pm-color-on-ink);font:var(--pm-font-weight-semibold) var(--pm-font-size-icon)/var(--pm-line-height-tight) var(--pm-today-trend-serif);}
-.pm-today-trend-heading{display:flex;min-width:0;min-height:var(--pm-today-trend-seal-size);flex:1 1 auto;flex-direction:column;gap:var(--pm-space-0-5);}
+.pm-today-trend-heading{display:flex;min-width:0;min-height:var(--pm-today-trend-seal-size);flex:1 1 auto;flex-direction:column;justify-content:center;gap:var(--pm-space-0-5);}
 .pm-today-trend-heading h1{margin:var(--pm-space-0);overflow:hidden;color:var(--pm-color-label);font-size:var(--pm-font-size-headline);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);text-overflow:ellipsis;white-space:nowrap;}
 .pm-today-trend-header-preset{min-width:0;max-width:50%;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pm-today-trend-header-status{display:flex;min-width:0;align-items:center;gap:var(--pm-space-1-5);color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-control);}

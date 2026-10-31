@@ -1,3 +1,4 @@
+import { bindDesktopArrange } from './desktop-layout.js';
 import { generationErrorMessage } from './ai.js';
 import { buildCommunityRequest, COMMUNITY_PLATFORM_PROMPTS, parseCommunityResponse } from './interactive-scene-ai.js';
 import {
@@ -669,9 +670,10 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'regenerate-prompt') { await regeneratePrompt(); return; }
     }
-    const bindPhonePageUi = phoneWindow => bindPhonePageActions(
-        phoneWindow, handleAction, reportPhoneUiError,
-    );
+    const bindPhonePageUi = phoneWindow => {
+        bindDesktopArrange(phoneWindow?.querySelector?.('.pm-desktop-page'), { onCommit: () => refreshDesktop() });
+        return bindPhonePageActions(phoneWindow, handleAction, reportPhoneUiError);
+    };
     window.__pmOpenForumMode = async () => {
         invalidate();
         const scopeId = getStorageId();

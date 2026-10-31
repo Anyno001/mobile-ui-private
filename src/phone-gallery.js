@@ -2,7 +2,7 @@
 import { DNA_FRAMES } from './phone-image-describe.js';
 import { USER_DNA_KEY } from './phone-image-dna.js';
 import { imageUrl } from './phone-image-store.js';
-import { loadImageSettings, saveImageSettings } from './phone-image-settings.js';
+import { GLOBAL_PROFILE_ID, loadImageSettings, saveImageSettings } from './phone-image-settings.js';
 import { openProfileEditor, renderImageSettingsPage } from './phone-image-settings-view.js';
 import { BACK_ICON_SVG, CLOSE_ICON_SVG, SETTINGS_ICON_SVG, USER_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -197,6 +197,17 @@ export function installPhoneGallery(state, deps) {
             saveImageSettings({ ...settings, [button.dataset.key]: !settings[button.dataset.key] });
             return render();
         }
+        if (action === 'global-source') {
+            const settings = loadImageSettings();
+            const global = { ...settings.global, source: button.dataset.source };
+            saveImageSettings({ ...settings, global });
+            // 切到内置 NAI 但还没填 Key：直接打开全局方案让用户填。
+            if (global.source === 'nai' && !global.nai.apiKey) {
+                render();
+                return openProfileEditor(GLOBAL_PROFILE_ID, { makeOverlay, closeOverlay, onSaved: render });
+            }
+            return render();
+        }
         if (action === 'module-profile') {
             const settings = loadImageSettings();
             saveImageSettings({ ...settings, modules: { ...settings.modules, [button.dataset.module]: button.dataset.profile } });
@@ -224,10 +235,10 @@ export function installPhoneGallery(state, deps) {
         page = null;
         renderSerial += 1;
     }
-    const show = async () => {
+    const show = async ({ settings = false } = {}) => {
         page = deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="gallery"]');
         if (!page || !images()) return false;
-        view = 'grid';
+        view = settings ? 'settings' : 'grid';
         filter = 'all';
         limit = PAGE_SIZE;
         notice = '';
@@ -237,5 +248,7 @@ export function installPhoneGallery(state, deps) {
     };
 
     Object.assign(deps, { bindPhoneGalleryUi: bind, destroyPhoneGalleryUi: destroy, showPhoneGalleryPage: show });
+    // 设置首页的「出图来源与生图方案」入口：关掉设置弹窗，直接进相册的生图设置页。
+    if (globalThis.window) globalThis.window.__pmOpenImageSettings = () => { globalThis.window.__pmCloseOverlay?.(); return show({ settings: true }); };
     return { bind, destroy, show };
 }

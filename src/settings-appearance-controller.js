@@ -1,4 +1,4 @@
-import { normalizeFontChoice } from './config.js';
+import { normalizeFontChoice, normalizeWallpaper } from './config.js';
 
 export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, saveTheme, renderLookSettings, renderSettingsModal, makeOverlay, escapeAttr, safeJS, getCurrentPersona, getStorageId, backgroundSettings }) {
     const syncControls = () => {
@@ -11,7 +11,7 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
         document.querySelectorAll('.pm-layout-chip').forEach(element => {
             const wallpaper = element.dataset.wallpaperVariant;
             if (wallpaper) {
-                const active = wallpaper === (theme.wallpaper === 'plain' ? 'plain' : 'soft');
+                const active = wallpaper === normalizeWallpaper(theme.wallpaper);
                 element.classList.toggle('pm-layout-active', active);
                 element.setAttribute('aria-pressed', String(active));
                 return;
@@ -72,7 +72,7 @@ export function createAppearanceController({ THEME_PRESETS, applyTheme, clone, s
         return mutateTheme(() => { window.__pmTheme.darkMode = mode; });
     };
     const setWallpaper = style => mutateTheme(() => {
-        window.__pmTheme.wallpaper = style === 'plain' ? 'plain' : 'soft';
+        window.__pmTheme.wallpaper = normalizeWallpaper(style);
     });
     const setIconStyle = style => mutateTheme(() => {
         window.__pmTheme.iconStyle = style === 'cream' ? 'cream' : 'glass';

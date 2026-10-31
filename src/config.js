@@ -36,6 +36,10 @@ export const FONT_CHOICES = {
     kai: { label: '楷体', stack: "'Kaiti SC','STKaiti','KaiTi','BiauKai',serif" },
 };
 
+// 背景：柔光（默认）、灿烂（底图光斑加浓，接近设计稿）、纯白。
+export const WALLPAPER_CHOICES = Object.freeze(['soft', 'bright', 'plain']);
+export const normalizeWallpaper = value => (WALLPAPER_CHOICES.includes(value) ? value : 'soft');
+
 export function normalizeFontChoice(value) {
     return Object.hasOwn(FONT_CHOICES, value) ? value : 'rounded';
 }

@@ -1,4 +1,4 @@
-import { FONT_CHOICES, normalizeFontChoice, resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
+import { FONT_CHOICES, normalizeFontChoice, normalizeWallpaper, resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { ACCENT_TONE_TOKENS, accentToneTokens } from './theme-tones.js';
 import { contrastText } from './ui.js';
 import { applyImageGenVisibility } from './phone-image-settings.js';
@@ -44,7 +44,7 @@ export function createPhoneThemeController(state) {
         applyProperties(document.getElementById('pm-model-dropdown'));
         applyProperties(state.phoneWindow);
         state.phoneWindow?.setAttribute('data-icon-style', theme.iconStyle === 'cream' ? 'cream' : 'glass');
-        state.phoneWindow?.setAttribute('data-wallpaper', plainWallpaper ? 'plain' : 'soft');
+        state.phoneWindow?.setAttribute('data-wallpaper', normalizeWallpaper(theme.wallpaper));
         applyImageGenVisibility();
         const title = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
         if (title) title.textContent = String(theme.customTitle || '').trim() || '天音小笺';

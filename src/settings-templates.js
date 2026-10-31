@@ -1,5 +1,5 @@
 import { BACK_ICON_SVG, CLOSE_ICON_SVG } from './icons.js';
-import { FONT_CHOICES, normalizeFontChoice, THEME_PRESETS } from './config.js';
+import { FONT_CHOICES, normalizeFontChoice, normalizeWallpaper, THEME_PRESETS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { loadImageSettings } from './phone-image-settings.js';
 import { DEFAULT_ROLLBACK_FLOORS, MAX_ROLLBACK_FLOORS } from './phone-floor-rollback.js';
@@ -29,6 +29,7 @@ export function renderSettingsHome() {
           aria-checked="${loadImageSettings().enabled}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
+      <button type="button" class="pm-settings-subpage-button" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><small>数据库生图插件或内置 NAI、接口地址、画师串</small></span><span aria-hidden="true">›</span></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
         <span><b id="pm-gal-bubble-label">GAL 气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用 GAL 台词格式</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
@@ -133,7 +134,8 @@ export function renderLookSettings({ theme, presetButtons, desktopBackgroundButt
       <div class="pm-settings-section">
         <div class="pm-cfg-label">背景</div>
         <div class="pm-theme-row">
-          <button type="button" class="pm-layout-chip ${theme.wallpaper !== 'plain' ? 'pm-layout-active' : ''}" data-wallpaper-variant="soft" aria-pressed="${theme.wallpaper !== 'plain'}" onclick="window.__pmSetWallpaper('soft')">柔光</button>
+          <button type="button" class="pm-layout-chip ${normalizeWallpaper(theme.wallpaper) === 'soft' ? 'pm-layout-active' : ''}" data-wallpaper-variant="soft" aria-pressed="${normalizeWallpaper(theme.wallpaper) === 'soft'}" onclick="window.__pmSetWallpaper('soft')">柔光</button>
+          <button type="button" class="pm-layout-chip ${theme.wallpaper === 'bright' ? 'pm-layout-active' : ''}" data-wallpaper-variant="bright" aria-pressed="${theme.wallpaper === 'bright'}" onclick="window.__pmSetWallpaper('bright')">灿烂</button>
           <button type="button" class="pm-layout-chip ${theme.wallpaper === 'plain' ? 'pm-layout-active' : ''}" data-wallpaper-variant="plain" aria-pressed="${theme.wallpaper === 'plain'}" onclick="window.__pmSetWallpaper('plain')">纯白</button>
         </div>
       </div>

@@ -151,6 +151,9 @@
 /* 纯白背景：去掉柔光，底色用纯白；对方气泡改浅填充以免与底色融在一起。 */
 #pm-iphone[data-wallpaper="plain"]{--pm-color-wash:transparent;--pm-color-wash-alt:transparent;}
 #pm-iphone[data-wallpaper="plain"] .pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="desktop"])){background-color:var(--pm-color-surface);}
+/* 灿烂背景：柔光的两团光各叠一层加浓，右侧再补一团主题色淡光，接近设计稿的底图光斑。 */
+#pm-iphone[data-wallpaper="bright"] .pm-phone-screen:has(.pm-main-ui:is([data-page="chat"],[data-page="story-oracle"],[data-page="calendar"])){background-image:radial-gradient(90% 45% at 0% 30%,var(--pm-color-wash),transparent 70%),radial-gradient(90% 45% at 0% 30%,var(--pm-color-wash),transparent 70%),radial-gradient(70% 40% at 100% 45%,var(--pm-color-accent-soft),transparent 70%),radial-gradient(110% 60% at 100% 100%,var(--pm-color-wash-alt),transparent 60%),radial-gradient(110% 60% at 100% 100%,var(--pm-color-wash-alt),transparent 60%);}
+#pm-iphone[data-wallpaper="bright"] .pm-phone-screen:has(.pm-main-ui[data-page="desktop"]){background-image:var(--pm-desktop-bg-image,none),radial-gradient(120% 60% at 0% 0%,var(--pm-color-wash),transparent 62%),radial-gradient(120% 60% at 0% 0%,var(--pm-color-wash),transparent 62%),radial-gradient(70% 40% at 100% 45%,var(--pm-color-accent-soft),transparent 70%),radial-gradient(120% 60% at 100% 100%,var(--pm-color-wash-alt),transparent 60%),radial-gradient(120% 60% at 100% 100%,var(--pm-color-wash-alt),transparent 60%);}
 #pm-iphone[style*="--pm-frost: 1"] .pm-right,#pm-iphone[style*="--pm-frost: 1"] .pm-left{backdrop-filter:blur(12px) saturate(1.4);-webkit-backdrop-filter:blur(12px) saturate(1.4);}
 .pm-group-bubble-wrap{align-self:flex-start!important;display:flex!important;flex-direction:column!important;gap:var(--pm-space-0-5);max-width:78%!important;width:fit-content!important;align-items:flex-start!important;}
 .pm-group-bubble-wrap .pm-bubble{max-width:none!important;width:auto!important;align-self:flex-start!important;}

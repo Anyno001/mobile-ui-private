@@ -1,7 +1,7 @@
 import { BUDGET_CONFIG_KEY } from './budget.js';
 import { normalizeInjectionConfig } from './behavior-config.js';
 import { ensureProfileIds, loadApiRoutes, makeProfileId } from './api-routes.js';
-import { normalizeFontChoice, normalizeThemePreset } from './config.js';
+import { normalizeFontChoice, normalizeThemePreset, normalizeWallpaper } from './config.js';
 import { GAL_BUBBLE_ENABLED_KEY, INJECTION_CONFIG_KEY, WORLD_BOOK_CONFIG_KEY } from './constants.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 
@@ -21,7 +21,7 @@ export function loadTheme() {
     } catch (error) {}
     window.__pmTheme.ambientStatusEnabled = window.__pmTheme.ambientStatusEnabled === true;
     window.__pmTheme.iconStyle = window.__pmTheme.iconStyle === 'cream' ? 'cream' : 'glass';
-    window.__pmTheme.wallpaper = window.__pmTheme.wallpaper === 'plain' ? 'plain' : 'soft';
+    window.__pmTheme.wallpaper = normalizeWallpaper(window.__pmTheme.wallpaper);
     window.__pmTheme.fontFamily = normalizeFontChoice(window.__pmTheme.fontFamily);
 }
 
