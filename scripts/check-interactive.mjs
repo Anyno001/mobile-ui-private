@@ -5,7 +5,7 @@ import {
 import {
     COMMUNITY_PLATFORMS, INTERACTIVE_LIMITS, INTERACTIVE_STORE_VERSION, PHONE_UI_PAGES, PHONE_UI_TABS, addSceneComment, appendLiveDanmaku, appendScenePosts,
     createEmptyInteractiveScope, createEmptyInteractiveStore, createLiveRoom, deleteLiveDanmaku, deleteLiveRoom, findLiveRoomForScene, platformForPreset, updateLiveDanmaku,
-    createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost,
+    createDefaultPhoneUiScope, createEmptyPhoneUiState, deleteInteractiveScene, deleteSceneComment, deleteScenePost, deleteSceneWork,
     createCommunityTemplate, createSceneFromCommunityTemplate, deriveInteractiveActorId, enforceInteractiveSceneLimit, ensureInteractiveActor, incrementScenePostShare,
     normalizeAmbientStatus, normalizeInteractiveStore, normalizePhoneUiState, normalizeScene, patchPhoneUiScope,
     dismissCommunityTemplate, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
@@ -1825,6 +1825,13 @@ deleteSceneComment(editable, 'post-1', 'comment-1');
 assert.equal(editable.posts[0].comments.some(item => item.id === 'comment-1'), false);
 deleteScenePost(editable, 'post-1');
 assert.equal(editable.posts.length, 0);
+{
+    // 书评区删除整本书：同名书的书评全部删掉，其他书保留。
+    const shelf = { posts: [{ id: 'r1', work: '雨', comments: [] }, { id: 'r2', work: '晴', comments: [] }, { id: 'r3', work: '雨', comments: [{ id: 'c' }] }] };
+    deleteSceneWork(shelf, '雨');
+    assert.deepEqual(shelf.posts.map(item => item.id), ['r2']);
+    assert.throws(() => deleteSceneWork(shelf, '雨'), /这本书不存在/);
+}
 assert.throws(() => addSceneComment(editableScope, 'editable-scope', editable, 'missing', { type: 'user', displayName: '我', bindingKey: 'persona:me' }, '评论'), /帖子不存在/);
 assert.throws(() => updateScenePost(editable, 'missing', '内容'), /帖子不存在/);
 

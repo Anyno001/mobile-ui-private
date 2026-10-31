@@ -268,6 +268,11 @@
 .pm-scene-post-more{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);border:0;background:transparent;color:var(--pm-color-label-3);border-radius:var(--pm-radius-circle);padding:var(--pm-space-1-5);display:grid;place-items:center;cursor:pointer;}
 .pm-scene-post-more:hover,.pm-scene-post-more[aria-expanded="true"]{color:var(--pm-color-label-2);background:color-mix(in srgb,currentColor 8%,transparent);}
 .pm-scene-post-more:focus-visible{background:color-mix(in srgb,var(--pm-color-label-2) 10%,transparent);outline:2px solid var(--pm-color-label-2);outline-offset:2px;}
+/* 拍一拍本帖：常驻在 ⋯ 左边，和 ⋯ 同尺寸同色，不加底色。 */
+.pm-scene-post-poke{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);border:0;background:transparent;color:var(--pm-color-label-3);border-radius:var(--pm-radius-circle);padding:var(--pm-space-1-5);display:grid;place-items:center;cursor:pointer;}
+.pm-scene-post-poke svg{pointer-events:none;}
+@media(hover:hover){.pm-scene-post-poke:hover{color:var(--pm-color-label-2);}}
+.pm-scene-post-poke:focus-visible{outline:2px solid var(--pm-color-label-2);outline-offset:2px;}
 .pm-scene-post-actions{display:flex;align-items:center;gap:var(--pm-space-0-5);margin-right:var(--pm-space-1);}
 .pm-scene-post-actions[hidden]{display:none;}
 .pm-scene-post-actions button{width:var(--pm-size-control-compact);height:var(--pm-size-control-compact);border:0;border-radius:var(--pm-radius-circle);background:transparent;color:var(--pm-color-label-3);padding:var(--pm-space-1-5);display:grid;place-items:center;cursor:pointer;}
@@ -516,6 +521,7 @@
 .pm-scene-book-info{display:flex;flex-direction:column;align-items:flex-start;gap:var(--pm-space-2);min-width:0;}
 .pm-scene-book-info b{font-size:var(--pm-font-size-title);}
 .pm-scene-book-info>span{font-size:var(--pm-font-size-label);color:var(--pm-color-label-3);}
+.pm-scene-book-hero .pm-scene-book-menu{align-self:flex-start;}
 .pm-scene-dist{display:flex;align-items:center;gap:var(--pm-space-4);margin-bottom:var(--pm-space-2);padding:var(--pm-space-4);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);}
 .pm-scene-dist-score{display:flex;flex-direction:column;align-items:center;gap:var(--pm-space-0-5);}
 .pm-scene-dist-score b{font-size:var(--pm-font-size-large-title);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}

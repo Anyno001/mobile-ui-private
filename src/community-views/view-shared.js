@@ -128,9 +128,10 @@ export function renderReplyToggle(post, { label = '评论', count = post.comment
     return `<button type="button" class="pm-scene-reply-toggle" data-action="${action}" data-post-id="${escapeAttr(post.id)}" aria-label="回复本帖" aria-controls="pm-comment-composer-${escapeAttr(post.id)}" aria-expanded="${expanded}">${renderPostMetric(icon ? REPLY_ICON_SVG : '', count, label, 'is-reply')}</button>`;
 }
 
-// 帖子 ⋯ 菜单：拍一拍本帖、编辑、删除；展开时同帖的评论编辑删除按钮一起显示。
+// 帖子右上角：拍一拍本帖常驻在 ⋯ 左边，⋯ 里只放编辑、删除；展开时同帖的评论编辑删除按钮一起显示。
+// 外层是 row-reverse，所以拍一拍写在最后才排在最左。
 export function renderPostMenu(post) {
-    return `<div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="帖子操作" title="帖子操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="拍一拍本帖，只生成本帖评论" title="拍一拍本帖">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="编辑帖子" title="编辑帖子">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="删除帖子" title="删除帖子">${TRASH_ICON_SVG}</button></span></div>`;
+    return `<div class="pm-scene-post-actions-wrap"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="帖子操作" title="帖子操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" data-action="edit-post" data-post-id="${escapeAttr(post.id)}" aria-label="编辑帖子" title="编辑帖子">${EDIT_ICON_SVG}</button><button type="button" class="pm-scene-danger" data-action="delete-post" data-post-id="${escapeAttr(post.id)}" aria-label="删除帖子" title="删除帖子">${TRASH_ICON_SVG}</button></span><button type="button" class="pm-scene-post-poke" data-action="comments" data-post-id="${escapeAttr(post.id)}" aria-label="拍一拍本帖，只生成本帖评论" title="拍一拍本帖">${POKE_ICON_SVG}</button></div>`;
 }
 
 // 评论 ⋯ 菜单：单条评论自成卡片时使用（书评短评），只含编辑和删除。

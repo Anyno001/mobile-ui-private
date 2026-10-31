@@ -1,3 +1,4 @@
+import { MORE_ICON_SVG, TRASH_ICON_SVG } from '../icons.js';
 import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
@@ -70,7 +71,9 @@ function renderShortComment(post, comment, now) {
 function renderBookPage(book, now, view) {
     const summary = summarizeBookRatings(book.posts);
     const shorts = book.posts.flatMap(post => post.comments.map(comment => ({ post, comment })));
-    return `<section class="pm-scene-book-hero">${renderCover(book.work, { large: true })}<div class="pm-scene-book-info"><b>${escapeHtml(book.work)}</b><span>${escapeHtml(book.workAuthor || '佚名')}</span>${renderComposePill('写书评')}</div></section>
+    // 单本页右上角 ⋯：删除这本书（连同它的书评和短评）。
+    const menu = `<div class="pm-scene-post-actions-wrap pm-scene-book-menu"><button type="button" class="pm-scene-post-more" data-action="post-actions" aria-label="书目操作" title="书目操作" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions" hidden><button type="button" class="pm-scene-danger" data-action="delete-work" data-work="${escapeAttr(book.work)}" aria-label="删除这本书" title="删除这本书">${TRASH_ICON_SVG}</button></span></div>`;
+    return `<section class="pm-scene-book-hero">${renderCover(book.work, { large: true })}<div class="pm-scene-book-info"><b>${escapeHtml(book.work)}</b><span>${escapeHtml(book.workAuthor || '佚名')}</span>${renderComposePill('写书评')}</div>${menu}</section>
         ${renderDistribution(summary)}
         ${book.posts.slice().reverse().map(post => renderReviewCard(post, now, view)).join('')}
         ${shorts.length ? `<section class="pm-scene-shorts" aria-label="短评">${shorts.map(({ post, comment }) => renderShortComment(post, comment, now)).join('')}</section>` : ''}`;

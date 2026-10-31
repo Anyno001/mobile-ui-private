@@ -1,4 +1,4 @@
-import { CAMERA_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, LOCATION_ICON_SVG, MORE_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, TRASH_ICON_SVG } from '../icons.js';
+import { CAMERA_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, LOCATION_ICON_SVG, MORE_H_ICON_SVG, POKE_ICON_SVG, REPLY_ICON_SVG, TRASH_ICON_SVG } from '../icons.js';
 import { imageCardMarkup } from '../messaging.js';
 import { escapeAttr, escapeHtml } from '../ui.js';
 import {
@@ -39,7 +39,7 @@ function renderSocial(post, view) {
 // 「··」浮层：赞、评论，以及拍一拍、编辑、删除；展开时同条动态的评论编辑删除键一起出现。
 function renderPopover(post) {
     const id = escapeAttr(post.id);
-    return `<div class="pm-scene-post-actions-wrap pm-scene-moments-menu"><button type="button" class="pm-scene-post-more pm-scene-moments-dots" data-action="post-actions" aria-label="赞与评论" title="赞与评论" aria-expanded="false">${MORE_ICON_SVG}</button><span class="pm-scene-post-actions pm-scene-moments-pop" hidden><button type="button" class="pm-scene-like ${post.liked ? 'is-liked' : ''}" data-action="like" data-post-id="${id}" aria-pressed="${post.liked}">${HEART_ICON_SVG}<span>${post.liked ? '取消' : '赞'}</span></button><button type="button" data-action="toggle-reply" data-post-id="${id}" aria-controls="pm-comment-composer-${id}" aria-expanded="false">${REPLY_ICON_SVG}<span>评论</span></button><button type="button" data-action="comments" data-post-id="${id}" aria-label="拍一拍本条，只生成评论" title="拍一拍本条">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${id}" aria-label="编辑动态" title="编辑动态">${EDIT_ICON_SVG}</button><button type="button" data-action="delete-post" data-post-id="${id}" aria-label="删除动态" title="删除动态">${TRASH_ICON_SVG}</button></span></div>`;
+    return `<div class="pm-scene-post-actions-wrap pm-scene-moments-menu"><button type="button" class="pm-scene-post-more pm-scene-moments-dots" data-action="post-actions" aria-label="赞与评论" title="赞与评论" aria-expanded="false">${MORE_H_ICON_SVG}</button><span class="pm-scene-post-actions pm-scene-moments-pop" hidden><button type="button" class="pm-scene-like ${post.liked ? 'is-liked' : ''}" data-action="like" data-post-id="${id}" aria-pressed="${post.liked}">${HEART_ICON_SVG}<span>${post.liked ? '取消' : '赞'}</span></button><button type="button" data-action="toggle-reply" data-post-id="${id}" aria-controls="pm-comment-composer-${id}" aria-expanded="false">${REPLY_ICON_SVG}<span>评论</span></button><button type="button" data-action="comments" data-post-id="${id}" aria-label="拍一拍本条，只生成评论" title="拍一拍本条">${POKE_ICON_SVG}</button><button type="button" data-action="edit-post" data-post-id="${id}" aria-label="编辑动态" title="编辑动态">${EDIT_ICON_SVG}</button><button type="button" data-action="delete-post" data-post-id="${id}" aria-label="删除动态" title="删除动态">${TRASH_ICON_SVG}</button></span></div>`;
 }
 
 function renderMoment(post, view, now) {

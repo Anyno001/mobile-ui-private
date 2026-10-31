@@ -8,7 +8,9 @@ export const BACK_ICON_SVG = icon('<path d="M15 18l-6-6 6-6"/>');
 export const FORWARD_ICON_SVG = icon('<path d="M9 6l6 6-6 6"/>');
 export const WIFI_ICON_SVG = icon('<path d="M5 9.5a10 10 0 0 1 14 0M8 13a6 6 0 0 1 8 0M11 16.5a2 2 0 0 1 2 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/>');
 export const SIGNAL_ICON_SVG = icon('<path d="M5 19v-3M9.5 19v-6M14 19v-9M18.5 19V7"/>');
-export const MORE_ICON_SVG = icon('<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>');
+// 「更多」菜单统一用竖排三点，占位窄；朋友圈的「··」浮层保留横排（MORE_H_ICON_SVG），贴近原型。
+export const MORE_ICON_SVG = icon('<circle cx="12" cy="5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/>');
+export const MORE_H_ICON_SVG = icon('<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>');
 export const CONTROL_ICON_SVG = icon('<path d="M15 4l5 5L8 21l-5-5L15 4zM13 6l5 5M5 4v3M3.5 5.5h3M19 16v4M17 18h4"/>');
 export const SEND_ICON_SVG = icon('<path d="M12 19V5M6 11l6-6 6 6"/>');
 export const POKE_ICON_SVG = icon('<path d="M8 11V7a2 2 0 1 1 4 0v3"/><path d="M12 10V6a2 2 0 1 1 4 0v5"/><path d="M16 11V8a2 2 0 1 1 4 0v6c0 4-3 7-7 7h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l2 2V9a2 2 0 1 1 4 0"/>');

@@ -2,7 +2,7 @@ import { bindDesktopArrange } from './desktop-layout.js';
 import { generationErrorMessage } from './ai.js';
 import { buildCommunityRequest, COMMUNITY_PLATFORM_PROMPTS, parseCommunityResponse } from './interactive-scene-ai.js';
 import {
-    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
+    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, deleteSceneWork, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
     createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, setSceneHot, setSceneTonight, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import { COMMUNITY_PLATFORMS } from './interactive-scene-constants.js';
@@ -625,6 +625,12 @@ export function installInteractiveScenes(_state, deps) {
             const view = viewOf(current().scene?.id);
             if (view.postId === button.dataset.postId) view.postId = '';
             rerender('feed'); return;
+        }
+        if (action === 'delete-work') {
+            const work = button.dataset.work || '';
+            if (!confirmDelete(`确定删除《${work}》吗？这本书的全部书评和短评都会删除。`)) return;
+            await commit(() => deleteSceneWork(current().scene, work));
+            viewOf(current().scene?.id).work = ''; rerender('feed'); return;
         }
         if (action === 'edit-comment') {
             const post = current().scene?.posts.find(item => item.id === button.dataset.postId);

@@ -901,6 +901,14 @@ export function deleteScenePost(scene, postId) {
     scene.updatedAt = Date.now();
 }
 
+// 书评区删除整本书：这本书名下的书评连同短评一起删掉。
+export function deleteSceneWork(scene, work) {
+    const name = String(work || '');
+    if (!name || !scene?.posts?.some(item => item.work === name)) throw new Error('这本书不存在');
+    scene.posts = scene.posts.filter(item => item.work !== name);
+    scene.updatedAt = Date.now();
+}
+
 export function deleteSceneComment(scene, postId, commentId) {
     const post = scene?.posts?.find(item => item.id === postId);
     if (!post?.comments?.some(item => item.id === commentId)) throw new Error('评论不存在');
