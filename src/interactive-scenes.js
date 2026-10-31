@@ -780,5 +780,5 @@ export function installInteractiveScenes(_state, deps) {
         updatePhoneUiScope, contextText, isPhoneIdle: () => !_state.phoneActive || _state.isMinimized,
     });
     // 与 gal 前端（IGS）联动，逻辑在 igs-feed-sync.js；设置页与宿主事件经 deps.igsLink 调用。总开关关着时不碰 IGS。
-    deps.igsLink = igsSync = installIgsFeedSync({ getCtx, getStorageId, loadStore, getStore: () => runtime.store, commit, actorSeeds, contextText, callAI, uid, createEmptyScope: createEmptyInteractiveScope, syncShop: (...args) => deps.syncIgsShop?.(...args), isGenerationBusy: () => runtime.busy || runtime.creating || !!runtime.communityTask, ...igsRefreshers({ runtime, getStorageId, rerender, renderLauncher: renderCommunityLauncher, refreshDesktop }) });
+    deps.igsLink = igsSync = installIgsFeedSync({ getCtx, getStorageId, loadStore, getStore: () => runtime.store, commit, actorSeeds, contextText, callAI, uid, createEmptyScope: createEmptyInteractiveScope, syncShop: (...args) => deps.syncIgsShop?.(...args), refreshLive: () => deps.refreshLiveFromIgs?.(), isGenerationBusy: () => runtime.busy || runtime.creating || !!runtime.communityTask, ...igsRefreshers({ runtime, getStorageId, rerender, renderLauncher: renderCommunityLauncher, refreshDesktop }) });
 }

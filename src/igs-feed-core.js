@@ -13,7 +13,8 @@ const IGS_MARKER = '[igs-fx:';
 const KEY_PREFIX = 'igs:';
 
 // 总开关默认关；打开时「自动同步」跟着开，「同步后自动续写」默认关（省 token）。
-export const DEFAULT_IGS_LINK = Object.freeze({ enabled: false, autoSync: true, autoContinue: false });
+// 「同步直播间」跟着总开关一起开（计划 §6.6）。
+export const DEFAULT_IGS_LINK = Object.freeze({ enabled: false, autoSync: true, autoContinue: false, syncLive: true });
 
 export function normalizeIgsLinkConfig(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -21,6 +22,7 @@ export function normalizeIgsLinkConfig(value) {
         enabled: source.enabled === true,
         autoSync: source.autoSync !== false,
         autoContinue: source.autoContinue === true,
+        syncLive: source.syncLive !== false,
     };
 }
 

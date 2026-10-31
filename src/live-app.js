@@ -469,6 +469,12 @@ export function installLiveApp(deps, bridge) {
     }
 
     window.__pmOpenLiveApp = () => show();
-    Object.assign(deps, { showLivePage: show });
+    // 与 gal 前端联动同步直播间后：直播页开着（列表或直播间，不含视频分区）就重绘，保留输入框草稿与滚动贴底。
+    const refreshFromIgs = () => {
+        const page = getPage();
+        if (!page || page.hidden || view.page === 'video') return false;
+        return render();
+    };
+    Object.assign(deps, { showLivePage: show, refreshLiveFromIgs: refreshFromIgs });
     return { show, isTargetActive, view };
 }

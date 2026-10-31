@@ -615,7 +615,13 @@ function normalizePost(raw, context) {
 function normalizeDanmaku(raw, context) {
     const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
     if (isStrictVersion(context.sourceVersion)) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt', ...(isV3 ? ['kind'] : [])], 'danmaku');
+        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt', ...(isV3 ? ['kind', 'source'] : [])], 'danmaku');
+        if (isV3 && Object.hasOwn(raw, 'source')) {
+            assertV2Keys(raw.source, ['type', 'floor', 'key'], 'danmaku.source');
+            if (raw.source.type !== 'igs') throw new Error(`互动场景 ${strictTag} danmaku.source.type 必须是 igs`);
+            if (!Number.isSafeInteger(raw.source.floor) || raw.source.floor < 0) throw new Error(`互动场景 ${strictTag} danmaku.source.floor 必须是非负整数`);
+            assertV2Text(raw.source.key, 120, 'danmaku.source.key');
+        }
         assertV2Text(raw.id, 80, 'danmaku.id'); assertV2AuthorFields(raw, 'danmaku'); assertV2Text(raw.content, 200, 'danmaku.content'); assertV2Timestamp(raw.createdAt, 'danmaku.createdAt');
         if (isV3 && Object.hasOwn(raw, 'kind') && !LIVE_DANMAKU_KINDS.includes(raw.kind)) {
             throw new Error(`互动场景 ${strictTag} danmaku.kind 必须是 ${LIVE_DANMAKU_KINDS.join('、')} 之一`);
@@ -626,12 +632,15 @@ function normalizeDanmaku(raw, context) {
     const content = text(raw?.content, 200);
     if (!content) return null;
     const createdAt = finitePositiveNumber(raw?.createdAt) || 1;
+    // 从 gal 正文同步来的弹幕带来源，用于去重与跟随楼层修改；弹幕不用 stale（用户改过的直接保留）。
+    const source = normalizePostSource(raw?.source);
     return {
         id: text(raw?.id, 80) || deterministicItemId('danmaku', context.scopeId, context.path, content),
         ...normalizeAuthor(raw, context.scope, context.scopeId, context.sourceVersion, createdAt),
         content,
         createdAt,
         kind: LIVE_DANMAKU_KINDS.includes(raw?.kind) ? raw.kind : 'chat',
+        ...(source ? { source: { type: 'igs', floor: source.floor, key: source.key } } : {}),
     };
 }
 
@@ -957,9 +966,16 @@ export const LIVE_HOST_SETTING_MAX = 1000;
 function normalizeLiveRoom(raw, roomId, scope, scopeId) {
     const label = `liveRoom ${roomId}`;
     assertV2Keys(raw, [
-        'id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku',
+        'id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended',
     ], label);
     assertV2Text(raw.id, 80, `${label}.id`);
+    // 从 gal 正文（IGS）同步来的直播间：source.key 是「主播 + 标题」的标识；ended 表示正文里已下播。
+    if (Object.hasOwn(raw, 'source')) {
+        assertV2Keys(raw.source, ['type', 'key'], `${label}.source`);
+        if (raw.source.type !== 'igs') throw new Error(`互动场景 ${strictTag} ${label}.source.type 必须是 igs`);
+        assertV2Text(raw.source.key, 120, `${label}.source.key`);
+    }
+    if (Object.hasOwn(raw, 'ended') && raw.ended !== true) throw new Error(`互动场景 ${strictTag} ${label}.ended 只能是 true`);
     if (raw.id !== roomId) throw new Error(`互动场景 ${strictTag} scope ${scopeId}.${label}.id 必须与直播间键一致`);
     assertV2Text(raw.title, 100, `${label}.title`);
     if (typeof raw.hostIsUser !== 'boolean') throw new Error(`互动场景 ${strictTag} ${label}.hostIsUser 必须是布尔值`);
@@ -985,6 +1001,8 @@ function normalizeLiveRoom(raw, roomId, scope, scopeId) {
         category: raw.category,
         nsfw: raw.nsfw,
         ...(Object.hasOwn(raw, 'sourceSceneId') ? { sourceSceneId: raw.sourceSceneId } : {}),
+        ...(Object.hasOwn(raw, 'source') ? { source: { type: 'igs', key: raw.source.key } } : {}),
+        ...(raw.ended === true ? { ended: true } : {}),
         createdAt: raw.createdAt,
         updatedAt: raw.updatedAt,
         danmaku: raw.danmaku.map((item, index) => normalizeDanmaku(item, {

@@ -3,12 +3,13 @@
 // 每次调用 IGS 都包在 try/catch 里；出错只记在设置页的「上次同步失败」，不弹窗、不影响 IGS。
 import { generationErrorMessage } from './ai.js';
 import { buildCommunityRequest, parseCommunityResponse } from './interactive-scene-ai.js';
-import { appendScenePosts, setSceneHot } from './interactive-scene-model.js';
+import { appendLiveDanmaku, appendScenePosts, setSceneHot } from './interactive-scene-model.js';
 import { IGS_SYNC_PLATFORMS } from './interactive-scene-constants.js';
 import {
-    DEFAULT_IGS_LINK, IGS_LINK_STORAGE_KEY, applyIgsSync, entriesForFloor, igsRequestExtras, igsSyncHasWork, indexIgsFloors,
+    DEFAULT_IGS_LINK, IGS_LINK_STORAGE_KEY, applyIgsSync, entriesForFloor, hashText, igsRequestExtras, igsSyncHasWork, indexIgsFloors,
     normalizeIgsLinkConfig, resolveIgsFeeds,
 } from './igs-feed-core.js';
+import { applyIgsLiveSync, igsLiveHasWork, resolveIgsLive, walkIgsLive } from './igs-live-core.js';
 import { shopEntriesForFloor } from './igs-shop-core.js';
 
 const PARSE_CACHE_LIMIT = 400;
@@ -85,6 +86,43 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         }
         return shopCache.get(cacheKey);
     };
+    // 直播：要按楼层顺序走全部 AI 楼（开播词兜底的楼可能没有 IGS 标签）。楼层原文哈希按消息对象缓存，collect 结果按哈希缓存。
+    const liveHashes = new WeakMap();
+    const liveCache = new Map();
+    const liveSeen = new Map(); // storageId → Set<楼层原文哈希>，作用同 seenFloors
+    function liveWalkOf(storageId, chat, plan, userName) {
+        if (!config.syncLive) return null;
+        const live = resolveIgsLive(globalObject);
+        if (!live) return null;
+        const floors = [];
+        (Array.isArray(chat) ? chat : []).forEach((message, floor) => {
+            if (!message || message.is_user === true || message.is_system === true || typeof message.mes !== 'string' || !message.mes) return;
+            const cached = liveHashes.get(message);
+            const hash = cached && cached.text === message.mes ? cached.hash : hashText(message.mes);
+            if (!cached || cached.text !== message.mes) liveHashes.set(message, { text: message.mes, hash });
+            floors.push({ floor, hash, text: message.mes });
+        });
+        const seen = liveSeen.get(storageId) || new Set();
+        const adding = plan.full ? null
+            : new Set(plan.adding ? floors.filter(info => plan.floors.has(info.floor) && !seen.has(info.hash)).map(info => info.hash) : []);
+        const collect = info => {
+            const cacheKey = `${info.hash}:${userName}`;
+            if (!liveCache.has(cacheKey)) {
+                if (liveCache.size >= PARSE_CACHE_LIMIT * 4) liveCache.delete(liveCache.keys().next().value);
+                liveCache.set(cacheKey, live.collect(info.text, { userName }));
+            }
+            return liveCache.get(cacheKey);
+        };
+        const walk = walkIgsLive(floors, collect, adding);
+        return {
+            walk,
+            markSeen() {
+                for (const info of floors) if (!adding || adding.has(info.hash)) seen.add(info.hash);
+                liveSeen.set(storageId, seen);
+            },
+        };
+    }
+    const summarizeLive = result => [result.createdRooms.length && `新开 ${result.createdRooms.length} 间直播`, result.added && `弹幕 ${result.added} 条`, result.skipped && '直播间已满，部分未建'].filter(Boolean).join('，');
     const summarizeShop = result => [result.added && `桃宝上架 ${result.added} 件`, result.removed && `桃宝下架 ${result.removed} 件`, result.staled && `${result.staled} 件原文已变`].filter(Boolean).join('，');
 
     const summarize = result => {
@@ -119,26 +157,43 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         if (shopResult) { status.lastSyncAt = Date.now(); status.lastResult = summarizeShop(shopResult) || '没有新帖子'; }
         await deps.loadStore();
         const scope = deps.getStore()?.scopes?.[storageId];
-        if (!(scope ? igsSyncHasWork(scope, index, entries) : entries.length)) {
+        const seeds = deps.actorSeeds(storageId);
+        const live = liveWalkOf(storageId, chat, plan, userName);
+        const liveOptions = live ? { walk: live.walk, scopeId: storageId, seeds: [seeds.story, seeds.user] } : null;
+        const feedWork = scope ? igsSyncHasWork(scope, index, entries) : entries.length > 0;
+        const liveWork = !!liveOptions && (scope ? igsLiveHasWork(scope, liveOptions) : liveOptions.walk.rooms.size > 0);
+        if (!feedWork && !liveWork) {
             adding.forEach(info => seen.add(info.hash));
             seenFloors.set(storageId, seen);
+            live?.markSeen();
             if (plan.full && !shopResult) { status.lastSyncAt = Date.now(); status.lastResult = '没有新帖子'; if (!status.lastError.startsWith('桃宝')) status.lastError = ''; }
             return null;
         }
-        const seeds = deps.actorSeeds(storageId);
         let result = null;
+        let liveResult = null;
         await deps.commit(() => {
             const store = deps.getStore();
             const target = store.scopes[storageId] || (store.scopes[storageId] = deps.createEmptyScope());
             result = applyIgsSync(target, { index, entries, scopeId: storageId, seeds: [seeds.story, seeds.user], createId: () => deps.uid('scene') });
+            if (liveWork) liveResult = applyIgsLiveSync(target, liveOptions);
         }, () => deps.getStorageId() === storageId, '同步正文社区帖子');
         adding.forEach(info => seen.add(info.hash));
         seenFloors.set(storageId, seen);
+        live?.markSeen();
         status.lastSyncAt = Date.now();
-        status.lastResult = [summarize(result), shopResult ? summarizeShop(shopResult) : ''].filter(Boolean).join('；');
+        status.lastResult = [feedWork ? summarize(result) : '', liveResult ? summarizeLive(liveResult) : '', shopResult ? summarizeShop(shopResult) : ''].filter(Boolean).join('；') || '没有新帖子';
         if (!status.lastError.startsWith('桃宝')) status.lastError = '';
         for (const sceneId of result.touchedSceneIds) deps.refreshOpenScene?.(sceneId);
         if (result.createdScenes.length || result.added) { deps.refreshLauncher?.(); deps.refreshDesktop?.(); }
+        if (liveResult?.touchedRoomIds.size) deps.refreshLive?.();
+        if (!plan.full && config.autoContinue && liveResult) {
+            for (const [roomId, hashes] of liveResult.addedByRoom) {
+                const fresh = hashes.map(hash => `${storageId}:${roomId}:${hash}`).filter(key => !continuedFloors.has(key));
+                if (!fresh.length) continue;
+                fresh.forEach(key => continuedFloors.add(key));
+                continueRoom(storageId, roomId);
+            }
+        }
         if (!plan.full && config.autoContinue) {
             for (const [sceneId, hashes] of result.addedByScene) {
                 const fresh = hashes.map(hash => `${storageId}:${sceneId}:${hash}`).filter(key => !continuedFloors.has(key));
@@ -148,6 +203,41 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
             }
         }
         return result;
+    }
+
+    // 「同步后自动续写一批」的直播间版：后台对该直播间请求一次 danmaku_batch，规则同 continueScene。
+    async function continueRoom(storageId, roomId) {
+        if (continuing || deps.isGenerationBusy()) return;
+        const controller = new AbortController();
+        continuing = { storageId, controller };
+        try {
+            const scope = deps.getStore()?.scopes?.[storageId];
+            const room = scope?.liveRooms?.[roomId];
+            if (!room) return;
+            const roster = Object.values(scope.actors || {}).filter(actor => actor.type === 'story').map(actor => actor.displayName);
+            const contextData = await deps.contextText(controller.signal);
+            const prompts = buildCommunityRequest({
+                kind: 'danmaku_batch', nsfw: room.nsfw === true, ...contextData, actorRoster: roster,
+                room: { title: room.title, category: room.category, hostName: room.hostNameSnapshot || '', hostSetting: room.hostSetting || '' },
+                recentDanmaku: room.danmaku.slice(-20).map(item => ({ author: item.authorNameSnapshot, content: item.content, kind: item.kind })),
+                hostIsUser: room.hostIsUser === true,
+            });
+            const raw = await deps.callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, signal: controller.signal });
+            const { items } = parseCommunityResponse(raw, 'danmaku_batch', undefined, { hostIsUser: room.hostIsUser === true });
+            if (controller.signal.aborted || deps.getStorageId() !== storageId) return;
+            await deps.commit(() => {
+                const currentScope = deps.getStore().scopes[storageId];
+                const current = currentScope?.liveRooms?.[roomId];
+                if (!current) throw new Error('生成已取消');
+                const seedsNow = deps.actorSeeds(storageId);
+                appendLiveDanmaku(currentScope, storageId, current, items, [seedsNow.story, seedsNow.user]);
+            }, () => deps.getStorageId() === storageId, '续写同步直播间');
+            deps.refreshLive?.();
+        } catch (error) {
+            if (!controller.signal.aborted && error?.message !== '生成已取消') status.lastError = `续写失败：${generationErrorMessage(error)}`;
+        } finally {
+            if (continuing?.controller === controller) continuing = null;
+        }
     }
 
     // 「同步后自动续写一批」：后台对该社区请求一次 feed_batch。和手动生成互斥：有生成任务在跑就跳过这一次。

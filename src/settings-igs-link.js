@@ -21,6 +21,7 @@ export function renderIgsLinkSettings(status) {
     return `<div class="pm-settings-page">${master}
       <div class="pm-settings-section">
         ${check('pm-igs-link-auto-sync', '自动同步社区帖子', '正文有新楼层时导入', config.autoSync)}
+        ${check('pm-igs-link-sync-live', '同步直播间', '正文里的直播与弹幕放进噼哩噼哩', config.syncLive)}
         ${check('pm-igs-link-auto-continue', '同步后自动续写一批', '每楼导入后生成一批新帖，消耗额外token', config.autoContinue)}
       </div>
       <div class="pm-settings-section">
@@ -33,7 +34,7 @@ export function renderIgsLinkSettings(status) {
 }
 
 const FIELD_BY_ID = Object.freeze({
-    'pm-igs-link-enabled': 'enabled', 'pm-igs-link-auto-sync': 'autoSync', 'pm-igs-link-auto-continue': 'autoContinue',
+    'pm-igs-link-enabled': 'enabled', 'pm-igs-link-auto-sync': 'autoSync', 'pm-igs-link-auto-continue': 'autoContinue', 'pm-igs-link-sync-live': 'syncLive',
 });
 
 export function installIgsLinkSettings({ makeOverlay, getIgsLink }) {

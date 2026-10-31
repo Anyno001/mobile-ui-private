@@ -84,7 +84,7 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     const allowedKeys = kind === 'post'
         ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(isStrictBackupVersion(version) ? ['shareCount', 'shared', 'work', 'rating'] : []),
             ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', ...B2_POST_KEYS] : [])]
-        : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind'] : ['quoteId', 'rating']) : [])];
+        : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind', 'source'] : ['quoteId', 'rating']) : [])];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, 'id', field, 80);
     if (isStrictBackupVersion(version)) {
@@ -293,7 +293,14 @@ const assertInteractiveBackupStore = value => {
                 if (!Object.hasOwn(liveRooms, roomId)) throw new Error(`备份字段 ${field}.liveOrder 引用了不存在的直播间 ${roomId}`);
                 const roomField = `${field}.liveRooms.${roomId}`;
                 const room = objectValue(liveRooms[roomId], roomField);
-                assertAllowedKeys(room, roomField, ['id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku']);
+                assertAllowedKeys(room, roomField, ['id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended']);
+                if (Object.hasOwn(room, 'ended') && room.ended !== true) throw new Error(`备份字段 ${roomField}.ended 只能是 true`);
+                if (Object.hasOwn(room, 'source')) {
+                    const source = objectValue(room.source, `${roomField}.source`);
+                    assertAllowedKeys(source, `${roomField}.source`, ['type', 'key']);
+                    if (source.type !== 'igs') throw new Error(`备份字段 ${roomField}.source.type 必须是 igs`);
+                    assertNormalizedText(source.key, `${roomField}.source.key`, 120);
+                }
                 if (room.id !== roomId) throw new Error(`备份字段 ${roomField}.id 必须与直播间键一致`);
                 assertNormalizedText(room.title, `${roomField}.title`, 100);
                 assertOptionalNormalizedText(room, 'hostSetting', roomField, LIVE_HOST_SETTING_MAX, { allowEmpty: true });

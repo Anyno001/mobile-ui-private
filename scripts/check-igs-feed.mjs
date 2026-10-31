@@ -1,7 +1,7 @@
 // 与 gal 前端（IGS）联动：桥接、对账、开关、续写与贴吧/虎扑版式的定向检查。
 import assert from 'node:assert/strict';
 import {
-    IGS_LINK_STORAGE_KEY, applyIgsSync, entriesForFloor, igsRequestExtras, igsSyncHasWork, indexIgsFloors, isIgsPostTouched,
+    IGS_LINK_STORAGE_KEY, applyIgsSync, entriesForFloor, hashText, igsRequestExtras, igsSyncHasWork, indexIgsFloors, isIgsPostTouched,
     normalizeIgsLinkConfig, resolveIgsFeeds,
 } from '../src/igs-feed-core.js';
 import { installIgsFeedSync } from '../src/igs-feed-sync.js';
@@ -12,6 +12,8 @@ import { groupTiebaFloors, tiebaBarName } from '../src/community-views/view-tieb
 import { pickHupuHotReplies } from '../src/community-views/view-hupu.js';
 import { applyIgsShopSync, igsPriceCents, igsShopHasWork, isIgsShopItemTouched, shopEntriesForFloor } from '../src/igs-shop-core.js';
 import { createEmptyShopScope, normalizeShopScope } from '../src/shop-model.js';
+import { applyIgsLiveSync, igsLiveHasWork, mapIgsDanmaku, walkIgsLive } from '../src/igs-live-core.js';
+import { createLiveRoom } from '../src/interactive-scene-model.js';
 
 let checks = 0;
 const check = (name, run) => { run(); checks += 1; };
@@ -56,8 +58,8 @@ const allPosts = scope => scope.sceneOrder.flatMap(id => scope.scenes[id].posts)
 const weiboPost = (text, offset, extra = '雨城热搜') => ({ platform: 'weibo', owner: '', author: '苏小满', text, extra, replies: [{ author: '阿禾', text: '前排' }], offset });
 
 check('配置默认值', () => {
-    assert.deepEqual(normalizeIgsLinkConfig(null), { enabled: false, autoSync: true, autoContinue: false });
-    assert.deepEqual(normalizeIgsLinkConfig({ enabled: true, autoSync: false, autoContinue: 'yes' }), { enabled: true, autoSync: false, autoContinue: false });
+    assert.deepEqual(normalizeIgsLinkConfig(null), { enabled: false, autoSync: true, autoContinue: false, syncLive: true }, '同步直播间跟着总开关一起开');
+    assert.deepEqual(normalizeIgsLinkConfig({ enabled: true, autoSync: false, autoContinue: 'yes', syncLive: false }), { enabled: true, autoSync: false, autoContinue: false, syncLive: false });
 });
 
 check('接口探测：没有、过旧、抛错都安静降级', () => {
@@ -483,6 +485,116 @@ await checkAsync('运行时：淘宝帖子交给桃宝；桃宝写失败只记�
     off.link.observe('MESSAGE_RECEIVED', 0);
     await settle();
     assert.equal(calls.includes('off'), false, '联动关着时不碰桃宝');
+});
+
+// ===== 直播段 → 噼哩噼哩直播间 =====
+// 桩：楼层正文里 `[live:JSON]` 是该楼的直播段数组，collect 原样返回（真实解析由 IGS 负责）。
+const liveText = (segments, lead = '正文') => `${lead}[live:${JSON.stringify(segments)}]`;
+const stubLive = (calls = { collect: 0 }) => ({ version: 1, collect(text) {
+    calls.collect += 1;
+    const start = String(text).indexOf('[live:');
+    return start < 0 ? [] : JSON.parse(text.slice(start + 6, text.lastIndexOf(']')));
+} });
+const seg = (host, title, danmaku, extra = {}) => ({ host, title, view: 'watch', end: false, offset: 0, danmaku, ...extra });
+const dm = (author, content, type = 'text', extra = '') => ({ author, content, type, extra, offset: 0 });
+const liveFloors = chat => chat.map((message, floor) => (message.is_user ? null : { floor, hash: hashText(message.mes), text: message.mes })).filter(Boolean);
+const liveSync = (scope, chat, adding = null) => {
+    const live = stubLive();
+    const walk = walkIgsLive(liveFloors(chat), info => live.collect(info.text), adding);
+    const options = { walk, scopeId: 'sid', seeds: [seeds.story, seeds.user] };
+    return igsLiveHasWork(scope, options) ? applyIgsLiveSync(scope, options) : null;
+};
+
+check('弹幕类型映射：文字、礼物、醒目留言、上舰，进场与房管不存', () => {
+    assert.deepEqual(mapIgsDanmaku(dm('甲', '好听')), { kind: 'chat', content: '好听' });
+    assert.deepEqual(mapIgsDanmaku(dm('乙', '小心心', 'gift')), { kind: 'gift', content: '小心心' });
+    assert.deepEqual(mapIgsDanmaku(dm('丙', '加油', 'sc', '30')), { kind: 'chat', content: '[醒目留言 ¥30] 加油' });
+    assert.deepEqual(mapIgsDanmaku(dm('丁', '', 'guard')), { kind: 'gift', content: '开通了舰长' });
+    assert.equal(mapIgsDanmaku(dm('戊', '进入直播间', 'enter')), null);
+    assert.equal(mapIgsDanmaku(dm('房管', '注意言辞', 'admin')), null);
+});
+
+check('开播建间、跨楼承接、下播保留并标记；严格校验通过', () => {
+    const scope = createEmptyInteractiveScope();
+    const chat = [
+        ai(liveText([seg('林晚', '深夜弹琴', [dm('海盐', '这首是月光吗'), dm('阿禾', '一束花', 'gift')])])),
+        user('继续看'),
+        ai(liveText([seg('', '', [dm('雾', '晚安')], { end: true })])),
+    ];
+    const result = liveSync(scope, chat);
+    assert.equal(result.createdRooms.length, 1);
+    const room = scope.liveRooms[result.createdRooms[0]];
+    assert.deepEqual([room.title, room.hostNameSnapshot, room.hostIsUser, room.ended, room.source.type], ['深夜弹琴', '林晚', false, true, 'igs']);
+    assert.ok(room.hostActorId && scope.actors[room.hostActorId].type === 'story', '主播与剧情角色同名时绑定');
+    assert.deepEqual(room.danmaku.map(item => [item.kind, item.content]), [['chat', '这首是月光吗'], ['gift', '一束花'], ['chat', '晚安']], '下一楼只有弹幕的段承接上一楼');
+    const strict = strictRoundTrip(scope);
+    assert.equal(strict.liveRooms[room.id].ended, true);
+    assert.equal(strict.liveRooms[room.id].danmaku[0].source.type, 'igs');
+    assert.equal(liveSync(scope, chat), null, '重复扫描不重复写');
+});
+
+check('主播是用户本人；直播间满了不新建、不挤掉用户自己的', () => {
+    const scope = createEmptyInteractiveScope();
+    liveSync(scope, [ai(liveText([seg('我', '第一次开播', [dm('路人', '来了')], { view: 'host' })]))]);
+    const [room] = Object.values(scope.liveRooms);
+    assert.deepEqual([room.hostIsUser, room.hostNameSnapshot], [true, '我']);
+    const full = createEmptyInteractiveScope();
+    for (let index = 0; index < 12; index += 1) createLiveRoom(full, 'sid', { title: `房间${index}` });
+    const before = [...full.liveOrder];
+    assert.equal(liveSync(full, [ai(liveText([seg('周屿', '新歌', [dm('a', 'b')])]))]), null, '满额时没有改动，不提交');
+    assert.deepEqual(full.liveOrder, before);
+    const direct = applyIgsLiveSync(full, { walk: walkIgsLive(liveFloors([ai(liveText([seg('周屿', '新歌', [dm('a', 'b')])]))]), info => stubLive().collect(info.text)), scopeId: 'sid', seeds: [] });
+    assert.equal(direct.skipped, 1);
+    assert.deepEqual(full.liveOrder, before);
+});
+
+check('楼层改了：没改过的弹幕删掉，用户改过的保留；重新开播清掉下播标记', () => {
+    const scope = createEmptyInteractiveScope();
+    const chat = [ai(liveText([seg('林晚', '深夜弹琴', [dm('甲', '一'), dm('乙', '二')], { end: true })]))];
+    liveSync(scope, chat);
+    const room = Object.values(scope.liveRooms)[0];
+    room.danmaku[1].content = '用户改过的二';
+    chat[0] = ai(liveText([seg('林晚', '深夜弹琴', [dm('丙', '三')])]));
+    const result = liveSync(scope, chat);
+    assert.equal(result.removed, 1);
+    assert.deepEqual(room.danmaku.map(item => item.content), ['用户改过的二', '三']);
+    assert.equal(Object.hasOwn(room, 'ended'), false, '同一主播同一标题重新开播');
+});
+
+check('用户手动建过同名直播间时认领，不重复建', () => {
+    const scope = createEmptyInteractiveScope();
+    const mine = createLiveRoom(scope, 'sid', { title: '深夜弹琴', hostNameSnapshot: '林晚' });
+    const result = liveSync(scope, [ai(liveText([seg('林晚', '深夜弹琴', [dm('甲', '来了')])]))]);
+    assert.deepEqual(result.createdRooms, []);
+    assert.equal(mine.source.type, 'igs');
+    assert.equal(mine.danmaku.length, 1);
+});
+
+check('自动同步只为本轮新楼开新直播间', () => {
+    const scope = createEmptyInteractiveScope();
+    const chat = [ai(liveText([seg('林晚', '旧直播', [dm('甲', '一')])]))];
+    assert.equal(liveSync(scope, chat, new Set()), null, '不是本轮的楼：不建');
+    assert.equal(liveSync(scope, chat, new Set([hashText(chat[0].mes)])).createdRooms.length, 1);
+});
+
+await checkAsync('运行时：同步直播间开关关时不读 IGS.api.live；开时导入并能续写一次', async () => {
+    const liveCalls = { collect: 0 };
+    const chat = [ai(liveText([seg('林晚', '深夜弹琴', [dm('甲', '好听')])]))];
+    const igs = { api: { feeds: stubFeeds(), live: stubLive(liveCalls) } };
+    const off = makeRuntime({ enabled: true, chat, igs });
+    off.link.setConfig({ syncLive: false });
+    off.link.observe('MESSAGE_RECEIVED', 0);
+    await settle();
+    assert.equal(liveCalls.collect, 0);
+    const on = makeRuntime({ enabled: true, autoContinue: true, chat, igs });
+    on.link.observe('MESSAGE_RECEIVED', 0);
+    await settle();
+    const rooms = Object.values(on.state.store.scopes.sid.liveRooms);
+    assert.equal(rooms.length, 1);
+    assert.equal(on.touched.ai, 1, '续写开关开时对新直播间续写一次');
+    on.link.observe('MESSAGE_RECEIVED', 0);
+    await settle();
+    assert.equal(on.touched.ai, 1, '同一楼不再续写');
 });
 
 console.log(`IGS feed sync checks passed (${checks}).`);

@@ -105,6 +105,9 @@ export function describeLiveRoom(scope, room) {
         initial: liveInitial(hostName),
         cover: liveCoverIndex(room.id),
         started,
+        // 从 gal 正文同步来的直播间：ended 表示正文里已下播（房间保留，可以继续拍一拍续写）。
+        ended: room.ended === true,
+        fromStory: room.source?.type === 'igs',
         online: formatLiveOnline(liveOnlineCount(room.id)),
         viewers: started ? formatLiveCount(liveOnlineCount(room.id)) : '0',
         heat: started ? formatLiveCount(liveHeat(room.id, room.danmaku?.length)) : '0',
@@ -115,7 +118,7 @@ const statusStrip = status => `<div class="pm-live-status" role="status" aria-li
 
 // segments：噼哩噼哩首页的「视频 / 直播」分段 HTML，由 live-app 传入；不传时没有分段（单独渲染直播列表）。
 export function renderLiveList({ rooms = [], status = '', segments = '' } = {}) {
-    const cards = rooms.map(room => `<article class="pm-live-card"><button type="button" class="pm-live-card-open" data-live-action="open-room" data-room-id="${escapeAttr(room.id)}" aria-label="进入直播间：${escapeAttr(room.title)}"><span class="pm-live-cover is-cover-${room.cover}"><span class="pm-live-initial">${escapeHtml(room.initial)}</span><span class="pm-live-pill ${room.started ? 'is-on' : 'is-off'}">${room.started ? '直播中' : '未开播'}</span>${room.started ? `<span class="pm-live-count">${escapeHtml(room.online)}</span>` : ''}</span><span class="pm-live-card-info"><b>${escapeHtml(room.title)}</b><span>${escapeHtml(room.hostName)}${room.category ? ` · ${escapeHtml(room.category)}` : ''}</span></span></button></article>`).join('');
+    const cards = rooms.map(room => `<article class="pm-live-card"><button type="button" class="pm-live-card-open" data-live-action="open-room" data-room-id="${escapeAttr(room.id)}" aria-label="进入直播间：${escapeAttr(room.title)}"><span class="pm-live-cover is-cover-${room.cover}"><span class="pm-live-initial">${escapeHtml(room.initial)}</span><span class="pm-live-pill ${room.started && !room.ended ? 'is-on' : 'is-off'}">${room.ended ? '已下播' : room.started ? '直播中' : '未开播'}</span>${room.started && !room.ended ? `<span class="pm-live-count">${escapeHtml(room.online)}</span>` : ''}</span><span class="pm-live-card-info"><b>${escapeHtml(room.title)}</b><span>${escapeHtml(room.hostName)}${room.category ? ` · ${escapeHtml(room.category)}` : ''}${room.fromStory ? ' · 来自正文' : ''}</span></span></button></article>`).join('');
     const body = cards
         ? `<div class="pm-live-grid">${cards}</div>`
         : '<div class="pm-live-empty"><b>还没有直播间</b><button type="button" class="pm-live-primary" data-live-action="compose">开播</button></div>';
@@ -215,7 +218,7 @@ export function renderLiveRoom({ room, danmaku = [], ui = {} }) {
                 <div class="pm-live-tools"><span class="pm-live-viewers">${VIEWERS_ICON}<span>${escapeHtml(room.viewers)}</span></span><button type="button" class="pm-live-glass" data-live-action="list" aria-label="返回直播列表" title="返回直播列表">${CLOSE_ICON_SVG}</button></div>
             </div>
             <div class="pm-live-fly" aria-hidden="true">${flying}</div>
-            <p class="pm-live-ttl">${room.started ? '正在直播' : '未开播'}：${escapeHtml(room.title)}</p>
+            <p class="pm-live-ttl">${room.ended ? '已下播' : room.started ? '正在直播' : '未开播'}：${escapeHtml(room.title)}</p>
             <div class="pm-live-center"><span class="pm-live-room-initial" aria-hidden="true">${escapeHtml(room.initial)}</span>${play}${note}</div>
         </section>
         ${statusStrip(ui.status)}
