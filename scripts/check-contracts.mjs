@@ -2505,7 +2505,7 @@ if (mainFile) {
     'installInteractiveScenes(state, deps)', 'installCalendar(state, deps)', 'installSettingsUi(deps)',
     'installPhoneChat(state, deps)', 'installPhoneContextInjection(state, deps)', 'installPhoneControlCenter(state, deps)', 'installPhoneDirectory(state, deps)',
     'installContactGenerator(state, deps)', 'installPhoneChatPoke(state, deps)',
-    'installPhoneLifecycle(state, deps)', 'installDiagnosticApi(deps)', 'installTodayTrend(state, deps)', 'installTodayTrendPhoneUi(state, deps)',
+    'installPhoneLifecycle(state, deps)', 'installIgsChatSync(state, deps)', 'installDiagnosticApi(deps)', 'installTodayTrend(state, deps)', 'installTodayTrendPhoneUi(state, deps)',
   ];
   for (const installerCall of expectedInstallerCalls) requireText('main.js', mainFile.code, installerCall);
 
@@ -2519,7 +2519,7 @@ if (mainFile) {
   const expectedOrder = [
     'installPhoneFoundation', 'installConversation', 'installEmojiUi', 'installInteractiveScenes', 'installCalendar',
     'installSettingsUi', 'installPhoneChat', 'installPhoneContextInjection', 'installPhoneControlCenter', 'installPhoneDirectory', 'installContactGenerator',
-    'installPhoneChatPoke', 'installPhoneLifecycle', 'installDiagnosticApi', 'installTodayTrend', 'installTodayTrendPhoneUi',
+    'installPhoneChatPoke', 'installPhoneLifecycle', 'installIgsChatSync', 'installDiagnosticApi', 'installTodayTrend', 'installTodayTrendPhoneUi',
   ];
   if (actualOrder.length !== expectedOrder.length
       || actualOrder.some((installer, index) => installer !== expectedOrder[index])) {
@@ -2547,7 +2547,7 @@ for (const expected of [
 for (const expected of [
   '## 安装顺序与全局桥',
   '## 构建体积基线',
-  'installPhoneFoundation → installConversation → installEmojiUi → installInteractiveScenes → installCalendar → installSettingsUi → installPhoneChat → installPhoneContextInjection → installPhoneControlCenter → installPhoneDirectory → installContactGenerator → installPhoneChatPoke → installPhoneLifecycle → installDiagnosticApi → installTodayTrend → installTodayTrendPhoneUi',
+  'installPhoneFoundation → installConversation → installEmojiUi → installInteractiveScenes → installCalendar → installSettingsUi → installPhoneChat → installPhoneContextInjection → installPhoneControlCenter → installPhoneDirectory → installContactGenerator → installPhoneChatPoke → installPhoneLifecycle → installIgsChatSync → installDiagnosticApi → installTodayTrend → installTodayTrendPhoneUi',
   '`window.__pmHistories`、`window.__pmConfig`、`window.__pmTheme`、`window.__pmInjectionConfig`、`window.__pmBudgetConfig`',
   '`window.__pmBeforeUnloadRegistered` 与 `window.__pmPageSuspensionHandler`',
   '`1240219` bytes', '`1488263` bytes', '仅作为历史参考线', '相对阶段 0 的净增量',
@@ -5085,7 +5085,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.10.0') failures.push('version: expected release version 1.10.0');
+if (packageJson.version !== '1.11.0') failures.push('version: expected release version 1.11.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

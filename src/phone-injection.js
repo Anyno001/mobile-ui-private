@@ -101,7 +101,9 @@ export function replaceExtensionPrompts({ context, runtime, prompts }) {
 
 function renderPhoneSource(source, userName, emojis, injectionConfig) {
     const historyLimit = normalizeInjectionConfig(injectionConfig).phone.historyLimit;
-    return renderConversation(source.name, source.history.slice(-historyLimit), source.meta, userName, emojis);
+    // 从正文导入的聊天本来就在主线楼层里，不再注入一遍。
+    const history = source.history.filter(entry => entry?.imported !== true);
+    return renderConversation(source.name, history.slice(-historyLimit), source.meta, userName, emojis);
 }
 
 function phonePromptPosition(injectionConfig) {

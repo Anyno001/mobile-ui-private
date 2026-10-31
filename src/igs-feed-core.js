@@ -12,9 +12,20 @@ export const IGS_FEEDS_MIN_VERSION = 1;
 const IGS_MARKER = '[igs-fx:';
 const KEY_PREFIX = 'igs:';
 
+// 聊天自动同步的层数（接IGS聊天计划 §4.5）：只看最近 N 层聊天楼，更早的手动导入。
+export const DEFAULT_CHAT_FLOORS = 20;
+export const MAX_CHAT_FLOORS = 200;
+export function normalizeChatFloors(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return DEFAULT_CHAT_FLOORS;
+    return Math.max(0, Math.min(MAX_CHAT_FLOORS, Math.round(number)));
+}
+
 // 总开关默认关；打开时「自动同步」跟着开，「同步后自动续写」默认关（省 token）。
 // 「同步直播间」跟着总开关一起开（计划 §6.6）。
-export const DEFAULT_IGS_LINK = Object.freeze({ enabled: false, autoSync: true, autoContinue: false, syncLive: true });
+export const DEFAULT_IGS_LINK = Object.freeze({
+    enabled: false, autoSync: true, autoContinue: false, syncLive: true, syncChats: true, autoCreateContacts: true, chatFloors: DEFAULT_CHAT_FLOORS,
+});
 
 export function normalizeIgsLinkConfig(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -23,6 +34,9 @@ export function normalizeIgsLinkConfig(value) {
         autoSync: source.autoSync !== false,
         autoContinue: source.autoContinue === true,
         syncLive: source.syncLive !== false,
+        syncChats: source.syncChats !== false,
+        autoCreateContacts: source.autoCreateContacts !== false,
+        chatFloors: normalizeChatFloors(source.chatFloors),
     };
 }
 

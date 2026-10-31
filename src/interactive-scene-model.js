@@ -5,6 +5,7 @@ import {
 import { stripPersistedV2ContentRating as stripPersistedV2ContentRatingImpl } from './interactive-scene-store-migration.js';
 import { B2_POST_KEYS, findB2PostFieldError, normalizeB2PostFields } from './interactive-scene-post-fields.js';
 import { normalizeScopeVideos } from './video-schema.js';
+import { communityFloorMark, normalizeCommunityRollbackRecord, recordCommunityChange } from './community-floor-rollback.js';
 import {
     createCommunityTemplate, createSceneFromCommunityTemplate as createSceneFromCommunityTemplateSnapshot, normalizeImportedTemplateSceneIds,
     normalizeSharedCommunityTemplates, validPhoneUiId,
@@ -459,14 +460,50 @@ function normalizeCommentExtras(raw) {
     return { ...(quoteId ? { quoteId } : {}), ...(validRatingValue(raw?.rating) ? { rating: raw.rating } : {}) };
 }
 
+// 删楼回退的楼层标记（community-floor-rollback.js）：floor 为发出时主线的长度，floorAnchor 为当时最后一楼的标识。
+function assertFloorMark(raw, label) {
+    if (Object.hasOwn(raw, 'floor') && !(Number.isSafeInteger(raw.floor) && raw.floor >= 0)) throw new Error(`互动场景 ${strictTag} ${label}.floor 必须是非负整数`);
+    if (Object.hasOwn(raw, 'floorAnchor') && typeof raw.floorAnchor !== 'string') throw new Error(`互动场景 ${strictTag} ${label}.floorAnchor 必须是字符串`);
+}
+
+function floorMarkOf(raw) {
+    if (!(Number.isSafeInteger(raw?.floor) && raw.floor >= 0)) return {};
+    return { floor: raw.floor, floorAnchor: typeof raw.floorAnchor === 'string' ? raw.floorAnchor.slice(0, 200) : '' };
+}
+
+// 旧版本记录：形状不对或被删的项本身不合规的，单条丢掉，不让整个社区或直播间读不出来。
+function normalizeFloorRollback(value, context) {
+    const output = [];
+    list(value).forEach((raw, index) => {
+        const record = normalizeCommunityRollbackRecord(raw);
+        if (!record) return;
+        if (record.op === 'remove') {
+            const itemContext = { ...context, path: `${context.path}.${index}` };
+            let entry = null;
+            try {
+                entry = record.target === 'post' ? normalizePost(record.entry, itemContext)
+                    : record.target === 'comment' ? normalizeComment(record.entry, itemContext)
+                        : normalizeDanmaku(record.entry, itemContext);
+            } catch (error) { entry = null; }
+            if (!entry) return;
+            record.entry = entry;
+        }
+        output.push(record);
+    });
+    return output;
+}
+
+const rollbackField = records => (records.length ? { floorRollback: records } : {});
+
 function normalizeComment(raw, context) {
     if (isStrictVersion(context.sourceVersion)) {
         const allowed = ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt'];
-        if (context.sourceVersion === INTERACTIVE_STORE_VERSION) allowed.push('quoteId', 'rating');
+        if (context.sourceVersion === INTERACTIVE_STORE_VERSION) allowed.push('quoteId', 'rating', 'floor', 'floorAnchor');
         assertV2Keys(raw, allowed, 'comment');
         assertV2Text(raw.id, 80, 'comment.id'); assertV2AuthorFields(raw, 'comment'); assertV2Text(raw.content, 1000, 'comment.content'); assertV2Timestamp(raw.createdAt, 'comment.createdAt');
         if (Object.hasOwn(raw, 'quoteId')) assertV2Text(raw.quoteId, 80, 'comment.quoteId');
         if (Object.hasOwn(raw, 'rating') && !validRatingValue(raw.rating)) throw new Error(`互动场景 ${strictTag} comment.rating 必须是 1-5 的整数`);
+        assertFloorMark(raw, 'comment');
     } else if (context.strictLegacy) {
         assertV1Item(raw, 'comment', context.path);
     }
@@ -479,6 +516,7 @@ function normalizeComment(raw, context) {
         content,
         createdAt,
         ...normalizeCommentExtras(raw),
+        ...floorMarkOf(raw),
     };
 }
 
@@ -569,14 +607,14 @@ function normalizePost(raw, context) {
         const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
         assertV2Keys(raw, [
             'id', 'authorId', 'authorNameSnapshot', 'content', 'tags', 'createdAt', 'comments', 'liked', 'shareCount', 'shared', 'work', 'rating',
-            ...(isV3 ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', ...B2_POST_KEYS] : []),
+            ...(isV3 ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', 'floor', 'floorAnchor', ...B2_POST_KEYS] : []),
         ], 'post');
         assertV2Text(raw.id, 80, 'post.id'); assertV2AuthorFields(raw, 'post'); assertV2Text(raw.content, 4000, 'post.content'); assertV2Timestamp(raw.createdAt, 'post.createdAt');
         if (Object.hasOwn(raw, 'work')) assertV2Text(raw.work, 40, 'post.work');
         if (Object.hasOwn(raw, 'rating') && !validRatingValue(raw.rating)) {
             throw new Error(`互动场景 ${strictTag} post.rating 必须是 1-5 的整数`);
         }
-        if (isV3) assertV3PostExtras(raw);
+        if (isV3) { assertV3PostExtras(raw); assertFloorMark(raw, 'post'); }
         assertV2List(raw.tags, 'post.tags');
         if (raw.tags.length > 5) throw new Error(`互动场景 ${strictTag} post.tags 不能超过 5 项`);
         raw.tags.forEach((tag, index) => assertV2Text(tag, 30, `post.tags.${index}`));
@@ -608,6 +646,7 @@ function normalizePost(raw, context) {
         shared: typeof raw?.shared === 'boolean' ? raw.shared
             : Number.isSafeInteger(raw?.shareCount) && raw.shareCount > 0,
         ...normalizePostExtras(raw),
+        ...floorMarkOf(raw),
     };
 }
 
@@ -615,7 +654,8 @@ function normalizePost(raw, context) {
 function normalizeDanmaku(raw, context) {
     const isV3 = context.sourceVersion === INTERACTIVE_STORE_VERSION;
     if (isStrictVersion(context.sourceVersion)) {
-        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt', ...(isV3 ? ['kind', 'source'] : [])], 'danmaku');
+        assertV2Keys(raw, ['id', 'authorId', 'authorNameSnapshot', 'content', 'createdAt', ...(isV3 ? ['kind', 'source', 'floor', 'floorAnchor'] : [])], 'danmaku');
+        if (isV3) assertFloorMark(raw, 'danmaku');
         if (isV3 && Object.hasOwn(raw, 'source')) {
             assertV2Keys(raw.source, ['type', 'floor', 'key'], 'danmaku.source');
             if (raw.source.type !== 'igs') throw new Error(`互动场景 ${strictTag} danmaku.source.type 必须是 igs`);
@@ -641,6 +681,7 @@ function normalizeDanmaku(raw, context) {
         createdAt,
         kind: LIVE_DANMAKU_KINDS.includes(raw?.kind) ? raw.kind : 'chat',
         ...(source ? { source: { type: 'igs', floor: source.floor, key: source.key } } : {}),
+        ...floorMarkOf(raw),
     };
 }
 
@@ -684,7 +725,7 @@ function normalizeSceneWithLegacyLive(raw, options = {}) {
     const isV3 = sourceVersion === INTERACTIVE_STORE_VERSION;
     if (isStrictVersion(sourceVersion)) {
         assertV2Keys(raw, isV3
-            ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+            ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts', 'floorRollback']
             : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'], 'scene');
         if (!isV3 && raw?.live !== undefined) assertV2Keys(raw.live, ['title', 'status', 'warmupStarted', 'danmaku'], 'live');
         assertV2Text(raw.id, 80, 'scene.id');
@@ -758,6 +799,10 @@ function normalizeSceneWithLegacyLive(raw, options = {}) {
             scope, scopeId, sourceVersion, strictLegacy, path: `scenes.${sceneId}.posts.${index}`,
         })).filter(Boolean).slice(-INTERACTIVE_LIMITS.posts),
     };
+    if (isV3) {
+        const floorRollback = normalizeFloorRollback(raw?.floorRollback, { scope, scopeId, sourceVersion, strictLegacy: false, path: `scenes.${sceneId}.floorRollback` });
+        if (floorRollback.length) scene.floorRollback = floorRollback;
+    }
     const live = isV3 ? null : {
         title: text(raw?.live?.title, 100),
         danmaku: list(raw?.live?.danmaku).map((item, index) => normalizeDanmaku(item, {
@@ -786,6 +831,19 @@ export function findQuoteTargetId(comments, quote, beforeIndex = list(comments).
 }
 
 // extras.quoteId 必须指向同帖已有评论，extras.rating 必须是 1-5 的整数；非法值丢弃，不影响评论本身。
+// 删除前记旧版本（删楼回退用）：从后往前记，回退时从新到旧撤销，前一项总会先被插回。正文同步来的不记。
+function recordRemoval(container, target, items, ids, postId = '') {
+    const wanted = new Set(ids);
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index];
+        if (!wanted.has(item?.id) || item?.source?.type === 'igs') continue;
+        recordCommunityChange(container, {
+            target, op: 'remove', ...(postId ? { postId } : {}), entry: item,
+            afterId: index > 0 ? items[index - 1].id : null, index,
+        });
+    }
+}
+
 export function addSceneComment(scope, scopeId, scene, postId, authorSeed, content, extras = {}) {
     const post = scene?.posts?.find(item => item.id === postId);
     const normalizedContent = text(content, 1000);
@@ -796,6 +854,7 @@ export function addSceneComment(scope, scopeId, scene, postId, authorSeed, conte
     post.comments.push({
         id: id('comment'), ...author, content: normalizedContent, createdAt: Date.now(),
         ...(quoteId ? { quoteId } : {}), ...(validRatingValue(extras?.rating) ? { rating: extras.rating } : {}),
+        ...communityFloorMark(),
     });
     post.comments = post.comments.slice(-INTERACTIVE_LIMITS.comments);
     scene.updatedAt = Date.now();
@@ -844,6 +903,7 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = [], 
     if (!prepared.length) return [];
     const actorsSnapshot = { ...(scope.actors || {}) };
     const createdAt = Date.now();
+    const mark = communityFloorMark();
     let posts;
     try {
         for (const seed of actorSeeds) ensureInteractiveActor(scope, scopeId, seed);
@@ -852,10 +912,12 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = [], 
             item.comments.forEach(comment => {
                 // quote 是被引用楼层的作者名：在同帖更靠前的评论里找同名作者的最近一条，找不到就不带 quoteId。
                 const quoteId = findQuoteTargetId(comments, comment.quote);
+                // 正文同步来的帖子连同自带的回帖由同步对账跟随楼层，不记删楼回退的楼层。
                 comments.push({
                     id: id('comment'), ...resolveInteractiveAuthor(scope, scopeId, comment.author),
                     content: comment.content, createdAt,
                     ...(quoteId ? { quoteId } : {}), ...(comment.rating ? { rating: comment.rating } : {}),
+                    ...(item.review.source ? {} : mark),
                 });
             });
             return {
@@ -863,6 +925,7 @@ export function appendScenePosts(scope, scopeId, scene, items, actorSeeds = [], 
                 ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed),
                 content: item.content, tags: item.tags, comments,
                 liked: false, shareCount: 0, shared: false, createdAt, ...item.review,
+                ...(item.review.source ? {} : mark),
             };
         });
     } catch (error) {
@@ -881,6 +944,7 @@ export function updateScenePost(scene, postId, content) {
     const normalizedContent = text(content, 4000);
     if (!post) throw new Error('帖子不存在');
     if (!normalizedContent) throw new Error('帖子内容不能为空');
+    if (normalizedContent !== post.content) recordCommunityChange(scene, { target: 'post', op: 'edit', id: post.id, content: post.content });
     post.content = normalizedContent;
     scene.updatedAt = Date.now();
 }
@@ -891,12 +955,14 @@ export function updateSceneComment(scene, postId, commentId, content) {
     const normalizedContent = text(content, 1000);
     if (!post || !comment) throw new Error('评论不存在');
     if (!normalizedContent) throw new Error('评论内容不能为空');
+    if (normalizedContent !== comment.content) recordCommunityChange(scene, { target: 'comment', op: 'edit', postId: post.id, id: comment.id, content: comment.content });
     comment.content = normalizedContent;
     scene.updatedAt = Date.now();
 }
 
 export function deleteScenePost(scene, postId) {
     if (!scene?.posts?.some(item => item.id === postId)) throw new Error('帖子不存在');
+    recordRemoval(scene, 'post', scene.posts, [postId]);
     scene.posts = scene.posts.filter(item => item.id !== postId);
     scene.updatedAt = Date.now();
 }
@@ -905,6 +971,7 @@ export function deleteScenePost(scene, postId) {
 export function deleteSceneWork(scene, work) {
     const name = String(work || '');
     if (!name || !scene?.posts?.some(item => item.work === name)) throw new Error('这本书不存在');
+    recordRemoval(scene, 'post', scene.posts, scene.posts.filter(item => item.work === name).map(item => item.id));
     scene.posts = scene.posts.filter(item => item.work !== name);
     scene.updatedAt = Date.now();
 }
@@ -912,6 +979,7 @@ export function deleteSceneWork(scene, work) {
 export function deleteSceneComment(scene, postId, commentId) {
     const post = scene?.posts?.find(item => item.id === postId);
     if (!post?.comments?.some(item => item.id === commentId)) throw new Error('评论不存在');
+    recordRemoval(scene, 'comment', post.comments, [commentId], post.id);
     post.comments = post.comments.filter(item => item.id !== commentId);
     scene.updatedAt = Date.now();
 }
@@ -974,7 +1042,7 @@ export const LIVE_HOST_SETTING_MAX = 1000;
 function normalizeLiveRoom(raw, roomId, scope, scopeId) {
     const label = `liveRoom ${roomId}`;
     assertV2Keys(raw, [
-        'id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended',
+        'id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended', 'floorRollback',
     ], label);
     assertV2Text(raw.id, 80, `${label}.id`);
     // 从 gal 正文（IGS）同步来的直播间：source.key 是「主播 + 标题」的标识；ended 表示正文里已下播。
@@ -1016,6 +1084,7 @@ function normalizeLiveRoom(raw, roomId, scope, scopeId) {
         danmaku: raw.danmaku.map((item, index) => normalizeDanmaku(item, {
             scope, scopeId, sourceVersion: INTERACTIVE_STORE_VERSION, strictLegacy: false, path: `liveRooms.${roomId}.danmaku.${index}`,
         })).filter(Boolean),
+        ...rollbackField(normalizeFloorRollback(raw.floorRollback, { scope, scopeId, sourceVersion: INTERACTIVE_STORE_VERSION, strictLegacy: false, path: `liveRooms.${roomId}.floorRollback` })),
     };
 }
 
@@ -1158,10 +1227,11 @@ export function appendLiveDanmaku(scope, scopeId, room, items, actorSeeds = []) 
     let entries;
     try {
         for (const seed of actorSeeds) ensureInteractiveActor(scope, scopeId, seed);
+        const mark = communityFloorMark();
         entries = prepared.map(item => ({
             id: id('danmaku'),
             ...resolveInteractiveAuthor(scope, scopeId, item.author, item.authorSeed),
-            content: item.content, createdAt, kind: item.kind,
+            content: item.content, createdAt, kind: item.kind, ...mark,
         }));
     } catch (error) {
         scope.actors = actorsSnapshot;
@@ -1178,12 +1248,14 @@ export function updateLiveDanmaku(room, danmakuId, content) {
     const normalizedContent = text(content, 200);
     if (!danmaku) throw new Error('弹幕不存在');
     if (!normalizedContent) throw new Error('弹幕内容不能为空');
+    if (normalizedContent !== danmaku.content) recordCommunityChange(room, { target: 'danmaku', op: 'edit', id: danmaku.id, content: danmaku.content });
     danmaku.content = normalizedContent;
     room.updatedAt = Date.now();
 }
 
 export function deleteLiveDanmaku(room, danmakuId) {
     if (!room?.danmaku?.some(item => item.id === danmakuId)) throw new Error('弹幕不存在');
+    recordRemoval(room, 'danmaku', room.danmaku, [danmakuId]);
     room.danmaku = room.danmaku.filter(item => item.id !== danmakuId);
     room.updatedAt = Date.now();
 }

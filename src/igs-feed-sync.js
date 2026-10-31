@@ -11,6 +11,7 @@ import {
 } from './igs-feed-core.js';
 import { applyIgsLiveSync, igsLiveHasWork, resolveIgsLive, walkIgsLive } from './igs-live-core.js';
 import { shopEntriesForFloor } from './igs-shop-core.js';
+import { summarizeChats } from './igs-chat-core.js';
 
 const PARSE_CACHE_LIMIT = 400;
 // 只有这几类事件会带来新内容；其余事件（如 MESSAGE_UPDATED）只做对账，不追加，避免把用户删掉的帖子又补回来。
@@ -45,7 +46,7 @@ export function saveIgsLinkConfig(config, storage = globalThis.localStorage) {
 // 以及 igsRefreshers 给出的 refreshOpenScene / refreshLauncher / refreshDesktop。
 export function installIgsFeedSync(deps, { globalObject = globalThis, storage = globalThis.localStorage } = {}) {
     let config = loadIgsLinkConfig(storage);
-    const status = { api: '', lastSyncAt: 0, lastResult: '', lastError: '' };
+    const status = { api: '', chatApi: '', lastSyncAt: 0, lastResult: '', lastError: '' };
     const parseCache = new Map();
     const seenFloors = new Map(); // storageId → Set<楼层原文哈希>：自动同步只给没处理过的楼追加，手动导入不受限
     const continuedFloors = new Set(); // 「同步后自动续写」：同一楼原文只续写一次
@@ -125,6 +126,9 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
     const summarizeLive = result => [result.createdRooms.length && `新开 ${result.createdRooms.length} 间直播`, result.added && `弹幕 ${result.added} 条`, result.skipped && '直播间已满，部分未建'].filter(Boolean).join('，');
     const summarizeShop = result => [result.added && `桃宝上架 ${result.added} 件`, result.removed && `桃宝下架 ${result.removed} 件`, result.staled && `${result.staled} 件原文已变`].filter(Boolean).join('，');
 
+    // 桃宝、聊天各自的失败提示留到下一轮成功前，不被社区同步的成功覆盖。
+    const keepsError = () => status.lastError.startsWith('桃宝') || status.lastError.startsWith('聊天');
+
     const summarize = result => {
         const parts = [];
         if (result.added) parts.push(`导入 ${result.added} 条`);
@@ -135,6 +139,7 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
     };
 
     // 一轮同步。plan：{ full }（手动导入或刚打开开关：全部楼层都追加）或 { floors:Set, adding }（自动：只给这些楼追加）。
+    // manual：手动导入，聊天也走全部楼层（否则只看最近 N 层）；chatsOnly：只同步聊天。
     async function runPass(plan) {
         const storageId = deps.getStorageId();
         if (!storageId || storageId === 'sms_unknown__default') return null;
@@ -150,11 +155,26 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         const entries = adding.flatMap(info => entriesOf(feeds, info, userName));
         // 淘宝帖子进桃宝（单独的存储），先于社区对账；桃宝写失败只记一条，不挡社区同步。
         let shopResult = null;
-        if (typeof deps.syncShop === 'function') {
+        if (!plan.chatsOnly && typeof deps.syncShop === 'function') {
             try { shopResult = await deps.syncShop(storageId, { index, entries: adding.flatMap(info => shopEntriesOf(feeds, info, userName)) }); }
             catch (error) { status.lastError = `桃宝同步失败：${generationErrorMessage(error)}`; }
         }
         if (shopResult) { status.lastSyncAt = Date.now(); status.lastResult = summarizeShop(shopResult) || '没有新帖子'; }
+        // 正文聊天进手机私聊/群聊（单独的存储），同桃宝：失败只记一条，不挡社区同步。
+        let chatResult = null;
+        if (config.syncChats && typeof deps.syncChats === 'function') {
+            try {
+                chatResult = await deps.syncChats(storageId, { chat, userName, selfNames: [deps.actorSeeds(storageId).user.displayName], plan, config });
+                status.chatApi = chatResult?.status === 'outdated' ? 'outdated' : 'ready';
+                if (chatResult?.status === 'ok' && status.lastError.startsWith('聊天')) status.lastError = '';
+            } catch (error) { status.lastError = `聊天同步失败：${generationErrorMessage(error)}`; }
+        }
+        const chatSummary = summarizeChats(chatResult);
+        if (chatSummary) { status.lastSyncAt = Date.now(); status.lastResult = chatSummary; }
+        if (plan.chatsOnly) {
+            if (!chatSummary && chatResult?.status === 'ok') { status.lastSyncAt = Date.now(); status.lastResult = '没有新聊天'; }
+            return null;
+        }
         await deps.loadStore();
         const scope = deps.getStore()?.scopes?.[storageId];
         const seeds = deps.actorSeeds(storageId);
@@ -166,7 +186,7 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
             adding.forEach(info => seen.add(info.hash));
             seenFloors.set(storageId, seen);
             live?.markSeen();
-            if (plan.full && !shopResult) { status.lastSyncAt = Date.now(); status.lastResult = '没有新帖子'; if (!status.lastError.startsWith('桃宝')) status.lastError = ''; }
+            if (plan.full && !shopResult && !chatSummary) { status.lastSyncAt = Date.now(); status.lastResult = '没有新帖子'; if (!keepsError()) status.lastError = ''; }
             return null;
         }
         let result = null;
@@ -181,8 +201,8 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         seenFloors.set(storageId, seen);
         live?.markSeen();
         status.lastSyncAt = Date.now();
-        status.lastResult = [feedWork ? summarize(result) : '', liveResult ? summarizeLive(liveResult) : '', shopResult ? summarizeShop(shopResult) : ''].filter(Boolean).join('；') || '没有新帖子';
-        if (!status.lastError.startsWith('桃宝')) status.lastError = '';
+        status.lastResult = [feedWork ? summarize(result) : '', liveResult ? summarizeLive(liveResult) : '', shopResult ? summarizeShop(shopResult) : '', chatSummary].filter(Boolean).join('；') || '没有新帖子';
+        if (!keepsError()) status.lastError = '';
         for (const sceneId of result.touchedSceneIds) deps.refreshOpenScene?.(sceneId);
         if (result.createdScenes.length || result.added) { deps.refreshLauncher?.(); deps.refreshDesktop?.(); }
         if (liveResult?.touchedRoomIds.size) deps.refreshLive?.();
@@ -279,7 +299,7 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         if (!pending) {
             let finish;
             const done = new Promise(resolve => { finish = resolve; });
-            pending = { full: false, adding: false, floors: new Set(), done };
+            pending = { full: false, manual: false, chatsOnly: true, adding: false, floors: new Set(), done };
             Promise.resolve().then(() => {
                 const next = pending;
                 pending = null;
@@ -291,6 +311,8 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
             });
         }
         if (plan.full) pending.full = true;
+        if (plan.manual) pending.manual = true;
+        if (!plan.chatsOnly) pending.chatsOnly = false;
         if (plan.adding) pending.adding = true;
         for (const floor of plan.floors || []) pending.floors.add(floor);
         return pending.done;
@@ -314,6 +336,8 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         config = next;
         if (!next.enabled) { continuing?.controller.abort(); status.api = ''; }
         if (next.enabled && !previous.enabled) schedule({ full: true });
+        // 只开了「同步聊天」或调大层数：只补聊天，不重跑社区导入（免得补回用户删掉的帖子）。
+        else if (next.enabled && next.syncChats && (!previous.syncChats || next.chatFloors > previous.chatFloors)) schedule({ full: true, chatsOnly: true });
         // 联动入口（社区列表的导入按钮）随总开关出现或消失。
         if (next.enabled !== previous.enabled) deps.refreshLauncher?.();
         return true;
@@ -324,7 +348,7 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
         if (!config.enabled) throw new Error('「与gal前端联动」未开启');
         if (!resolveFeeds()) throw new Error(status.api === 'outdated' ? 'IGS版本过旧，需要更新gal前端' : '未检测到IGS');
         status.lastError = '';
-        await schedule({ full: true });
+        await schedule({ full: true, manual: true });
         if (status.lastError) throw new Error(status.lastError);
         return status.lastResult;
     }
@@ -348,7 +372,7 @@ export function installIgsFeedSync(deps, { globalObject = globalThis, storage = 
     // 社区里与联动有关的按钮。处理了返回 true。
     async function handleAction(action, { setStatus }) {
         if (action !== 'igs-import') return false;
-        setStatus('正在读取正文中的社区帖子…');
+        setStatus('正在读取正文中的社区帖子与聊天…');
         try { setStatus(await importNow() || '没有新帖子'); }
         catch (error) { setStatus(generationErrorMessage(error)); }
         return true;

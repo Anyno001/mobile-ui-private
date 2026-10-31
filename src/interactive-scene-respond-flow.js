@@ -3,6 +3,7 @@ import { appendScenePosts, ensureInteractiveActor, INTERACTIVE_LIMITS, resolveIn
 import { isAutoRespondOn, mergeRespondComments, pickSlot } from './interactive-scene-respond.js';
 import { platformOf } from './community-views/view-shared.js';
 import { now, uid } from './interactive-scenes-utils.js';
+import { communityFloorMark } from './community-floor-rollback.js';
 
 // 发布后即时回应的流程：由 interactive-scenes.js 注入运行时依赖，这里只管请求、合并、重绘与高亮。
 export function createRespondFlow({
@@ -97,6 +98,7 @@ export function createRespondFlow({
                     content: item.content,
                     ...(item.quote ? { quoteName: item.quote } : {}),
                     ...(item.rating ? { rating: item.rating } : {}),
+                    ...communityFloorMark(),
                 }));
                 if (!generated.length) throw new Error('AI未返回有效内容');
                 // 用户评论从原位取出，随机放进这一批里；位置只在这里决定一次，写进数组顺序，之后渲染不再变。

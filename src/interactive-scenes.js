@@ -11,6 +11,7 @@ import {
     setInteractivePersistListener,
 } from './storage.js';
 import { createCommunityFileSync } from './community-file-sync.js';
+import { communityFloorMark, createCommunityRollbackRunner } from './community-floor-rollback.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController } from './interactive-scene-scheduler.js';
 import { installLiveApp } from './live-app.js';
@@ -356,6 +357,7 @@ export function installInteractiveScenes(_state, deps) {
                     ...resolveInteractiveAuthor(scope, scopeId, item.author),
                     content: item.content, createdAt: now(),
                     ...(quoteId ? { quoteId } : {}), ...(item.rating ? { rating: item.rating } : {}),
+                    ...communityFloorMark(),
                 });
             }
             currentPost.comments = currentPost.comments.slice(-INTERACTIVE_LIMITS.comments);
@@ -776,5 +778,8 @@ export function installInteractiveScenes(_state, deps) {
         updatePhoneUiScope, contextText, isPhoneIdle: () => !_state.phoneActive || _state.isMinimized,
     });
     // 与 gal 前端（IGS）联动，逻辑在 igs-feed-sync.js；设置页与宿主事件经 deps.igsLink 调用。总开关关着时不碰 IGS。
-    deps.igsLink = igsSync = installIgsFeedSync({ getCtx, getStorageId, loadStore, getStore: () => runtime.store, commit, actorSeeds, contextText, callAI, uid, createEmptyScope: createEmptyInteractiveScope, syncShop: (...args) => deps.syncIgsShop?.(...args), refreshLive: () => deps.refreshLiveFromIgs?.(), isGenerationBusy: () => runtime.busy || runtime.creating || !!runtime.communityTask, ...igsRefreshers({ runtime, getStorageId, rerender, renderLauncher: renderCommunityLauncher, refreshDesktop }) });
+    const refreshers = igsRefreshers({ runtime, getStorageId, rerender, renderLauncher: renderCommunityLauncher, refreshDesktop });
+    // 删楼回退（community-floor-rollback.js）：主线删楼、重新生成后，社区与直播间回到对应楼层。
+    deps.rollbackCommunity = createCommunityRollbackRunner({ getStorageId, getCtx, loadStore, getStore: () => runtime.store, commit, invalidate, limits: INTERACTIVE_LIMITS, getOpenSceneId: () => runtime.openSceneId, refreshOpenScene: refreshers.refreshOpenScene, refreshLive: () => deps.refreshLiveFromIgs?.() });
+    deps.igsLink = igsSync = installIgsFeedSync({ getCtx, getStorageId, loadStore, getStore: () => runtime.store, commit, actorSeeds, contextText, callAI, uid, createEmptyScope: createEmptyInteractiveScope, syncShop: (...args) => deps.syncIgsShop?.(...args), syncChats: (...args) => deps.syncIgsChats?.(...args), refreshLive: () => deps.refreshLiveFromIgs?.(), isGenerationBusy: () => runtime.busy || runtime.creating || !!runtime.communityTask, ...refreshers });
 }

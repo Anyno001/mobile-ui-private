@@ -125,6 +125,14 @@ function snapshotQuote(value) {
     };
 }
 
+// 从正文导入的聊天（source.type 为 igs）。只读自有数据属性，不触发 getter。
+function importedFromStory(message) {
+    const source = optionalData(message, 'source');
+    if (!source.valid || !plainRecord(source.value)) return false;
+    const type = optionalData(source.value, 'type');
+    return type.valid && type.value === 'igs';
+}
+
 function snapshotHistory(value) {
     const history = dataArraySnapshot(value);
     if (!history.valid) return { valid: false, value: [] };
@@ -146,6 +154,7 @@ function snapshotHistory(value) {
         snapshot.push(Object.freeze({
             role: role.value || '', content: content.value || '', directorNote: directorNote.value || '',
             ...(quote.value ? { quote: quote.value } : {}),
+            ...(importedFromStory(message) ? { imported: true } : {}),
         }));
     }
     return { valid: true, value: Object.freeze(snapshot) };

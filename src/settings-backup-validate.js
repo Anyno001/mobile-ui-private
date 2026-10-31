@@ -84,8 +84,8 @@ const assertInteractiveItem = (value, field, { kind = 'post', version = 1, actor
     const authorKeys = isStrictBackupVersion(version) ? ['authorId', 'authorNameSnapshot'] : ['author'];
     const allowedKeys = kind === 'post'
         ? ['id', ...authorKeys, 'content', 'tags', 'createdAt', 'comments', 'liked', ...(isStrictBackupVersion(version) ? ['shareCount', 'shared', 'work', 'rating'] : []),
-            ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', ...B2_POST_KEYS] : [])]
-        : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind', 'source'] : ['quoteId', 'rating']) : [])];
+            ...(version === INTERACTIVE_STORE_VERSION ? ['title', 'flag', 'repost', 'mood', 'workAuthor', 'to', 'sign', 'source', 'image', 'floor', 'floorAnchor', ...B2_POST_KEYS] : [])]
+        : ['id', ...authorKeys, 'content', 'createdAt', ...(version === INTERACTIVE_STORE_VERSION ? (kind === 'danmaku' ? ['kind', 'source', 'floor', 'floorAnchor'] : ['quoteId', 'rating', 'floor', 'floorAnchor']) : [])];
     assertAllowedKeys(item, field, allowedKeys);
     assertOptionalNormalizedText(item, 'id', field, 80);
     if (isStrictBackupVersion(version)) {
@@ -223,7 +223,7 @@ const assertInteractiveBackupStore = value => {
             orderedIds.add(sceneId);
             const scene = objectValue(normalizedScenes.get(sceneId), `${field}.scenes.${sceneId}`);
             const sceneKeys = isV3
-                ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts']
+                ? ['id', 'title', 'platform', 'nsfw', 'autoRespond', 'igsSync', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'tonight', 'hot', 'createdAt', 'updatedAt', 'posts', 'floorRollback']
                 : ['id', 'title', 'preset', 'styleInput', 'generatedPrompt', 'themeAccent', 'createdAt', 'updatedAt', 'posts', 'live'];
             if (!isStrictBackupVersion(sourceVersion)) sceneKeys.push('contentRating');
             assertAllowedKeys(scene, `${field}.scenes.${sceneId}`, sceneKeys);
@@ -294,7 +294,7 @@ const assertInteractiveBackupStore = value => {
                 if (!Object.hasOwn(liveRooms, roomId)) throw new Error(`备份字段 ${field}.liveOrder 引用了不存在的直播间 ${roomId}`);
                 const roomField = `${field}.liveRooms.${roomId}`;
                 const room = objectValue(liveRooms[roomId], roomField);
-                assertAllowedKeys(room, roomField, ['id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended']);
+                assertAllowedKeys(room, roomField, ['id', 'title', 'hostIsUser', 'hostActorId', 'hostNameSnapshot', 'hostSetting', 'category', 'nsfw', 'sourceSceneId', 'createdAt', 'updatedAt', 'danmaku', 'source', 'ended', 'floorRollback']);
                 if (Object.hasOwn(room, 'ended') && room.ended !== true) throw new Error(`备份字段 ${roomField}.ended 只能是 true`);
                 if (Object.hasOwn(room, 'source')) {
                     const source = objectValue(room.source, `${roomField}.source`);

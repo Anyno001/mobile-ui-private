@@ -309,7 +309,7 @@ export function renderBackupSettings({ rollbackFloors = DEFAULT_ROLLBACK_FLOORS 
       <div class="pm-settings-section">
         <label class="pm-cfg-label" for="pm-rollback-floors">删楼回退保留层数</label>
         <input id="pm-rollback-floors" class="pm-cfg-input" type="number" min="0" max="${MAX_ROLLBACK_FLOORS}" step="1" inputmode="numeric" value="${rollbackFloors}" onchange="window.__pmSaveRollbackFloors(this)">
-        <div class="pm-cfg-tip">主线删楼后，此后的手机消息随之撤回；保留层数内的编辑、删除与重新生成可还原，0为不保留。</div>
+        <div class="pm-cfg-tip">主线删楼后，此后的手机消息、社区帖子、评论与弹幕随之撤回；保留层数内的编辑、删除与重新生成可还原，0为不保留。</div>
       </div>
       <div class="pm-settings-section">
         <div class="pm-cfg-label">数据备份</div>
