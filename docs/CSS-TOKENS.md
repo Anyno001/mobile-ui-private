@@ -55,7 +55,7 @@
 | `--pm-opacity-*` | 受控透明度 |
 | `--pm-<feature>-*` | 已登记的组件私有 token |
 
-`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css`、`styles/gallery.css`、`styles/live.css`、`styles/video.css`、`styles/shop.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
+`style.css` 是唯一加载入口，按固定顺序导入 `styles/core.css`、`styles/modal-settings.css`、`styles/community.css`、`styles/calendar.css`、`styles/today-trend.css`、`styles/gallery.css`、`styles/live.css`、`styles/video.css`、`styles/shop.css`、`styles/origin.css` 和 `styles/overrides.css`。全局 token 只能定义在 `styles/core.css` 的统一 token 区，并在本文档登记语义、亮暗值和适用组件族。组件私有 token 只用于组件内部重复出现、含义稳定且无法直接复用公共 token 的值；必须定义在组件根选择器作用域内，以稳定 feature 名命名，并在定义旁登记用途、新增理由和适用主题。已登记私有 token 的声明值可使用必要原始值，主题相关值必须亮暗成对；该豁免只适用于变量声明，消费规则仍必须引用 token。不得把私有 token 放入全局区伪装成公共能力，也不得为每条声明机械创建变量。变量名描述用途，不描述当前数值。
 
 | 私有 token | 根选择器 | 语义与适用范围 |
 | --- | --- | --- |
@@ -81,6 +81,9 @@
 | `--pm-shop-swatch-1..6` / `-swatch-ink` | `.pm-shop-shell` | 商品图占位的六色实色块与块上的描述文字色（浅色 `#f6cfd6 #c9def5 #cdebd9 #fbe0bd #ddd5f5 #f3e7b9`，深色各给一组暗的实色），按商品 id 哈希取色；以后接生图时换成图片。亮暗成对。 |
 | `--pm-shop-veil` / `-veil-ink` | `.pm-shop-shell` | 商品页大图上返回、购物车圆钮的半透明底与图标色；只用于压在商品图上的叠加层，其余界面一律实色。亮暗成对。 |
 | `--pm-shop-side` / `-photo-tall` / `-photo-mid` / `-photo-short` / `-hero-height` / `-thumb` / `-check` / `-step` / `-avatar` / `-logo` / `-art` / `-art-icon` / `-price-size` / `-price-large` / `-indicator` / `-indicator-inset` | `.pm-shop-shell` | 桃宝固定几何：顶栏左右两组的等宽列（保证标题在整屏正中）、瀑布流商品图三档高度、商品页大图高度、购物车与订单缩略图、勾选圆、数量加减钮、评价头像、店铺头像、空状态插画圆与其图标、价格数字字号（展示型 18px 与商品页 24px）、订单栏下划线的高度与左右内缩。不随主题改变。 |
+| `--pm-origin-tier-n` / `-r` / `-sr` / `-ssr` / `-ur` 与各自 `-ink` | `.pm-origin-shell` | 金手指稀有度五档的浅底与深字（浅色 `#eef0f4/#4f5664`、`#e3eefb/#2f5f93`、`#ece6fb/#5b47a3`、`#fcecd9/#8a5310`、`#fbe4ea/#a33a58`，深色各给一组暗的实色），只用于稀有度小标与抽奖结果卡。全部实色，亮暗成对。 |
+| `--pm-origin-bar` / `-number` / `-menu` / `-art` / `-art-icon` / `-hero-title` / `-sheet-max` | `.pm-origin-shell` | 金手指固定几何：进度条高度、数字输入框宽度、⋯ 菜单宽度、空状态插画圆与其图标、主线大卡与抽奖结果的展示型标题字号（18px）、底部表单最大高度。不随主题改变。 |
+| `--pm-desktop-badge` | `.pm-desktop-app-badge` | 桌面图标右上角红点的直径（9px）；颜色用 `--pm-color-danger`。不随主题改变。 |
 | `--pm-calendar-day-height` / `-day-circle` / `-dot` / `-band-inset` / `-textarea-height` / `-rule-height` | `.pm-calendar-shell` | 日历 v3 页面几何：月历日期格高度、日历小圆点直径、生理期色带上下内缩、设置页多行输入与生成规则框的最小高度。不随主题改变。 |
 | `--pm-calendar-holiday*` / `-occasion*` / `-outfit-*` / `-meal-*` / `-band-*` / `-weather` | `.pm-calendar-shell` | 分类色：节假日、纪念日、穿搭、菜谱胶囊的浅底与文字，生理期月格色带与图例，天气月格图标色。只用于日历小标记与分类胶囊，不用于选中态；亮暗成对。 |
 | `--pm-calendar-status-value-size` / `-scene-height` / `-ring-*` / `-status-ink*` | `.pm-calendar-status-card` | 状态卡几何与前景：大号数值字号、天气风景卡高度、周期圆环尺寸/线宽/中心数字，以及压在风景画上的文字色（雷阵雨与夜间为白字）。 |

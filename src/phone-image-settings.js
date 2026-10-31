@@ -87,8 +87,8 @@ export function applyImageGenVisibility(enabled = loadImageSettings().enabled) {
     for (const id of ['pm-iphone', 'pm-overlay', 'pm-overlay-sub']) {
         const element = doc.getElementById(id);
         if (!element) continue;
-        if (enabled) element.removeAttribute('data-image-gen');
-        else element.setAttribute('data-image-gen', 'off');
+        if (enabled) { if (element.hasAttribute?.('data-image-gen') !== false) element.removeAttribute('data-image-gen'); }
+        else if (element.getAttribute?.('data-image-gen') !== 'off') element.setAttribute('data-image-gen', 'off');
     }
 }
 

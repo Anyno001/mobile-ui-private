@@ -30,6 +30,7 @@
 | 与 gal 前端联动（IGS） | `igs-feed-sync.js:installIgsFeedSync`：宿主消息事件经 `phone-host-events.js` 的 `igs:*` 注册调用 `observe`；同一批事件以微任务合并成一轮（不建计时器）；「同步后自动续写」一次只跑一个，各带自己的 AbortController；IGS 未启动时只往 `window.IGS_DLC` 推一次回调 | 总开关关闭时 `observe` 直接返回、不碰 `window.IGS`；关闭开关或切到别的聊天时 abort 进行中的续写，迟到结果按 storageId 丢弃 |
 | 图片元数据写入防抖 | 酒馆 `saveMetadataDebounced`（插件不自建计时器） | 写入 `chatMetadata.tianyin_phone_images` 后调用宿主防抖；与聊天记录共用宿主的防抖与保存时机 |
 | 桃宝生成任务与页面监听 | `shop-app.js:installShopApp`：上新与更多评价各带一个 AbortController，挂在社区运行时的 `requestController` 上并占用同一把 `runtime.busy`（与社区、直播互斥）；页面 `[data-phone-page="shop"]` 首次打开时创建，click / submit 监听挂在该节点上 | 「停止」、关闭手机、切换聊天由社区的 `invalidate` 一并 abort；结果提交前核对 requestId 与 storageId，迟到结果丢弃；窗口关闭时页面节点随窗口移除，监听一起释放 |
+| 金手指核心监听与界面订阅 | `origin-host.js:startOriginHost`（启动时一次）：核心 `getSharedOriginEngine` 按总开关在酒馆 eventSource 上挂/卸监听，不建计时器；`origin-app.js:installOriginApp`：页面 `[data-phone-page="origin"]` 首次打开时创建并挂 click / submit / change / keydown，打开时 `engine.subscribe` | 总开关关闭时核心解绑全部监听；离开 App、回桌面、关闭手机时退订（`__pmEnd` 调 `destroyOriginApp`）；`release()` 撤下本方 host，最后一个 host 撤下时核心解绑 |
 | 视频播放计时器与回应高亮 timeout | `video-app.js` 闭包 `timer`（250ms interval，仅点播放时创建）、`freshTimer`（1800ms） | 暂停、播放结束、回首页、切到直播分区、回桌面、打开另一条视频、重新打开手机均 `stopPlayback()` 清除；计时回调发现页面不在噼哩噼哩、页面隐藏、手机最小化或关闭、视频已不存在时自行停止并重绘播放按钮；高亮 timeout 每次重设前先清除 |
 | 会话暂存队列 | `runtime.pendingMessages` | 每个 `storageId + saveKey` 最多 `PENDING_MESSAGE_LIMIT = 50` 条；提交、删除、清空和删除会话时移除空桶 |
 

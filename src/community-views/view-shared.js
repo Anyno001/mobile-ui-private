@@ -161,6 +161,19 @@ export function renderRetryRespond(view, entryId, postId, kind) {
 
 export const isOpenPost = (view, post) => Array.isArray(view?.open) && view.open.includes(post.id);
 
+// 信息流分批渲染：一次只画最新 FEED_PAGE_SIZE 条，底部「查看更早」再加一批（view.feedLimit 只在会话内存里）。
+// 一个社区最多 80 帖、每帖带评论与回复框，一次全画出来节点上万，点任何按钮都卡。
+export const FEED_PAGE_SIZE = 20;
+export const feedLimitOf = view => (Number.isInteger(view?.feedLimit) && view.feedLimit > 0 ? view.feedLimit : FEED_PAGE_SIZE);
+export function pageFeed(posts, view) {
+    const limit = feedLimitOf(view);
+    const shown = posts.length > limit ? posts.slice(0, limit) : posts;
+    const rest = posts.length - shown.length;
+    const more = rest > 0
+        ? `<button type="button" class="pm-scene-comments-more pm-scene-feed-more" data-action="feed-more">查看更早的 ${Math.min(rest, FEED_PAGE_SIZE)} 条</button>` : '';
+    return { shown, more };
+}
+
 // 帖子从新到旧；createdAt 相同时后写入的在前。
 export const newestFirst = posts => posts.map((post, index) => ({ post, index }))
     .sort((a, b) => (b.post.createdAt - a.post.createdAt) || (b.index - a.index)).map(item => item.post);

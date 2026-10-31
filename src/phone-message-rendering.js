@@ -47,6 +47,17 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
     let emojiRenderBudget = createEmojiRenderBudget();
     const bubbleQuoteGestureUnbinders = new Map();
     const resetEmojiRenderBudget = () => { emojiRenderBudget = createEmojiRenderBudget(); };
+    // 整段重画历史时逐条设 scrollTop 会每条都强制排版（条数平方级）；批量期间只在结束时滚到底一次。
+    let scrollBatchDepth = 0;
+    const scrollToEnd = list => { if (scrollBatchDepth === 0) list.scrollTop = list.scrollHeight; };
+    function batchRender(render) {
+        scrollBatchDepth += 1;
+        try { return render(); } finally {
+            scrollBatchDepth -= 1;
+            const list = scrollBatchDepth === 0 ? state.phoneWindow?.querySelector('.pm-msg-list') : null;
+            if (list) list.scrollTop = list.scrollHeight;
+        }
+    }
     const clearBubbleQuoteGesture = root => {
         const unbind = bubbleQuoteGestureUnbinders.get(root);
         if (!unbind) return false;
@@ -159,7 +170,7 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
         });
         // 图片卡要读气泡上的 messageId/bubbleId，元数据写完再补图。
         try { onBubblesRendered(nodes); } catch (error) { console.warn('[phone-mode] 图片卡渲染失败', error); }
-        list.scrollTop = list.scrollHeight;
+        scrollToEnd(list);
         return nodes;
     }
 
@@ -187,14 +198,14 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
     function addNote(text) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return;
         const node = document.createElement('div'); node.className = 'pm-note'; node.textContent = text;
-        list.appendChild(node); list.scrollTop = list.scrollHeight;
+        list.appendChild(node); scrollToEnd(list);
     }
     function addDirector(text, metadata) {
         const list = state.phoneWindow?.querySelector('.pm-msg-list'); if (!list) return null;
         ensureDateDivider(list, metadata);
         const node = document.createElement('div'); node.className = 'pm-director'; applyBubbleMetadata(node, metadata);
         node.innerHTML = `<span class="pm-director-icon">🎬</span><span class="pm-director-text">${escapeHtml(text)}</span>`;
-        list.appendChild(node); list.scrollTop = list.scrollHeight; return node;
+        list.appendChild(node); scrollToEnd(list); return node;
     }
     function showTyping() {
         const list = state.phoneWindow?.querySelector('.pm-msg-list');
@@ -204,7 +215,7 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
     }
     const hideTyping = () => document.getElementById('pm-typing')?.remove();
     return {
-        addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
+        addBubble, addNote, addDirector, batchRender, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
         clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
     };
 }

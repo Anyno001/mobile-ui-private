@@ -43,6 +43,7 @@ export function createBackupController({
             branchLineage: snapshot.branchLineage, userGeneration: snapshot.userGeneration, desktopIcons: snapshot.desktopIcons,
             // 桃宝数据读不懂时写 undefined，JSON 里不出现这个字段，导入时保留原数据。
             shop: snapshot.shopUnreadable ? undefined : snapshot.shop,
+            origin: snapshot.origin,
         };
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a');

@@ -22,7 +22,8 @@
       "--pm-desktop-*",
       "--pm-gallery-*",
       "--pm-live-*",
-      "--pm-shop-*"
+      "--pm-shop-*",
+      "--pm-origin-*"
     ],
     "compat": [
       "--pm-palette-*",
@@ -124,6 +125,9 @@
     ],
     "shop": [
       ".pm-shop-shell"
+    ],
+    "origin": [
+      ".pm-origin-shell"
     ]
   },
   "inline": {
@@ -405,6 +409,14 @@
         ".pm-shop"
       ],
       "themeStrategy": "蜜桃点缀色三档、商品图六色与图上文字色、商品图叠加层在 .pm-shop-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-shop-shell 声明深色值；固定几何不随主题改变"
+    },
+    {
+      "prefix": "--pm-origin-",
+      "owner": "origin",
+      "rootSelectors": [
+        ".pm-origin"
+      ],
+      "themeStrategy": "五档稀有度浅底与深字在 .pm-origin-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-origin-shell 声明深色值；固定几何不随主题改变"
     },
     {
       "prefix": "--pm-live-",
@@ -1297,7 +1309,8 @@
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::border-color::var(--pm-color-ink) !important",
     "styles/overrides.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub) button:is([data-action*=\"save\"],[onclick*=\"__pmSave\"]), #pm-iphone [data-today-trend-form]:is([data-today-trend-form=\"world-item\"],[data-today-trend-form=\"rule-editor\"],[data-today-trend-form=\"app-settings\"],[data-today-trend-form=\"circle\"],[data-today-trend-form=\"faction\"],[data-today-trend-form=\"event\"]) button[type=\"submit\"]::color::var(--pm-color-on-ink) !important",
     "styles/gallery.css::root:::is(#pm-iphone,#pm-overlay,#pm-overlay-sub)[data-image-gen=\"off\"] :is([data-image-action=\"generate\"],[data-action=\"photo-shot\"],.pm-desktop-app[data-app=\"gallery\"])::display::none !important",
-    "styles/shop.css::root::#pm-iphone .pm-shop-search-input::background-color::transparent !important"
+    "styles/shop.css::root::#pm-iphone .pm-shop-search-input::background-color::transparent !important",
+    "styles/origin.css::root::#pm-iphone .pm-origin-composer input::background-color::var(--pm-color-surface) !important"
   ],
   "incrementalHardcodeBaseline": [
     "styles/calendar.css::root::#pm-overlay .pm-calendar-entry-dialog textarea[name=\"note\"]::min-height::72px !important",

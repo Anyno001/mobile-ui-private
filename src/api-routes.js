@@ -8,6 +8,7 @@ export const API_ROUTE_MODULES = [
     { key: 'trend', label: '今日风向' },
     { key: 'calendar', label: '日历' },
     { key: 'oracle', label: '剧情助手' },
+    { key: 'origin', label: '金手指' },
     { key: 'contacts', label: '生成联系人' },
     { key: 'image', label: '生图写词' },
 ];

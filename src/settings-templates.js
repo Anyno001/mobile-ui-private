@@ -4,6 +4,9 @@ import { escapeAttr, escapeHtml } from './ui.js';
 import { loadImageSettings } from './phone-image-settings.js';
 import { DEFAULT_ROLLBACK_FLOORS, MAX_ROLLBACK_FLOORS } from './phone-floor-rollback.js';
 
+// GAL 气泡正则开关暂时不在设置首页显示；功能与已保存的开关状态保留。
+const SHOW_GAL_BUBBLE_SETTING = false;
+
 export function renderSettingsHome() {
     return `
     <div class="pm-settings-home" role="list">
@@ -32,13 +35,13 @@ export function renderSettingsHome() {
       </div>
       <button type="button" class="pm-settings-home-link" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><span class="pm-settings-home-hint">数据库生图插件或内置 NAI、CORS 代理、画师串</span></span><span aria-hidden="true">›</span></button>
       </div>
-      <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
+      ${SHOW_GAL_BUBBLE_SETTING ? `<div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
         <span><b id="pm-gal-bubble-label">GAL 气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用 GAL 台词格式</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"
           class="pm-custom-check ${window.__pmGalBubbleOperational === true ? 'is-checked' : ''}" role="checkbox" tabindex="0"
           aria-checked="${window.__pmGalBubbleOperational === true}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
-      </div>
+      </div>` : ''}
     </div>`;
 }
 

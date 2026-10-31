@@ -8,6 +8,10 @@ import { createLiveGenerationRunner, runLiveWarmup } from './interactive-scene-s
 import { describeLiveRoom, fitLiveFly, renderLiveCompose, renderLiveList, renderLiveRoom } from './live-views.js';
 import { createVideoApp } from './video-app.js';
 import { renderAppTabs } from './video-views.js';
+import { captureScroll, restoreScroll } from './scroll-keeper.js';
+
+// 直播列表与开播表单的滚动容器；直播间评论区另有「贴底」逻辑，不在这里处理。
+const LIVE_SCROLLERS = ['.pm-live-scroll'];
 
 const INVALID_SCOPE = 'sms_unknown__default';
 const CANCELLED = '生成已取消';
@@ -110,6 +114,7 @@ export function installLiveApp(deps, bridge) {
         return renderLiveList({ rooms, status: view.status, segments: renderAppTabs('live') });
     };
 
+    let renderedPageKey = null;
     // skipSync：表单刚被程序改过（换主播预填设定等），不能再用尚未重绘的旧输入框覆盖。
     const render = ({ forceBottom = false, skipSync = false } = {}) => {
         if (view.page === 'video') return video.render();
@@ -122,7 +127,11 @@ export function installLiveApp(deps, bridge) {
             || chatBefore.scrollHeight - chatBefore.scrollTop - chatBefore.clientHeight <= SCROLL_STICK_DISTANCE;
         const html = buildHtml();
         if (!html) return false;
+        const pageKey = `${view.page}|${view.roomId || ''}`;
+        const scrollPositions = pageKey === renderedPageKey ? captureScroll(page, LIVE_SCROLLERS) : null;
         page.innerHTML = html;
+        renderedPageKey = pageKey;
+        if (scrollPositions) restoreScroll(page, LIVE_SCROLLERS, scrollPositions);
         const input = page.querySelector('#pm-live-input');
         if (input && draft) input.value = draft;
         const chat = page.querySelector('.pm-live-chat');

@@ -74,6 +74,18 @@ export function describeMessageEntry(entry, { isGroup = false, groupMembers = []
     return splitToSentences(content).map(text => ({ text, sender: '' }));
 }
 
+// 逐字段比较，等价于原先两次 JSON.stringify 的比较（键序固定为 bubbleId/text/sender，且不能有多余键）。
+function sameBubbles(current, next) {
+    if (!Array.isArray(current) || current.length !== next.length) return false;
+    return next.every((bubble, index) => {
+        const item = current[index];
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+        const keys = Object.keys(item);
+        return keys.length === 3 && keys[0] === 'bubbleId' && keys[1] === 'text' && keys[2] === 'sender'
+            && item.bubbleId === bubble.bubbleId && item.text === bubble.text && item.sender === bubble.sender;
+    });
+}
+
 export function ensureMessageEntry(entry, options = {}) {
     if (!entry || typeof entry !== 'object') return { entry, changed: false };
     const legacySeed = String(options.legacySeed || `${entry.role || ''}:${entry.content || ''}`);
@@ -90,8 +102,7 @@ export function ensureMessageEntry(entry, options = {}) {
         sender: String(descriptor.sender || ''),
     })).filter(bubble => bubble.text);
     if (bubbles.some((bubble, index) => bubble.bubbleId !== descriptors[index]?.bubbleId)) changed = true;
-    const normalizedBubbles = JSON.stringify(bubbles);
-    if (!Array.isArray(entry.bubbles) || JSON.stringify(entry.bubbles) !== normalizedBubbles) {
+    if (!sameBubbles(entry.bubbles, bubbles)) {
         entry.bubbles = bubbles;
         changed = true;
     }

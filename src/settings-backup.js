@@ -32,6 +32,7 @@ import { loadUserGenerationStore, saveUserGenerationStore } from './user-generat
 import { normalizeUserGenerationStore } from './user-generation-model.js';
 import { createEmptyShopStore, normalizeShopStore } from './shop-model.js';
 import { loadShopStore, saveShopStore } from './shop-storage.js';
+import { loadOriginSettings, normalizeOriginSettings, ORIGIN_SETTINGS_KEY } from './origin-settings.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -169,6 +170,8 @@ export function createBackupStateHandlers(deps = {}) {
             desktopIcons,
             // 桃宝数据读不懂时不进备份、回滚时也不覆盖原始数据。
             shop: shopLoaded.store, ...(shopLoaded.writable ? {} : { shopUnreadable: true }),
+            // 金手指只备份全局设置；每个聊天的存档在 chatMetadata.origin_v2，随聊天文件走。
+            origin: normalizeOriginSettings(loadOriginSettings()),
         };
     };
     const apply = async state => {
@@ -205,6 +208,7 @@ export function createBackupStateHandlers(deps = {}) {
             userGeneration: normalizeUserGenerationStore(state.userGeneration),
             desktopIcons: normalizeDesktopIconBackupPayload(state.desktopIcons || {}),
             shop: normalizeShopStore(state.shop ?? createEmptyShopStore()),
+            origin: normalizeOriginSettings(state.origin),
         };
     };
     const persist = async (state, phase = 'apply', applied = null) => {
@@ -258,6 +262,8 @@ export function createBackupStateHandlers(deps = {}) {
             });
             await replaceDesktopIcons(normalizeDesktopIconBackupPayload(state.desktopIcons || {}));
             if (!state.shopUnreadable) await saveShopStore(normalizeShopStore(state.shop ?? createEmptyShopStore()));
+            try { localStorage.setItem(ORIGIN_SETTINGS_KEY, JSON.stringify(normalizeOriginSettings(state.origin))); }
+            catch { throw new Error('金手指设置保存失败：浏览器存储不可用'); }
         } catch (error) {
             error.partialApplied = { ...(error.partialApplied || {}), todayTrendReceipt };
             throw error;

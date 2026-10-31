@@ -18,6 +18,7 @@ const CSS_MODULE_FILES = [
   'styles/live.css',
   'styles/video.css',
   'styles/shop.css',
+  'styles/origin.css',
   'styles/overrides.css',
 ];
 const [srcEntries, bundle, cssEntry, manifestText, packageText, lockText, readme, projectText, baselineText, cssTokensText, lifecycleResourcesText, governanceRegistryText, ...cssModules] = await Promise.all([
@@ -3407,9 +3408,13 @@ for (const forbidden of ['toggle-community-template', 'toggle-scene-share', 'des
 for (const expected of [
   'buildCommunityRequest({ kind, platform, nsfw: scene.nsfw === true', 'parseCommunityResponse(raw, kind, platform)', 'applyFeedMeta(scene, items.meta)',
   "if (action === 'reply-owner')", "if (action === 'pick-platform')", "if (action === 'toggle-nsfw')",
-  "action === 'open-compose' || action === 'close-compose'", "if (action === 'insert-topic')", 'syncComposeDraft', 'readComposeDraft', 'insertTopicMark',
+  "action === 'open-compose' || action === 'close-compose'", "if (action === 'insert-topic')", 'syncComposeDraft', 'insertTopicMark',
   "Object.assign(view, { compose: false, draft: null", 'compose: false, draft: null, feedScroll: 0',
 ]) requireText('interactive-scenes.js', interactiveCode, expected);
+// 编辑页草稿保留与整页/局部重绘拆在 community-workspace-render.js。
+for (const expected of ['readComposeDraft', 'function syncComposeDraft', 'function patchEntries', 'runtime.workspaceKey']) {
+  requireText('community-workspace-render.js', sourceModuleByName.get('community-workspace-render.js')?.code || '', expected);
+}
 // 直播已拆成独立 App：社区接线不得再保留直播 tab 与热场的动作和状态。
 for (const forbidden of ['runLiveWarmup', 'start-warmup', 'send-danmaku', 'edit-danmaku', 'delete-danmaku', 'liveWarmupError', 'appendDanmaku', "activeCommunityTab"]) {
   if (interactiveCode.includes(forbidden)) failures.push(`interactive-scenes.js: removed community live wiring remains: ${forbidden}`);
@@ -3877,7 +3882,7 @@ for (const selector of ['.pm-calendar-round.is-loading svg', '.pm-calendar-shell
   const visualV2CreamIcon = selector => selector.startsWith('#pm-iphone[data-icon-style="cream"]') && selector.endsWith('.pm-desktop-app-icon');
   // 直播间评论区与横飞区边缘的渐隐遮罩只改透明度、不产生色彩渐变，仅限 mask-image。
   const visualV2LiveFadeMask = (selector, property) => /^(-webkit-)?mask-image$/.test(property) && (selector === '.pm-live-chat' || selector === '.pm-live-fly');
-  const visualV2BackdropAllowed = selector => selector.includes('--pm-frost') || selector === '.pm-today-trend-tabs' || selector === '.pm-desktop-app-icon';
+  const visualV2BackdropAllowed = selector => selector.includes('--pm-frost') || selector === '.pm-today-trend-tabs' || selector === '#pm-iphone[data-desktop-image] .pm-desktop-app-icon';
   for (const rule of cssRules) {
     for (const [property, rawValue] of rule.declarations) {
       const value = String(rawValue).replace(/\s*!important$/, '').trim();
@@ -5071,7 +5076,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.8.4') failures.push('version: expected release version 1.8.4');
+if (packageJson.version !== '1.9.0') failures.push('version: expected release version 1.9.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

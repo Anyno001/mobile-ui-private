@@ -101,4 +101,6 @@ export const CART_ICON_SVG = icon('<path d="M3 4h2l2.2 11h10.6L20 7H6.2"/><circl
 export const ORDER_ICON_SVG = icon('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>');
 export const STORE_ICON_SVG = icon('<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0"/><path d="M5.5 11.5V20h13v-8.5M10 20v-4.5h4V20"/>');
 export const MINUS_ICON_SVG = icon('<path d="M5 12h14"/>');
+// 金手指：桌面图标（竖起的食指加一点闪光，纯线条不填色）。
+export const ORIGIN_APP_ICON_SVG = icon('<path d="M10 12.5V5a1.5 1.5 0 0 1 3 0v6"/><path d="M13 10.5a1.5 1.5 0 0 1 3 0V12"/><path d="M16 11.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9l-2.6-3.5a1.4 1.4 0 0 1 2.1-1.9L10 16"/><path d="M5 3.5v3M3.5 5h3"/>');
 export const BOX_ICON_SVG = icon('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>');

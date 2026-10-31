@@ -16,6 +16,7 @@ import { migrateLegacyTodayTrendV2Store, normalizeTodayTrendV2Store } from './to
 import { createEmptyUserGenerationStore, normalizeUserGenerationStore } from './user-generation-model.js';
 import { normalizeWorldBookConfig } from './worldbook-config.js';
 import { assertShopBackupStore } from './shop-model.js';
+import { normalizeOriginSettings } from './origin-settings.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const objectValue = (value, field) => {
@@ -484,6 +485,11 @@ export function parseBackupData(data, current) {
     if (Object.hasOwn(data, 'shop')) {
         result.shop = assertShopBackupStore(data.shop);
         delete result.shopUnreadable;
+    }
+    // 金手指设置：可选字段，旧备份没有时保留现有设置；有时按规范化读入。
+    if (Object.hasOwn(data, 'origin')) {
+        if (!data.origin || typeof data.origin !== 'object' || Array.isArray(data.origin)) throw new Error('备份里的金手指设置格式不正确');
+        result.origin = normalizeOriginSettings(data.origin);
     }
     return result;
 }

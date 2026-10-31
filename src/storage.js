@@ -27,6 +27,7 @@ import { IMAGE_CATALOG_KEY, IMAGE_DNA_STORE_KEY, IMAGE_THUMB_PREFIX } from './ph
 import { IMAGE_SETTINGS_KEY } from './phone-image-settings.js';
 import { IGS_LINK_STORAGE_KEY } from './interactive-scene-constants.js';
 import { SHOP_FALLBACK_KEY, SHOP_STORE_KEY } from './shop-storage.js';
+import { ORIGIN_SETTINGS_KEY } from './origin-settings.js';
 import {
     addOrUpdateProfile, loadGalBubbleEnabled, loadInjectionConfig, loadProfiles, loadTheme, loadWordyLimit,
     loadWorldBookConfig, saveGalBubbleEnabled, saveInjectionConfig, saveProfiles, saveTheme, saveWordyLimit, saveWorldBookConfig,
@@ -60,7 +61,7 @@ export const PLUGIN_LOCAL_STORAGE_KEYS = Object.freeze([
     CALENDAR_WEATHER_STORAGE_KEY, CALENDAR_CYCLE_STORAGE_KEY, CALENDAR_RECIPE_STORAGE_KEY, CALENDAR_OUTFIT_STORAGE_KEY,
     TODAY_TREND_FALLBACK_KEY, TODAY_TREND_V2_FALLBACK_KEY,
     STORY_ORACLE_FALLBACK_KEY, USER_GENERATION_FALLBACK_KEY, CHAT_METADATA_STAMP_KEY, ROLLBACK_FLOORS_KEY, COMMUNITY_FILE_STAMP_KEY, IMAGE_SETTINGS_KEY, IGS_LINK_STORAGE_KEY,
-    SHOP_FALLBACK_KEY,
+    SHOP_FALLBACK_KEY, ORIGIN_SETTINGS_KEY,
 ]);
 export const PLUGIN_IDB_STATIC_KEYS = Object.freeze([
     'ST_SMS_DATA_V2', EMOJI_STORE_KEY, GROUP_META_STORE_KEY, INTERACTIVE_STORE_KEY, BRANCH_LINEAGE_STORE_KEY, 'ST_SMS_BG_GLOBAL', DESKTOP_BG_KEY, DESKTOP_ICON_STORAGE_KEY,
@@ -249,7 +250,7 @@ export function setInteractivePersistListener(listener) {
     interactivePersistListener = typeof listener === 'function' ? listener : null;
 }
 
-export async function saveInteractiveScenes(store, { coordinated = false } = {}) {
+export async function saveInteractiveScenes(store, { coordinated = false, owned = false } = {}) {
     const persist = async (snapshot, protectedScopes = []) => {
         let value = snapshot;
         if (protectedScopes.length) {
@@ -290,8 +291,8 @@ export async function saveInteractiveScenes(store, { coordinated = false } = {})
             throw new Error('互动场景保存失败：浏览器存储不可用');
         }
     };
-    if (coordinated) return persist(structuredClone(store));
-    return enqueueDirectorySave('interactive', store, persist);
+    if (coordinated) return persist(owned ? store : structuredClone(store));
+    return enqueueDirectorySave('interactive', store, persist, false, { owned });
 }
 
 // 旧版互动场景存储升级前的原始备份：键为 INTERACTIVE_STORE_KEY:backup-v<旧版本号>，已存在时不覆盖；写入失败抛错，由调用方中止迁移。

@@ -1,6 +1,6 @@
 import { escapeAttr, escapeHtml } from '../ui.js';
 import {
-    collectFilterChips, entryAttr, newestFirst, noteIndexOf, renderAvatar, renderCommentActions, renderCompactLike, renderEmptyState, renderFilterChips,
+    collectFilterChips, entryAttr, newestFirst, noteIndexOf, pageFeed, renderAvatar, renderCommentActions, renderCompactLike, renderEmptyState, renderFilterChips,
     renderPostMenu, renderPostTime, renderRetryRespond, renderStaleMark, stableHash, stablePostMetric, threadTitleOf,
 } from './view-shared.js';
 
@@ -35,7 +35,8 @@ function renderList(scene, view) {
     const chips = xhsTagsOf(scene.posts);
     const selected = chips.includes(tag) ? tag : '';
     const posts = newestFirst(scene.posts).filter(post => !selected || post.tags.includes(selected));
-    const body = posts.length ? renderColumns(posts, view) : renderEmptyState('还没有笔记', '点下方的「+」发第一篇笔记，或者拍一拍让社区动起来。');
+    const { shown, more } = pageFeed(posts, view);
+    const body = posts.length ? renderColumns(shown, view) + more : renderEmptyState('还没有笔记', '点下方的「+」发第一篇笔记，或者拍一拍让社区动起来。');
     return `${renderFilterChips(chips, selected, '话题')}${body}`;
 }
 

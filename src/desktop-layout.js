@@ -12,6 +12,7 @@ export const DESKTOP_APPS = Object.freeze([
     { id: 'settings', dataApp: 'settings' },
     { id: 'gallery', dataApp: 'gallery' },
     { id: 'shop', dataApp: 'shop' },
+    { id: 'origin', dataApp: 'origin' },
 ]);
 // 设置是唯一的配置入口，不能被隐藏。
 export const DESKTOP_UNHIDEABLE = Object.freeze(new Set(['settings']));

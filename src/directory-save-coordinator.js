@@ -88,14 +88,15 @@ export function getDirectoryBranchScopesSince(store, version) {
     return [...new Set(state.events.slice(Math.max(0, version - state.offset)))];
 }
 
-export function enqueueDirectorySave(store, data, operation, marksGlobalSave = false) {
+// owned：调用方保证 data 是刚建出来、之后不会再被改的新对象，可直接入队不再拷贝。
+export function enqueueDirectorySave(store, data, operation, marksGlobalSave = false, { owned = false } = {}) {
     assertStore(store);
     if (typeof operation !== 'function') throw new TypeError('目录保存操作必须是函数');
     if (marksGlobalSave) revisions[store] += 1;
     const version = getDirectoryOperationVersion(store);
     const state = branchScopes(store);
     state.pendingSaveVersions.add(version);
-    const snapshot = structuredClone(data);
+    const snapshot = owned ? data : structuredClone(data);
     return enqueueDirectoryOperation(store, () => operation(snapshot, getDirectoryBranchScopesSince(store, version))).finally(() => {
         state.pendingSaveVersions.delete(version);
         compactBranchScopeEvents(store);

@@ -1,9 +1,10 @@
 import { COMMUNITY_PLATFORMS } from '../interactive-scene-constants.js';
-import { splitTitle, validStarRating } from './view-shared.js';
+import { FEED_PAGE_SIZE, feedLimitOf, splitTitle, validStarRating } from './view-shared.js';
 
 // 只改会话内视图状态（state.view，不写存储）的导航与筛选动作。
 export const VIEW_ACTIONS = Object.freeze([
     'set-segment', 'open-thread', 'close-thread', 'open-book', 'close-book', 'filter-mood', 'toggle-open', 'filter-tag', 'open-question', 'close-question',
+    'feed-more',
 ]);
 
 // 返回 true 表示重绘时保持滚动位置（展开收起、筛选）；切换分段、打开或返回时回到顶部。
@@ -17,11 +18,12 @@ export function applyViewAction(view, action, data = {}) {
     else if (action === 'filter-tag') view.tag = data.tag || '';
     else if (action === 'open-question') view.question = data.question || '';
     else if (action === 'close-question') view.question = '';
+    else if (action === 'feed-more') view.feedLimit = feedLimitOf(view) + FEED_PAGE_SIZE;
     else if (action === 'toggle-open' && data.postId) {
         const index = view.open.indexOf(data.postId);
         if (index >= 0) view.open.splice(index, 1); else view.open.push(data.postId);
     }
-    return ['toggle-open', 'filter-mood', 'filter-tag'].includes(action);
+    return ['toggle-open', 'filter-mood', 'filter-tag', 'feed-more'].includes(action);
 }
 
 // 发布成功：关闭编辑页、丢弃草稿；筛选回到能看见新内容的状态。

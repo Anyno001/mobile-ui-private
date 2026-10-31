@@ -2,7 +2,7 @@ import { HEART_ICON_SVG, SHARE_ICON_SVG } from '../icons.js';
 import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
-    entryAttr, isOpenPost, renderAvatar, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu, renderPostMetric,
+    entryAttr, isOpenPost, pageFeed, renderAvatar, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu, renderPostMetric,
     renderPostTime, renderReplyComposer, renderReplyToggle, renderRetryRespond, renderRichText, renderStaleMark, stablePostMetric, formatCommunityPostTime,
 } from './view-shared.js';
 
@@ -55,5 +55,6 @@ function renderWeiboPost(post, view, now) {
 
 export function renderWeiboFeed(scene, view, now) {
     const posts = scene.posts.slice().reverse();
-    return `${renderHotSearch(scene, now)}${posts.length ? posts.map(post => renderWeiboPost(post, view, now)).join('') : renderEmptyState()}`;
+    const { shown, more } = pageFeed(posts, view);
+    return `${renderHotSearch(scene, now)}${posts.length ? shown.map(post => renderWeiboPost(post, view, now)).join('') + more : renderEmptyState()}`;
 }

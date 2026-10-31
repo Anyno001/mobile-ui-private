@@ -1,13 +1,13 @@
 import { DESKTOP_ICON_IDS, DESKTOP_ICON_MAX_ITEM_BYTES, DESKTOP_ICON_SIZE, loadDesktopIcons, removeDesktopIcon, replaceDesktopIcons, saveDesktopIcon } from './desktop-icon-storage.js';
-import { CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, CONTACTS_ICON_SVG, LIVE_APP_ICON_SVG, PHOTO_ICON_SVG, SETTINGS_ICON_SVG, SHOP_APP_ICON_SVG, SPARKLES_ICON_SVG, TREND_ICON_SVG } from './icons.js';
+import { CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, CONTACTS_ICON_SVG, LIVE_APP_ICON_SVG, PHOTO_ICON_SVG, ORIGIN_APP_ICON_SVG, SETTINGS_ICON_SVG, SHOP_APP_ICON_SVG, SPARKLES_ICON_SVG, TREND_ICON_SVG } from './icons.js';
 
 import { appNameOf } from './app-names.js';
 import { DESKTOP_APPS, DESKTOP_UNHIDEABLE, currentDesktopLayout, resetDesktopLayout, setDesktopAppHidden } from './desktop-layout.js';
 
 const MAX_SOURCE_BYTES = 5 * 1024 * 1024;
 const MAX_SOURCE_DIMENSION = 4096;
-const LABELS = Object.freeze({ chat: '会话', directory: '联系人', settings: '设置', calendar: '日历', todayTrend: '今日风向', storyOracle: '剧情助手', community: '社区', live: appNameOf('live'), gallery: '相册', shop: appNameOf('shop') });
-const FALLBACKS = Object.freeze({ chat: CHAT_ICON_SVG, directory: CONTACTS_ICON_SVG, settings: SETTINGS_ICON_SVG, calendar: CALENDAR_ICON_SVG, todayTrend: TREND_ICON_SVG, storyOracle: SPARKLES_ICON_SVG, community: COMMUNITY_ICON_SVG, live: LIVE_APP_ICON_SVG, gallery: PHOTO_ICON_SVG, shop: SHOP_APP_ICON_SVG });
+const LABELS = Object.freeze({ chat: '会话', directory: '联系人', settings: '设置', calendar: '日历', todayTrend: '今日风向', storyOracle: '剧情助手', community: '社区', live: appNameOf('live'), gallery: '相册', shop: appNameOf('shop'), origin: appNameOf('origin') });
+const FALLBACKS = Object.freeze({ chat: CHAT_ICON_SVG, directory: CONTACTS_ICON_SVG, settings: SETTINGS_ICON_SVG, calendar: CALENDAR_ICON_SVG, todayTrend: TREND_ICON_SVG, storyOracle: SPARKLES_ICON_SVG, community: COMMUNITY_ICON_SVG, live: LIVE_APP_ICON_SVG, gallery: PHOTO_ICON_SVG, shop: SHOP_APP_ICON_SVG, origin: ORIGIN_APP_ICON_SVG });
 const ACCEPTED_TYPES = new Set(['image/png', 'image/webp', 'image/jpeg']);
 
 function inspectImage(objectUrl, ImageCtor = globalThis.Image) {

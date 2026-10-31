@@ -31,6 +31,7 @@ import {
 import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
 import { createChatMetadataSync } from './chat-metadata-sync.js';
 import { setFloorMarkProvider } from './chat-message-model.js';
+import { startOriginHost, trackBackgroundCalls } from './origin-host.js';
 import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
 
 (async function bootstrapPhoneMode() {
@@ -75,10 +76,12 @@ import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
         options,
     );
     const deps = { runtime, getCtx, getLastMessageId, getStorageId, getUserPersona, gatherContext, saveBudgetConfig, reloadCurrentChat: context => context?.reloadCurrentChat?.() };
-    deps.callAI = createAiClient({
+    // 天音自己的后台请求期间金手指核心不注入（见 origin-host.js）。
+    deps.callAI = trackBackgroundCalls(createAiClient({
         getConfig: module => resolveApiConfig(module),
         getContext: getCtx,
-    });
+    }));
+    deps.originRuntime = startOriginHost({ getCtx, callAI: deps.callAI });
 
     installPhoneFoundation(state, deps);
     installConversation(state, deps);

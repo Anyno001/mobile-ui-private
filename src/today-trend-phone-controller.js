@@ -1,8 +1,11 @@
+import { captureScroll, restoreScroll } from './scroll-keeper.js';
 import { createTodayTrendActionDispatcher } from './today-trend-actions.js';
 import { generationErrorMessage } from './ai.js';
 import { getReadableWorldBookNames } from './worldbook-config.js';
 import { countTodayTrendAssistantMessages } from './today-trend-scheduler.js';
 import { renderTodayTrendApp } from './today-trend-view.js';
+
+const TREND_SCROLLERS = ['.pm-today-trend-content'];
 
 const formValues = form => new FormData(form);
 const optionalPositiveInteger = value => value === null || value === '' ? undefined : Number(value);
@@ -15,6 +18,7 @@ const draftFrom = data => ({ presetName: String(data.get('presetName') || ''), w
 export function createTodayTrendPhoneController({ state, deps, container }) {
     if (!container?.addEventListener || typeof deps.getStorageId !== 'function') throw new TypeError('今日风向手机控制器依赖无效');
     let dispatcher = null, settings = false, initializing = false, initializationOpen = false, reinitializing = false, initializationMode = 'reuse', error = null, renderEpoch = 0;
+    let renderedViewKey = null;
     let initAbort = null, lastScope = null, lastPresets = [], lastView = { name: 'world', mode: 'content' };
     let unsubscribeGeneration = null, destroyed = false, lastTerminalPhase = '', completedReloadEpoch = 0, retentionSaveEpoch = 0;
     let retentionRevisions = null, retentionSaving = false, retentionDraft = null;
@@ -85,11 +89,16 @@ export function createTodayTrendPhoneController({ state, deps, container }) {
         lastScope = scope; lastPresets = Object.values(current?.presets || {}); retentionRevisions = revisions;
         const currentFloor = deps.getTodayTrendCurrentFloor?.();
         const currentAssistantCount = assistantCount();
+        // 同一页面（同分页、同详情）重绘时保持滚动位置；展开菜单、编辑、生成状态变化不应把页面拉回顶部。
+        const viewKey = [lastView.name, lastView.mode, lastView.dynamicsTab, lastView.detailId, lastView.selectedCircleId].join('|');
+        const scrollPositions = viewKey === renderedViewKey ? captureScroll(container, TREND_SCROLLERS) : null;
+        renderedViewKey = viewKey;
         container.innerHTML = renderTodayTrendApp({ scope, presets: Object.values(current?.presets || {}), worldBooks: worldBooks(),
             view: lastView, changes,
             generation: deps.getTodayTrendGenerationState?.() || {}, currentFloor, error, initializing, initializationDraft, initializationOpen, reinitializing, initializationMode,
             detailById, loadingDetailIds, retentionRevisions, retentionSaving, retentionDraft, diagnosticCopyStatus, assistantCount: currentAssistantCount, batchDraft: scope?.operation?.batchDraft });
 
+        if (scrollPositions) restoreScroll(container, TREND_SCROLLERS, scrollPositions);
         const focusSelector = pendingFocusSelector;
         pendingFocusSelector = '';
         restoreFocus(focusSelector, epoch);

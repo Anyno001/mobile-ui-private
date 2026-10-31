@@ -19,6 +19,15 @@ export function renderConversationHistory({ state, deps, storageId, name }) {
     clearBubbleQuoteGestures?.();
     list.innerHTML = '';
     resetEmojiRenderBudget();
+    const batch = typeof deps.batchRender === 'function' ? deps.batchRender : render => render();
+    batch(() => {
+        renderHistoryEntries({ state, deps, list, addNote, addBubble, addDirector });
+        deps.renderPendingConversation?.(storageId, name);
+    });
+    applyBackground();
+}
+
+function renderHistoryEntries({ state, deps, list, addNote, addBubble, addDirector }) {
     const history = state.conversationHistory;
     if (history.length > 0) {
         const limit = Number.isInteger(state.historyRenderLimit) && state.historyRenderLimit > 0
@@ -58,6 +67,4 @@ export function renderConversationHistory({ state, deps, storageId, name }) {
         }
         addNote('以上为历史消息');
     } else addNote('开始对话');
-    deps.renderPendingConversation?.(storageId, name);
-    applyBackground();
 }

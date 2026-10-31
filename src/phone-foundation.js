@@ -137,7 +137,7 @@ export function installPhoneFoundation(state, deps) {
     const { applyTheme } = createPhoneThemeController(state);
     const { makeOverlay, closeOverlay } = createPhoneOverlayController({ runtime, applyTheme });
     const {
-        addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
+        addBubble, addNote, addDirector, batchRender, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
         clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
     } = createPhoneMessageRenderer({ state, quote, getStoryToday: () => deps.getStoryToday?.() || '',
         onBubblesRendered: nodes => deps.hydrateImageCards?.(nodes) });
@@ -253,7 +253,7 @@ export function installPhoneFoundation(state, deps) {
         applyTheme, applyBackground, fitNameFont, migrateOldHistory,
         applyBidirectionalInjection, prepareBidirectionalInjection, clearBidirectionalInjection, hookGenerationEvent,
         bindIsland, bindPhoneResize, applyPhoneScale,
-        addBubble, addNote, addDirector, rebaseRenderedHistory, resetEmojiRenderBudget,
+        addBubble, addNote, addDirector, batchRender, rebaseRenderedHistory, resetEmojiRenderBudget,
         showTyping, hideTyping, clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
         makeOverlay, closeOverlay,
         beginGeneration, isGenerationTaskActive, finishGeneration,

@@ -3,7 +3,8 @@ import { saveInteractiveBackup } from './storage.js';
 
 export const uid = prefix => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 export const now = () => Date.now();
-const cloneStore = store => normalizeInteractiveStore(JSON.parse(JSON.stringify(store)));
+// normalizeInteractiveStore 逐层新建对象，结果与入参不共享任何引用，本身就是深拷贝；不必先 JSON 往返整库。
+const cloneStore = store => normalizeInteractiveStore(store);
 const canonicalIdentityName = value => String(value ?? '').trim().slice(0, 80).toLocaleLowerCase();
 
 export function parseCommunityPostInput(rawContent, _actors, defaultAuthorSeed, options = {}) {
@@ -81,7 +82,8 @@ export function createInteractiveCommitQueue({ getStore, setStore, saveStore, sy
             }
             let failure = null;
             try {
-                await saveStore(normalizeInteractiveStore(getStore()));
+                // 归一化结果是新对象、之后无人再改，保存时不必再拷贝一份。
+                await saveStore(normalizeInteractiveStore(getStore()), { owned: true });
                 await syncStore?.();
                 if (isValid && !isValid()) throw cancelled();
                 return result;

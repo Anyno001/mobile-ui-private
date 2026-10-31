@@ -1,7 +1,7 @@
 import { escapeAttr, escapeHtml } from '../ui.js';
 import { imageCardMarkup } from '../messaging.js';
 import {
-    entryAttr, isOpenPost, noteIndexOf, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu,
+    entryAttr, isOpenPost, noteIndexOf, pageFeed, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu,
     renderReplyComposer, renderRetryRespond, renderStaleMark, stablePostMetric,
 } from './view-shared.js';
 
@@ -51,8 +51,9 @@ export function renderConfessFeed(scene, view) {
     const moods = collectMoods(scene.posts);
     const mood = confessMoodOf(view, moods);
     const posts = scene.posts.slice().reverse().filter(post => !mood || post.mood === mood);
+    const { shown, more } = pageFeed(posts, view);
     const body = posts.length
-        ? `<div class="pm-scene-notes">${posts.map(post => renderNote(post, view)).join('')}</div>`
+        ? `<div class="pm-scene-notes">${shown.map(post => renderNote(post, view)).join('')}</div>${more}`
         : scene.posts.length ? renderEmptyState('没有这个心情的便签', '换一个心情看看。') : renderEmptyState('树洞还是空的', '写下一句悄悄话，或者拍一拍让树洞热闹起来。');
     return `${scene.posts.length ? renderMoodFilter(moods, mood) : ''}${body}`;
 }

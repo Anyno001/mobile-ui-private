@@ -4,6 +4,9 @@ import { contrastText } from './ui.js';
 import { applyImageGenVisibility } from './phone-image-settings.js';
 
 export function createPhoneThemeController(state) {
+    // 主题变量是继承属性：同值重写也会让整部手机重算样式。每个元素记住上次写入的签名，没变就不碰。
+    const appliedSignatures = new WeakMap();
+    const setAttributeIfChanged = (element, name, value) => { if (element && element.getAttribute?.(name) !== value) element.setAttribute(name, value); };
     function applyTheme() {
         const theme = window.__pmTheme || {};
         const preset = THEME_PRESETS[theme.preset] || THEME_PRESETS.default;
@@ -21,8 +24,12 @@ export function createPhoneThemeController(state) {
         const accent = customAccent || preset.accent || preset.right;
         const accentTones = accentToneTokens(accent, interfaceMode);
         const fontStack = FONT_CHOICES[normalizeFontChoice(theme.fontFamily)].stack;
+        const signature = JSON.stringify([rightBackground, leftBackground, rightText, leftText, theme.borderColor || '', preset.frost ? 1 : 0,
+            accent, accentTones, uiTokens, plainWallpaper, auxiliary, fontStack || '', interfaceMode]);
         const applyProperties = element => {
             if (!element) return;
+            if (appliedSignatures.get(element) === signature && element.getAttribute?.('data-theme') === interfaceMode) return;
+            appliedSignatures.set(element, signature);
             element.style.setProperty('--pm-r-bg', rightBackground); element.style.setProperty('--pm-l-bg', leftBackground);
             element.style.setProperty('--pm-r-txt', rightText); element.style.setProperty('--pm-l-txt', leftText);
             element.style.setProperty('--pm-border', theme.borderColor || '#1a1a1a');
@@ -43,11 +50,12 @@ export function createPhoneThemeController(state) {
         applyProperties(document.getElementById('pm-overlay-sub'));
         applyProperties(document.getElementById('pm-model-dropdown'));
         applyProperties(state.phoneWindow);
-        state.phoneWindow?.setAttribute('data-icon-style', theme.iconStyle === 'cream' ? 'cream' : 'glass');
-        state.phoneWindow?.setAttribute('data-wallpaper', normalizeWallpaper(theme.wallpaper));
+        setAttributeIfChanged(state.phoneWindow, 'data-icon-style', theme.iconStyle === 'cream' ? 'cream' : 'glass');
+        setAttributeIfChanged(state.phoneWindow, 'data-wallpaper', normalizeWallpaper(theme.wallpaper));
         applyImageGenVisibility();
         const title = state.phoneWindow?.querySelector('.pm-desktop-toolbar span');
-        if (title) title.textContent = String(theme.customTitle || '').trim() || '天音小笺';
+        const titleText = String(theme.customTitle || '').trim() || '天音小笺';
+        if (title && title.textContent !== titleText) title.textContent = titleText;
     }
     return { applyTheme };
 }

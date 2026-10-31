@@ -1,4 +1,5 @@
 // 相册 App：生成过的图片、角色形象（DNA）和生图设置。
+import { keepScroll } from './scroll-keeper.js';
 import { DNA_FRAMES } from './phone-image-describe.js';
 import { USER_DNA_KEY } from './phone-image-dna.js';
 import { imageUrl } from './phone-image-store.js';
@@ -8,6 +9,7 @@ import { BACK_ICON_SVG, CLOSE_ICON_SVG, SETTINGS_ICON_SVG, USER_ICON_SVG } from 
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const PAGE_SIZE = 60;
+const GALLERY_SCROLLERS = ['.pm-gallery-scroll'];
 const FILTERS = Object.freeze({ all: '全部', chat: '聊天', community: '社区', video: '视频', favorite: '收藏' });
 
 export function installPhoneGallery(state, deps) {
@@ -37,20 +39,28 @@ export function installPhoneGallery(state, deps) {
             && (filter === 'all' || (filter === 'favorite' ? record.favorite : record.source.type === filter)));
     }
 
+    // 同一页面（同视图、同筛选）重绘时保持滚动位置：「加载更多」、收藏、切换范围后不回到顶部。
+    let renderedKey = null;
+    function writePage(html) {
+        const key = `${view}|${filter}|${scopeAll}`;
+        keepScroll(page, GALLERY_SCROLLERS, key === renderedKey, () => { page.innerHTML = html; });
+        renderedKey = key;
+    }
+
     async function renderGrid(serial) {
         const records = await visibleRecords();
         if (serial !== renderSerial) return;
         const tabs = Object.entries(FILTERS).map(([key, label]) => `<button type="button" role="tab" class="pm-gallery-tab" data-gallery-action="filter" data-filter="${key}" aria-selected="${key === filter}">${label}</button>`).join('');
         const tiles = records.slice(0, limit).map(record => `<button type="button" class="pm-gallery-tile" data-gallery-action="view" data-image-id="${escapeAttr(record.id)}" aria-label="${escapeAttr(record.description || '图片')}"><img data-thumb-id="${escapeAttr(record.id)}" alt="" decoding="async"${record.width && record.height ? ` width="${record.width}" height="${record.height}"` : ''}>${record.favorite ? '<span class="pm-gallery-tile-mark" aria-label="已收藏"></span>' : ''}</button>`).join('');
         const empty = `<p class="pm-gallery-empty">${filter === 'favorite' ? '暂无收藏的图片。' : '暂无图片。可在聊天或社区的图片上点击「生成图片」，或使用快捷工具中的「拍一张」。'}</p>`;
-        page.innerHTML = `<div class="pm-gallery-shell">
+        writePage(`<div class="pm-gallery-shell">
   ${header('相册', { trailing: `<button type="button" class="pm-gallery-icon-button" data-gallery-action="settings" aria-label="生图设置" title="生图设置">${SETTINGS_ICON_SVG}</button>` })}
   <div class="pm-gallery-toolbar"><div class="pm-gallery-tabs" role="tablist" aria-label="筛选">${tabs}</div><button type="button" class="pm-gallery-scope" data-gallery-action="scope" aria-pressed="${scopeAll}">${scopeAll ? '所有聊天' : '当前聊天'}</button></div>
   <button type="button" class="pm-gallery-people-entry" data-gallery-action="people">${USER_ICON_SVG}<span>角色形象</span><small>保持长相一致</small></button>
   ${notice ? `<p class="pm-gallery-notice" role="status">${escapeHtml(notice)}</p>` : ''}
   <div class="pm-gallery-scroll">${records.length ? `<div class="pm-gallery-grid">${tiles}</div>` : empty}
   ${records.length > limit ? '<button type="button" class="pm-action-button is-full" data-gallery-action="more">加载更多</button>' : ''}</div>
-</div>`;
+</div>`);
         loadThumbnails(records.slice(0, limit), serial);
     }
 
@@ -84,18 +94,18 @@ export function installPhoneGallery(state, deps) {
             rows.push(`<li class="pm-gallery-person"><div class="pm-gallery-person-text"><b>${escapeHtml(label)}</b><small>${source}</small></div><button type="button" class="pm-gallery-chip" data-gallery-action="edit-dna" data-name="${escapeAttr(name)}">${resolved.dna ? '查看' : '建立'}</button></li>`);
         }
         if (serial !== renderSerial) return;
-        page.innerHTML = `<div class="pm-gallery-shell">
+        writePage(`<div class="pm-gallery-shell">
   ${header('角色形象', { back: 'grid' })}
   <div class="pm-gallery-scroll">
     <p class="pm-gallery-intro">出图时将以下外貌交给数据库生图，使同一角色长相一致。尚未建立的角色在首次出图时由手机API生成，也可在此手动填写。</p>
     ${notice ? `<p class="pm-gallery-notice" role="status">${escapeHtml(notice)}</p>` : ''}
     <ul class="pm-gallery-people">${rows.join('')}</ul>
   </div>
-</div>`;
+</div>`);
     }
 
     function renderSettings() {
-        page.innerHTML = renderImageSettingsPage(header);
+        writePage(renderImageSettingsPage(header));
     }
 
     function render() {

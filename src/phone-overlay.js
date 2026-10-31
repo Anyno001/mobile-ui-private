@@ -1,4 +1,7 @@
 import { POPOVER_SUPPORTED } from './constants.js';
+import { captureScroll, restoreScroll } from './scroll-keeper.js';
+
+const OVERLAY_SCROLLERS = ['.pm-modal-scroll'];
 
 export function createPhoneOverlayController({ runtime, applyTheme }) {
     function closeOverlay(reason = 'close') {
@@ -21,6 +24,9 @@ export function createPhoneOverlayController({ runtime, applyTheme }) {
         const opener = options.opener || runtime.overlayOpener || previous?.__pmOpener
             || (active && active !== document.body ? active : null);
         runtime.overlayOpener = null;
+        // 设置页的开关多是整个弹窗重建：同一页（标题相同）重建时保留滚动位置，换页才回到顶部。
+        const previousTitle = previous?.querySelector?.('.pm-modal-header b')?.textContent ?? null;
+        const previousScroll = previousTitle !== null ? captureScroll(previous, OVERLAY_SCROLLERS) : null;
         closeOverlay('replace');
         const overlay = document.createElement('div');
         overlay.id = 'pm-overlay';
@@ -33,6 +39,9 @@ export function createPhoneOverlayController({ runtime, applyTheme }) {
         document.body.appendChild(overlay);
         applyTheme();
         if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}
+        if (previousScroll && overlay.querySelector?.('.pm-modal-header b')?.textContent === previousTitle) {
+            restoreScroll(overlay, OVERLAY_SCROLLERS, previousScroll);
+        }
         return overlay;
     }
 

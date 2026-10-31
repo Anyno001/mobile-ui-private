@@ -12,8 +12,14 @@ export function createPhoneAppearance(state, deps) {
         const msgList = phone?.querySelector('.pm-msg-list'); if (!msgList || !phone) return;
         const request = ++backgroundRequest;
         const desktopBg = window.__pmDesktopBg || '';
-        if (desktopBg) phone.style.setProperty('--pm-desktop-bg-image', `url("${cssUrlEscape(desktopBg)}")`);
-        else phone.style.removeProperty('--pm-desktop-bg-image');
+        // 每次切会话都会调用；背景值是长 data URL，同值重写也会让整部手机重算样式，所以只在变化时写。
+        const desktopValue = desktopBg ? `url("${cssUrlEscape(desktopBg)}")` : '';
+        if (phone.style.getPropertyValue?.('--pm-desktop-bg-image') !== desktopValue) {
+            if (desktopValue) phone.style.setProperty('--pm-desktop-bg-image', desktopValue);
+            else phone.style.removeProperty('--pm-desktop-bg-image');
+        }
+        // 桌面图标的毛玻璃只在有背景图时才看得出，纯渐变底上关掉省 GPU（见 community.css）。
+        if (phone.hasAttribute?.('data-desktop-image') !== !!desktopBg) phone.toggleAttribute?.('data-desktop-image', !!desktopBg);
         const id = getStorageId(), localKey = `${id}_${state.currentPersona}`;
         let localBg = '';
         try {
@@ -24,8 +30,10 @@ export function createPhoneAppearance(state, deps) {
         if (request !== backgroundRequest || state.phoneWindow !== phone
             || `${getStorageId()}_${state.currentPersona}` !== localKey) return;
         const bg = localBg || window.__pmBgGlobal || '';
+        const listValue = bg ? `url("${cssUrlEscape(bg)}")` : '';
+        if (msgList.style.getPropertyValue?.('background-image') === listValue) return;
         if (bg) {
-            msgList.style.setProperty('background-image', `url("${cssUrlEscape(bg)}")`, 'important');
+            msgList.style.setProperty('background-image', listValue, 'important');
             msgList.style.setProperty('background-size', 'cover', 'important');
             msgList.style.setProperty('background-position', 'center', 'important');
         } else {

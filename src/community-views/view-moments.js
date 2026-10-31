@@ -2,7 +2,7 @@ import { CAMERA_ICON_SVG, EDIT_ICON_SVG, HEART_ICON_SVG, LOCATION_ICON_SVG, MORE
 import { imageCardMarkup } from '../messaging.js';
 import { escapeAttr, escapeHtml } from '../ui.js';
 import {
-    entryAttr, newestFirst, noteIndexOf, renderCommentActions, renderEmptyState, renderPostTime, renderReplyComposer, renderRetryRespond, renderStaleMark,
+    entryAttr, newestFirst, noteIndexOf, pageFeed, renderCommentActions, renderEmptyState, renderPostTime, renderReplyComposer, renderRetryRespond, renderStaleMark,
 } from './view-shared.js';
 
 // 盆友圈（原型朋友圈）：封面横幅压着「我」的头像和名字，相机钮发表；每条动态右下「··」弹出赞与评论；
@@ -52,6 +52,7 @@ function renderMoment(post, view, now) {
 
 export function renderMomentsFeed(scene, view, now, { authorName = '' } = {}) {
     const posts = newestFirst(scene.posts);
-    const body = posts.length ? posts.map(post => renderMoment(post, view, now)).join('') : renderEmptyState('还没有动态', '点封面上的相机发表第一条，或者拍一拍让朋友圈动起来。');
+    const { shown, more } = pageFeed(posts, view);
+    const body = posts.length ? shown.map(post => renderMoment(post, view, now)).join('') + more : renderEmptyState('还没有动态', '点封面上的相机发表第一条，或者拍一拍让朋友圈动起来。');
     return `${renderCover(scene, authorName)}<div class="pm-scene-moments-list">${body}</div>`;
 }

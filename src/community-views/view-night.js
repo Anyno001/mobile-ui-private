@@ -1,6 +1,6 @@
 import { escapeAttr, escapeHtml } from '../ui.js';
 import {
-    clockLabel, entryAttr, isOpenPost, nightClock, renderAvatar, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu,
+    clockLabel, entryAttr, isOpenPost, nightClock, pageFeed, renderAvatar, renderCommentActions, renderEmptyState, renderLikeButton, renderPostMenu,
     renderReplyComposer, renderRetryRespond, stablePostMetric,
 } from './view-shared.js';
 
@@ -31,5 +31,6 @@ function renderLetter(post, view) {
 
 export function renderNightFeed(scene, view) {
     const letters = scene.posts.slice().reverse();
-    return `${renderMailbox(scene)}${letters.length ? letters.map(post => renderLetter(post, view)).join('') : renderEmptyState('信箱里还没有信', '写一封信，或者拍一拍收一批深夜来信。')}`;
+    const { shown, more } = pageFeed(letters, view);
+    return `${renderMailbox(scene)}${letters.length ? shown.map(post => renderLetter(post, view)).join('') + more : renderEmptyState('信箱里还没有信', '写一封信，或者拍一拍收一批深夜来信。')}`;
 }
