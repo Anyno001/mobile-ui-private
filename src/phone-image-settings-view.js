@@ -8,7 +8,7 @@ import {
 import { CLOSE_ICON_SVG } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
-const TRANSPORT_LABELS = Object.freeze({ auto: '自动', 'st-proxy': '酒馆代理', direct: '浏览器直连' });
+const TRANSPORT_LABELS = Object.freeze({ auto: '自动', 'st-proxy': '酒馆 CORS 代理', direct: '浏览器直连' });
 
 const profileSummary = profile => [IMAGE_SOURCE_LABELS[profile.source], IMAGE_RATIO_LABELS[profile.ratio],
     profile.source === 'nai' ? profile.nai.model : profile.model || '插件默认模型'].join(' · ');
@@ -34,6 +34,9 @@ export function renderImageSettingsPage(header) {
     <p class="pm-gallery-plugin ${sourceOk ? 'is-ok' : 'is-missing'}" role="status">${escapeHtml(sourceStatus)}</p>
     <section class="pm-gallery-section"><b class="pm-gallery-section-title">出图来源（全局方案）</b>
       <div class="pm-gallery-tabs" role="radiogroup" aria-label="全局出图来源">${Object.entries(IMAGE_SOURCE_LABELS).map(([key, label]) => `<button type="button" role="radio" class="pm-gallery-tab" data-gallery-action="global-source" data-source="${key}" aria-checked="${settings.global.source === key}">${label}</button>`).join('')}</div>
+      ${settings.global.source === 'nai' ? `<b class="pm-gallery-section-title">请求方式</b>
+      <div class="pm-gallery-tabs" role="radiogroup" aria-label="内置 NAI 请求方式">${NAI_TRANSPORTS.map(key => `<button type="button" role="radio" class="pm-gallery-tab" data-gallery-action="global-transport" data-transport="${key}" aria-checked="${settings.global.nai.transport === key}">${TRANSPORT_LABELS[key]}</button>`).join('')}</div>
+      <small class="pm-gallery-hint">酒馆 CORS 代理需在酒馆 config.yaml 设置 enableCorsProxy: true；自动会先探测代理是否可用</small>` : '<small class="pm-gallery-hint">数据库生图插件的请求由插件自己发送；改用内置 NAI 后可选 CORS 代理</small>'}
       <small class="pm-gallery-hint">接口地址、Key、画师串在下方「生图方案 → 全局方案」里填写</small></section>
     <section class="pm-gallery-section">
       ${toggle('enabled', '启用生图', '关闭后，图片消息与配图仅显示文字描述')}
@@ -75,7 +78,7 @@ export function openProfileEditor(profileId, { makeOverlay, closeOverlay, onSave
     <div class="pm-gallery-subform" data-profile-for="nai"${profile.source === 'nai' ? '' : ' hidden'}>
       ${field('接口地址（留空用 NAI 官网）', `<input class="pm-gallery-input" data-profile-field="nai.endpoint" maxlength="500" spellcheck="false" inputmode="url" placeholder="https://image.novelai.net" value="${escapeAttr(nai.endpoint)}">`)}
       ${field('Key', `<input class="pm-gallery-input" type="password" autocomplete="off" data-profile-field="nai.apiKey" maxlength="500" spellcheck="false" value="${escapeAttr(nai.apiKey)}">`)}
-      ${field('传输方式', `<select class="pm-gallery-input" data-profile-field="nai.transport">${options(NAI_TRANSPORTS, nai.transport, TRANSPORT_LABELS)}</select>`)}
+      ${field('请求方式', `<select class="pm-gallery-input" data-profile-field="nai.transport">${options(NAI_TRANSPORTS, nai.transport, TRANSPORT_LABELS)}</select>`)}
       ${field('模型', `<select class="pm-gallery-input" data-profile-field="nai.model">${options(models, nai.model)}</select>`)}
       <div class="pm-gallery-field-row">
         ${field('步数', `<input class="pm-gallery-input" type="number" min="1" max="50" step="1" data-profile-field="nai.steps" value="${nai.steps}">`)}

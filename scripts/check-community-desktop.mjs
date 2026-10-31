@@ -62,11 +62,14 @@ check('平台默认点缀色、评论时间参与最近更新、没有帖子写�
 check('时间戳不可用但有帖子时写「已有内容」', () => {
     assert.match(render({ a: scene('a', '旧档', { posts: [{ id: 'p', createdAt: 1, comments: [] }] }) }, ['a']), /已有内容/);
 });
-check('最多 3 行，其余折成「还有 N 个」并进社区列表', () => {
+check('默认 3 行，其余折成「还有 N 个」，点开在桌面展开全部', () => {
     const scenes = Object.fromEntries(['a', 'b', 'c', 'd', 'e'].map(id => [id, scene(id, `社区${id}`)]));
     const html = render(scenes, ['a', 'b', 'c', 'd', 'e']);
     assert.equal((html.match(/data-action="unpin-scene"/g) || []).length, 3);
-    assert.match(html, /<button type="button" class="pm-desktop-pin-more" data-action="desktop-community">还有 2 个<\/button>/);
+    assert.match(html, /<button type="button" class="pm-desktop-pin-more" data-action="desktop-toggle-pins" aria-expanded="false">还有 2 个<\/button>/);
+    const expanded = renderPhoneDesktop({ scenes: Object.fromEntries(['a', 'b', 'c', 'd', 'e'].map(id => [id, scene(id, `社区${id}`)])) }, { pinnedSceneIds: ['a', 'b', 'c', 'd', 'e'] }, [], { now: NOW, pinsExpanded: true });
+    assert.equal((expanded.match(/data-action="desktop-open-scene"/g) || []).length, 5, '展开后列出全部固定社区');
+    assert.match(expanded, /data-action="desktop-toggle-pins" aria-expanded="true">收起<\/button>/);
     assert.doesNotMatch(html, /社区d|社区e/);
     const three = render(Object.fromEntries(['a', 'b', 'c'].map(id => [id, scene(id, `社区${id}`)])), ['a', 'b', 'c']);
     assert.doesNotMatch(three, /pm-desktop-pin-more|还有/);

@@ -133,7 +133,7 @@ export function installInteractiveScenes(_state, deps) {
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
         const uiScope = validScope ? communityUiScope(scopeId, store)
             : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
-        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedTemplatesFor(scopeId, store)));
+        return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedTemplatesFor(scopeId, store), { pinsExpanded: runtime.desktopPinsExpanded === true }));
     }
     const showPhoneDesktopPage = () => { const scopeId = getStorageId(), phoneWindow = _state.phoneWindow; return runDesktopPageTransition({
         scopeId,
@@ -451,6 +451,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-gallery' || action === 'desktop-shop') { await (action === 'desktop-shop' ? window.__pmOpenShopApp?.() : deps.showPhoneGalleryPage?.()); return; }
         if (action === 'desktop-live') { await window.__pmOpenLiveApp?.(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
+        if (action === 'desktop-toggle-pins') { runtime.desktopPinsExpanded = runtime.desktopPinsExpanded !== true; refreshDesktop(); return; }
         if (action === 'desktop-exit' || action === 'exit') { await window.__pmEnd?.(); return; }
         if (await handleCommunityInjectionUiAction(action, {
             app, button, getCurrent: current,

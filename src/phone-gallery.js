@@ -208,6 +208,11 @@ export function installPhoneGallery(state, deps) {
             }
             return render();
         }
+        if (action === 'global-transport') {
+            const settings = loadImageSettings();
+            saveImageSettings({ ...settings, global: { ...settings.global, nai: { ...settings.global.nai, transport: button.dataset.transport } } });
+            return render();
+        }
         if (action === 'module-profile') {
             const settings = loadImageSettings();
             saveImageSettings({ ...settings, modules: { ...settings.modules, [button.dataset.module]: button.dataset.profile } });

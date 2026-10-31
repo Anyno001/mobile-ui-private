@@ -46,7 +46,7 @@ const accentStyleOf = scene => (scene?.themeAccent ? ` style="--pm-community-acc
 // 界面显示名取自 app-names.js 的谐音名；给 AI 的提示词里仍写真名（prompts/interactive/*）。
 const platformLabel = platform => appNameOf(platform);
 
-// 桌面小组件最多列出的固定社区数，超出的折成「还有 N 个」。
+// 桌面小组件默认列出的固定社区数，超出的折成「还有 N 个」，点开后在桌面上展开全部。
 const DESKTOP_PIN_LIMIT = 3;
 
 // 社区最近一条内容的时间：帖子和评论里最大的有效时间戳，没有则为 0。
@@ -76,12 +76,14 @@ function renderDesktopTemplateRow(template) {
 }
 
 // 桌面小组件：固定社区（最多 3 行）与可导入的共享模板各成一组；两组都为空时整张卡不渲染。
-function renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now) {
+function renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now, pinsExpanded = false) {
     const pinned = (uiScope.pinnedSceneIds || []).map(sceneId => scope.scenes?.[sceneId]).filter(Boolean);
     const templates = Array.isArray(sharedCommunityTemplates) ? sharedCommunityTemplates : [];
     if (!pinned.length && !templates.length) return '';
     const hiddenCount = pinned.length - DESKTOP_PIN_LIMIT;
-    const pinGroup = pinned.length ? `<div class="pm-desktop-pin-group"><h3>固定社区</h3>${pinned.slice(0, DESKTOP_PIN_LIMIT).map(scene => renderDesktopPinRow(scene, now)).join('')}${hiddenCount > 0 ? `<button type="button" class="pm-desktop-pin-more" data-action="desktop-community">还有 ${hiddenCount} 个</button>` : ''}</div>` : '';
+    const shown = pinsExpanded ? pinned : pinned.slice(0, DESKTOP_PIN_LIMIT);
+    const toggle = hiddenCount > 0 ? `<button type="button" class="pm-desktop-pin-more" data-action="desktop-toggle-pins" aria-expanded="${pinsExpanded}">${pinsExpanded ? '收起' : `还有 ${hiddenCount} 个`}</button>` : '';
+    const pinGroup = pinned.length ? `<div class="pm-desktop-pin-group"><h3>固定社区</h3>${shown.map(scene => renderDesktopPinRow(scene, now)).join('')}${toggle}</div>` : '';
     const templateGroup = templates.length ? `<div class="pm-desktop-pin-group"><h3>可导入的模板</h3>${templates.map(renderDesktopTemplateRow).join('')}</div>` : '';
     return `<section class="pm-desktop-pins">${pinGroup}${templateGroup}</section>`;
 }
@@ -107,12 +109,12 @@ function renderDesktopApp(appId) {
     return `<button type="button" class="pm-desktop-app" data-app="${DATA_APP_OF[appId]}" data-action="${meta.action}" aria-label="${label}" title="${label}"><span class="pm-desktop-app-icon">${resolveDesktopAppIcon(appId, meta.icon)}</span><span class="pm-desktop-app-label">${escapeHtml(meta.label)}</span></button>`;
 }
 
-export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedCommunityTemplates = [], { now = Date.now() } = {}) {
+export function renderPhoneDesktop(scope = { scenes: {} }, uiScope = { pinnedSceneIds: [] }, sharedCommunityTemplates = [], { now = Date.now(), pinsExpanded = false } = {}) {
     const title = String(globalThis.window?.__pmTheme?.customTitle || '').trim() || DEFAULT_DESKTOP_TITLE;
     return `<div class="pm-desktop-toolbar"><span>${escapeHtml(title)}</span><button type="button" data-action="desktop-exit" aria-label="退出手机" title="退出手机">${CLOSE_ICON_SVG}</button></div>
         <div class="pm-desktop-grid" aria-label="应用">${visibleDesktopApps().map(renderDesktopApp).join('')}
         </div>
-        ${renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now)}`;
+        ${renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now, pinsExpanded)}`;
 }
 
 function renderPlatformCards(selected) {

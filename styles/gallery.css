@@ -79,7 +79,7 @@
 .pm-gallery-plugin.is-ok::before{background:var(--pm-color-success);}
 .pm-gallery-section{display:flex;flex-direction:column;gap:var(--pm-space-2);padding:var(--pm-space-3);border-radius:var(--pm-radius-card);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);}
 .pm-gallery-section-title{font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);}
-.pm-gallery-section .pm-gallery-tabs{align-self:flex-start;background:var(--pm-color-bg-plain);}
+.pm-gallery-section .pm-gallery-tabs{align-self:flex-start;padding:var(--pm-space-0);background:transparent;box-shadow:none;}
 /* 方案编辑窗里的分段控件直接放在弹窗底色上，白底不加投影。 */
 .pm-gallery-dna .pm-gallery-tabs{box-shadow:none;}
 .pm-gallery-toggle-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--pm-space-2);width:100%;padding:var(--pm-space-0);border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;}
@@ -95,9 +95,10 @@
 .pm-gallery-subform{display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-gallery-subform[hidden]{display:none;}
 .pm-gallery-field-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-2);}
-.pm-gallery-module-row{display:flex;flex-direction:column;gap:var(--pm-space-1);}
+.pm-gallery-module-row{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-3);min-height:var(--pm-size-control);}
+.pm-gallery-module-row .pm-gallery-tabs{align-self:center;justify-content:flex-end;}
 .pm-gallery-module-row b{font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-medium);color:var(--pm-color-label-2);}
 .pm-gallery-tabs.is-wrap{flex-wrap:wrap;border-radius:var(--pm-radius-panel);}
-.pm-gallery-people.is-plain{padding:var(--pm-space-0);background:transparent;}
+.pm-gallery-people.is-plain{padding:var(--pm-space-0);border-radius:var(--pm-radius-none);background:transparent;box-shadow:none;}
 /* 生图总开关关闭：隐藏出图入口（生成/重试、拍一张、桌面相册），已生成的图照常显示。 */
 :is(#pm-iphone,#pm-overlay,#pm-overlay-sub)[data-image-gen="off"] :is([data-image-action="generate"],[data-action="photo-shot"],.pm-desktop-app[data-app="gallery"]){display:none!important;}

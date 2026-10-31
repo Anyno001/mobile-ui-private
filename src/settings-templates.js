@@ -22,6 +22,7 @@ export function renderSettingsHome() {
           aria-checked="${window.__pmWordyLimit === true}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
+      <div class="pm-settings-home-group" role="group" aria-label="生图">
       <div class="pm-global-setting" role="group" aria-labelledby="pm-image-gen-label">
         <span><b id="pm-image-gen-label">启用生图</b><span class="pm-settings-home-hint">关闭后隐藏所有生图按钮与相册，图片只显示文字描述</span></span>
         <div id="pm-image-gen-check" onclick="window.__pmToggleImageGen()"
@@ -29,7 +30,8 @@ export function renderSettingsHome() {
           aria-checked="${loadImageSettings().enabled}"
           onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}"></div>
       </div>
-      <button type="button" class="pm-settings-subpage-button" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><small>数据库生图插件或内置 NAI、接口地址、画师串</small></span><span aria-hidden="true">›</span></button>
+      <button type="button" class="pm-settings-home-link" onclick="window.__pmOpenImageSettings()"><span><b>出图来源与生图方案</b><span class="pm-settings-home-hint">数据库生图插件或内置 NAI、CORS 代理、画师串</span></span><span aria-hidden="true">›</span></button>
+      </div>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-gal-bubble-label">
         <span><b id="pm-gal-bubble-label">GAL 气泡正则</b><span class="pm-settings-home-hint">写入酒馆全局正则，并要求手机回复使用 GAL 台词格式</span></span>
         <div id="pm-gal-bubble-check" onclick="window.__pmToggleGalBubble()"

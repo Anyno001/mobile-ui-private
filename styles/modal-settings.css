@@ -43,6 +43,12 @@
 .pm-global-setting>span{display:flex;flex-direction:column;gap:var(--pm-space-1);min-width:0;}
 .pm-global-setting b{font-size:var(--pm-font-size-body);}
 .pm-settings-home-hint{font-size:var(--pm-font-size-helper);line-height:var(--pm-line-height-body);color:var(--pm-color-label-3);}
+/* 设置首页的成组卡片：启用生图与出图来源同卡，内部行不再各自带底色和投影。 */
+.pm-settings-home-group{display:flex;flex-direction:column;border-radius:var(--pm-radius-card);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);}
+.pm-settings-home-group .pm-global-setting{border-radius:var(--pm-radius-none);background:transparent;box-shadow:none;}
+.pm-settings-home .pm-settings-home-group .pm-settings-home-link{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:var(--pm-space-3);min-height:var(--pm-size-control-default);border-radius:var(--pm-radius-none);background:transparent;box-shadow:none;color:var(--pm-color-label);}
+.pm-settings-home-link>span:first-child{display:flex;min-width:0;flex-direction:column;gap:var(--pm-space-1);}
+.pm-settings-home-link>span:last-child{color:var(--pm-color-label-3);}
 .pm-settings-home{padding:var(--pm-space-3) var(--pm-space-4) var(--pm-space-4);display:grid;gap:var(--pm-space-2);}
 :is(.pm-settings-modal,.pm-conversation-injection-modal),:is(.pm-settings-modal,.pm-conversation-injection-modal)>.pm-modal-header,:is(.pm-settings-modal,.pm-conversation-injection-modal)>.pm-modal-add{background:var(--pm-color-bg-grouped)!important;}
 /* 设置子页分组卡片 */
