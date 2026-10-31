@@ -7,7 +7,7 @@
     const BRANCH = 'main';
     const SHA_TTL = 10 * 60 * 1000;
     const CACHE_KEY = 'tianyin-loader';
-    const LOADER_VERSION = '1.0.0';
+    const LOADER_VERSION = '1.0.1';
     // 与 src/main.js 的启动标记一致：扩展版已启动时不再注入第二份。
     const BOOT_KEY = Symbol.for('tianyin-xiaojian.boot');
 
@@ -89,15 +89,31 @@
         doc.head.appendChild(link);
     }
 
+    // 别的脚本可能把酒馆页面的全局 URL 换掉，依次找一个还能生成 blob 地址的。
+    function blobUrlApi() {
+        return [host.URL, window.URL, host.webkitURL, window.webkitURL]
+            .find(api => api && typeof api.createObjectURL === 'function' && typeof api.revokeObjectURL === 'function') || null;
+    }
+
     // 与扩展一样以 module 方式在酒馆页面执行，而不是在酒馆助手的 iframe 里。
     function run(code, url) {
-        const src = host.URL.createObjectURL(new host.Blob([`${code}\n//# sourceURL=${url}`], { type: 'text/javascript' }));
+        const source = `${code}\n//# sourceURL=${url}`;
+        const script = doc.createElement('script');
+        script.type = 'module';
+        const urlApi = blobUrlApi();
+        const BlobCtor = typeof host.Blob === 'function' ? host.Blob : window.Blob;
+        if (!urlApi || typeof BlobCtor !== 'function') {
+            // 没有可用的 blob 地址时直接内联执行；内联脚本没有 load 事件，插入即视为已启动。
+            status.attempts.push('blob 地址不可用，改为内联执行');
+            script.textContent = source;
+            doc.head.appendChild(script);
+            return Promise.resolve();
+        }
+        const src = urlApi.createObjectURL(new BlobCtor([source], { type: 'text/javascript' }));
         return new Promise((resolve, reject) => {
-            const script = doc.createElement('script');
-            script.type = 'module';
             script.src = src;
-            script.onload = () => { host.URL.revokeObjectURL(src); resolve(); };
-            script.onerror = () => { host.URL.revokeObjectURL(src); reject(new Error('程序执行失败')); };
+            script.onload = () => { urlApi.revokeObjectURL(src); resolve(); };
+            script.onerror = () => { urlApi.revokeObjectURL(src); reject(new Error('程序执行失败')); };
             doc.head.appendChild(script);
         });
     }
@@ -119,7 +135,7 @@
         ];
         const errors = [];
         for (const source of sources) {
-            const name = new URL(source.js).host;
+            const name = (source.js.match(/^https?:\/\/([^/]+)/) || [])[1] || source.js;
             let code;
             try {
                 code = await fetchBundle(source.js);
