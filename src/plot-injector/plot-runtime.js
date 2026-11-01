@@ -1,4 +1,4 @@
-// 参照 PlotInjector v0.1.15 src/app/runtime.js。与独立版的差别：
+// 参照 PlotInjector v0.1.18 src/app/runtime.js。与独立版的差别：
 // 1. 模型请求、文件、通知、世界书都经宿主层（plot-host.js），走天音的 callAI 与 API 按模块分配；
 // 2. 同一页面有独立版剧情注入器时（host.standalone()），所有事件处理直接返回，由独立版注入和检测，避免一轮注入两次；
 // 3. 天音自己的后台请求期间（host.isBackground()）不注入，与金手指一致。
@@ -7,6 +7,8 @@ import { buildEntries, buildIndexText, carriedNodes, toWorldInfoEntry } from './
 import { parseOutlineReply, rewriteRestMessages } from './core/prompts.js';
 import { flattenUnits, replaceRest, stageLabel, stageNodes, volumeLabel } from './core/outline.js';
 import { advance, currentIndex, emptyProgress, goTo, isMuted, mute, uncheckByNames, unitStates } from './core/progress.js';
+import { emptyInfinite } from './core/infinite-flow.js';
+import { createInfiniteRuntime, isInfiniteProject } from './plot-infinite-runtime.js';
 import { createProgressStore } from './plot-progress-store.js';
 
 export const VIRTUAL_WORLD = '剧情注入器';
@@ -44,6 +46,7 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
     }
 
     const yielded = () => Boolean(host.standalone());
+    const infinite = createInfiniteRuntime({ host, notice, emit, log, toast, yielded, activeProject, currentProgress, setProgress });
 
     // 聊天自己记的项目优先，没有（或项目已删）再用本卡默认。
     function chatBoundId() {
@@ -67,8 +70,15 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
             progress = store.readProgress(id);
             progressFor = id;
         }
+        const project = data.project(id);
+        if (project && project.mode === 'infinite' && !progress.infinite) {
+            progress = { ...progress, infinite: emptyInfinite() };
+            store.writeProgress(progress);
+        }
         return progress;
     }
+
+    const isInfinite = isInfiniteProject;
 
     function units() {
         const project = activeProject();
@@ -102,8 +112,11 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
         return Boolean(eventTypes().WORLDINFO_ENTRIES_LOADED);
     }
 
-    function onEntriesLoaded(payload) {
-        if (yielded() || host.isBackground() || !payload || !Array.isArray(payload.chatLore)) return;
+    async function onEntriesLoaded(payload) {
+        if (yielded() || !payload || !Array.isArray(payload.chatLore)) return;
+        // 先等档案再看后台标记：造世界的请求本身在后台计数里，用户此时发下一条，不先等就会跳过注入。
+        if (infinite.isOpening()) await infinite.waitOpening();
+        if (host.isBackground()) return;
         try {
             payload.chatLore.push(...virtualEntries());
         } catch (error) {
@@ -275,6 +288,11 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
             if (manual) toast('info', '独立版剧情注入器正在接管本聊天，请在独立版里检测。');
             return null;
         }
+        if (isInfinite(activeProject())) {
+            log('无限流项目不使用检测模型');
+            if (manual) toast('info', '无限流项目由正文状态块触发，不使用检测。');
+            return null;
+        }
         if (checking) {
             log('跳过检测：上一次检测还没结束');
             return null;
@@ -418,6 +436,10 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
             emit('floor');
             return;
         }
+        if (isInfinite(project)) {
+            infinite.onInfiniteReceived();
+            return;
+        }
         const settings = data.settings();
         const prog = clampBase() || currentProgress();
         const gap = floors - prog.lastCheckFloor;
@@ -432,6 +454,12 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
 
     function onMessageChanged() {
         if (yielded()) { emit('floor'); return; }
+        if (isInfinite(activeProject())) {
+            infinite.refreshRead();
+            infinite.revalidateTrigger();
+            emit('floor');
+            return;
+        }
         if (!clampBase()) return;
         emit('floor');
     }
@@ -439,6 +467,8 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
     async function onChatChanged() {
         progress = null;
         progressFor = '';
+        infinite.abandonOpening();
+        infinite.clearRead();
         pendingCheck = false;
         clearTimeout(pendingTimer);
         pendingTimer = 0;
@@ -458,7 +488,8 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
             }
         }
         log(`切换聊天：${floorCount()} 楼，${id ? `启用项目「${(data.index().projects.find(item => item.id === id) || {}).name || id}」` : '本卡没有启用项目'}`);
-        if (id) clampBase();
+        if (id && !isInfinite(activeProject())) clampBase();
+        infinite.refreshRead();
         scheduleFallback();
         emit('chat');
     }
@@ -467,6 +498,7 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
     // scope='card'：改本卡默认（之后没记过项目的聊天都用它），当前聊天也跟着换。
     async function switchProject(id, scope = 'chat') {
         if (id) await data.loadProject(id);
+        infinite.abandonOpening();
         const bound = store.bindChat(id);
         if (scope === 'card' || !bound || !data.activeIdFor(cardKey())) data.setActive(id);
         progress = null;
@@ -521,6 +553,7 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
 
     function stop() {
         unbind();
+        infinite.abandonOpening();
         clearTimeout(fallbackTimer);
         clearTimeout(pendingTimer);
         fallbackTimer = 0;
@@ -563,6 +596,14 @@ export function createPlotRuntime({ host, data, notice, emit = () => {}, askReas
         recentFloors,
         rewriteRest,
         diagnose,
+        isInfinite: () => isInfinite(activeProject()),
+        infState: infinite.infState,
+        openWorld: infinite.openWorld,
+        isOpening: infinite.isOpening,
+        lastRead: infinite.lastRead,
+        returnToTrain: infinite.returnToTrain,
+        reopenWorld: infinite.reopenWorld,
+        deleteWorld: infinite.deleteWorld,
         note: log,
         resetBase,
         injectMode: () => (hasEntriesEvent() ? 'virtual' : 'book'),

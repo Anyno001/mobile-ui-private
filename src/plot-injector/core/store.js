@@ -1,4 +1,5 @@
 import { DEFAULT_PARAMS, OLD_DEFAULT_PARAMS } from './inject.js';
+import { normalizeInfinite } from './infinite.js';
 import { makeId } from './outline.js';
 import { DEFAULT_MEMO, DEFAULT_WB_RULE, migrateOc, normalizeWbRule } from './refs.js';
 
@@ -98,7 +99,7 @@ export function normalizeIndex(value) {
     };
 }
 
-export function newProject(name, now = Date.now()) {
+export function newProject(name, now = Date.now(), mode = 'normal') {
     return {
         version: 1,
         id: makeId('p'),
@@ -108,6 +109,8 @@ export function newProject(name, now = Date.now()) {
         outline: { volumes: [] },
         defaults: JSON.parse(JSON.stringify(DEFAULT_PARAMS)),
         genRefs: normalizeGenRefs(),
+        mode: mode === 'infinite' ? 'infinite' : 'normal',
+        ...(mode === 'infinite' ? { infinite: normalizeInfinite({}) } : {}),
     };
 }
 
@@ -135,6 +138,8 @@ export function normalizeProject(value, id) {
         },
         defaults: normalizeDefaults(src.defaults),
         genRefs: normalizeGenRefs(src.genRefs),
+        mode: src.mode === 'infinite' ? 'infinite' : 'normal',
+        ...(src.infinite && typeof src.infinite === 'object' ? { infinite: normalizeInfinite(src.infinite) } : {}),
     };
 }
 

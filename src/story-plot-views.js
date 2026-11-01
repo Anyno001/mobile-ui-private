@@ -9,6 +9,8 @@ import { PACES } from './plot-injector/core/inject.js';
 import { NODE_FIELDS, stageLabel, stageNodes, volumeLabel } from './plot-injector/core/outline.js';
 import { STATE_LABELS, offNodes } from './plot-injector/core/progress.js';
 import { splitBlocks } from './plot-injector/core/setting.js';
+import { findWorld, phaseLabels } from './plot-injector/core/infinite.js';
+import { renderInfiniteOutline, renderInfiniteProgress } from './story-plot-infinite-views.js';
 
 // 剧情数据来自 YAML，值可能是数字或布尔：先转字符串再转义。
 const escapeHtml = value => rawEscapeHtml(value == null ? '' : String(value));
@@ -64,6 +66,17 @@ export function renderPlotHomeCard(vm) {
           <p class="pm-plot-card-note">写好设定和大纲后，聊天时会按大纲一段段引导，每几楼自动检测演到了哪里。</p>
           <div class="pm-plot-card-actions">${vm.projectCount ? btn('open-sheet', '选择项目', { cls: 'pm-plot-chip' }) : btn('import-project', '导入备份', { cls: 'pm-plot-chip' })}${btn('new-project', '新建项目', { cls: 'pm-plot-chip is-ink' })}</div></section>`;
     }
+    if (vm.infinite) {
+        const inf = vm.infState && vm.infState.inf;
+        const world = inf && inf.phase === 'world' ? findWorld(inf.worlds, inf.worldId) : null;
+        const labels = phaseLabels(vm.infConfig.config);
+        const place = !inf ? '无限流' : world ? `${labels.world}「${world.title}」` : labels.train;
+        return `<section class="pm-plot-card is-featured">
+      <span class="pm-plot-card-kicker">${BOOK_ICON_SVG}<span>本聊天的剧情</span></span>
+      <button type="button" class="pm-plot-card-title" data-plot-action="open-plot"><b>${escapeHtml(project.name)}</b><span>${escapeHtml(place)}</span></button>
+      <div class="pm-plot-card-meta"><span>${inf ? `世界库 ${inf.worlds.length} 份` : ''}</span><span>${vm.infOpening ? '正在造世界…' : ''}</span></div>
+    </section>`;
+    }
     const unit = activeUnit(vm);
     const main = vm.mainCount;
     const gapText = !vm.units.length ? '大纲为空' : vm.gap > 0 ? `再过 ${vm.gap} 楼检测` : '下一楼检测';
@@ -81,7 +94,9 @@ function plotHeader(vm) {
     const relation = !vm.viewed ? '还没有项目'
         : vm.viewed.id === vm.activeId ? (vm.viewed.id === vm.cardDefaultId ? '当前聊天使用 · 本卡默认也是它' : '当前聊天使用')
             : vm.viewed.id === vm.cardDefaultId ? '本卡默认（当前聊天用的是别的项目）' : '没有用在当前聊天';
-    const items = !vm.viewed ? [] : vm.tab === 'progress' ? [
+    const items = !vm.viewed ? [] : vm.infinite && vm.tab === 'progress' ? [
+        menuItem('preview', SEARCH_ICON_SVG, '预览注入内容'),
+    ] : vm.infinite && vm.tab === 'outline' ? [] : vm.tab === 'progress' ? [
         menuItem('preview', SEARCH_ICON_SVG, '预览注入内容'),
         menuItem('index', ROUTE_ICON_SVG, '剧情索引'),
         menuItem('params', EDIT_ICON_SVG, '注入位置'),
@@ -103,7 +118,7 @@ function projectSwitch(vm) {
 }
 
 function plotTabs(vm) {
-    return `<div class="pm-story-oracle-tabs" role="tablist" aria-label="剧情">${PLOT_TABS.map(([key, label]) => `<button type="button" role="tab" class="pm-story-oracle-tab${vm.tab === key ? ' is-selected' : ''}" data-plot-action="tab" data-plot-tab="${key}" aria-selected="${vm.tab === key}">${label}</button>`).join('')}</div>`;
+    return `<div class="pm-story-oracle-tabs" role="tablist" aria-label="剧情">${PLOT_TABS.map(([key, label]) => [key, vm.infinite && key === 'outline' ? '世界库' : label]).map(([key, label]) => `<button type="button" role="tab" class="pm-story-oracle-tab${vm.tab === key ? ' is-selected' : ''}" data-plot-action="tab" data-plot-tab="${key}" aria-selected="${vm.tab === key}">${label}</button>`).join('')}</div>`;
 }
 
 const takeover = vm => (vm.yielded ? '<section class="pm-plot-notice" role="status"><b>独立版剧情注入器正在运行</b><p>注入和检测由独立版负责，这里看到和改动的是同一份项目。</p></section>' : '');
@@ -151,6 +166,7 @@ function activationCard(vm) {
 
 function progressBody(vm) {
     if (vm.viewed.id !== vm.activeId) return activationCard(vm);
+    if (vm.infinite) return renderInfiniteProgress(vm);
     if (!vm.units.length) return `<p class="pm-story-oracle-empty is-inline">大纲为空。到「大纲」页导入YAML，或让AI写一卷。</p><div class="pm-plot-ops">${btn('tab-outline', '去写大纲', { cls: 'pm-plot-op is-ink' })}</div>`;
     const pace = `<div class="pm-story-oracle-segments" role="group" aria-label="推进速度">${PACES.map(item => `<button type="button" class="pm-story-oracle-segment${vm.progress.pace === item.value ? ' is-selected' : ''}" data-plot-action="pace" data-plot-pace="${item.value}" aria-pressed="${vm.progress.pace === item.value}">${item.label}</button>`).join('')}</div>`;
     const ops = `<div class="pm-plot-ops">${btn('check', vm.checking ? '检测中…' : '立即检测', { enabled: !vm.checking && !vm.yielded })}${btn('rewrite', '改写后续', { enabled: !vm.busy })}${btn('next', '打开下一段', { cls: 'pm-plot-op is-ink', enabled: !vm.yielded })}</div>`;
@@ -215,6 +231,7 @@ function stageMeta(stage) {
 }
 
 function outlineBody(vm) {
+    if (vm.infinite) return renderInfiniteOutline(vm);
     const volumes = vm.viewed.outline.volumes.map((volume, index) => {
         const menu = renderMore(`vol:${volume.id}`, [
             menuItem('vol-rename', EDIT_ICON_SVG, '改卷名', { attrs: `data-plot-vol="${escapeAttr(volume.id)}"` }),

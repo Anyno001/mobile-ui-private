@@ -1,3 +1,5 @@
+import { normalizeInfiniteProgress } from './infinite-flow.js';
+
 // 进度随聊天存在 chat_metadata.plotInjector；这里只做纯计算，所有函数返回新对象，不原地改。
 export const SETTING_SLOT = '@setting';
 export const INDEX_SLOT = '@index';
@@ -11,9 +13,11 @@ export function emptyProgress(projectId) {
 export function normalizeProgress(value, projectId) {
     const base = emptyProgress(projectId);
     if (!value || typeof value !== 'object') return base;
+    const infinite = value.infinite && typeof value.infinite === 'object' ? { infinite: normalizeInfiniteProgress(value.infinite) } : {};
     return {
         ...base,
         ...value,
+        ...infinite,
         slots: value.slots && typeof value.slots === 'object' ? value.slots : {},
         muted: Array.isArray(value.muted) ? value.muted : [],
         offMuted: Array.isArray(value.offMuted) ? value.offMuted : [],

@@ -1,6 +1,7 @@
 // 剧情注入器在天音里的宿主层：酒馆上下文、本地文件、模型请求、通知、世界书。
-// 参照 PlotInjector v0.1.15 src/host/，改成接天音的设施：请求走 callAI + API 按模块分配，不依赖酒馆助手。
+// 参照 PlotInjector v0.1.18 src/host/，改成接天音的设施：请求走 callAI + API 按模块分配，不依赖酒馆助手。
 import { isTianyinBackground, runTianyinBackground } from '../origin-host.js';
+import { getCurrentChatWorldBooks } from '../worldbook-config.js';
 
 // 注入器的三个用途对应天音「API 按模块分配」里的三个模块键。
 export const PLOT_ROLE_MODULES = Object.freeze({ discuss: 'oracle', outline: 'plotSetting', check: 'plotCheck' });
@@ -158,6 +159,22 @@ export function createPlotHost({ getCtx, callAI, fetchImpl, toastImpl } = {}) {
         return { bound: Boolean(meta && meta.world_info === name), conflict: meta && meta.world_info && meta.world_info !== name ? meta.world_info : '' };
     }
 
+    // 在当前卡绑定的世界书里按标题找条目（含已关闭的），返回正文；找不到返回空串。same 由调用方传入。只读，不写回。
+    async function readEntryContent(title, same) {
+        const c = ctx();
+        if (!c || typeof c.loadWorldInfo !== 'function') return '';
+        for (const { name } of getCurrentChatWorldBooks(c)) {
+            try {
+                const data = await c.loadWorldInfo(name);
+                for (const entry of Object.values((data && data.entries) || {})) {
+                    const content = String((entry && entry.content) || '').trim();
+                    if (content && same(String(entry.comment || ''), title)) return content;
+                }
+            } catch (error) { /* 某本读不到就看下一本 */ }
+        }
+        return '';
+    }
+
     return {
         ctx,
         cardKey,
@@ -167,6 +184,7 @@ export function createPlotHost({ getCtx, callAI, fetchImpl, toastImpl } = {}) {
         generate,
         toast,
         writeFallbackBook,
+        readEntryContent,
         isBackground: isTianyinBackground,
         standalone: () => standalonePlotInjector(),
     };

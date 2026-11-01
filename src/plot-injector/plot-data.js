@@ -1,4 +1,4 @@
-// 参照 PlotInjector v0.1.15 src/app/data.js 与 src/host/files.js 的防抖写入；文件读写、卡片键改由宿主层传入。
+// 参照 PlotInjector v0.1.18 src/app/data.js 与 src/host/files.js 的防抖写入；文件读写、卡片键改由宿主层传入。
 // 数据层：索引常驻内存；项目、讨论按需读。读出的对象共享只读，改动一律浅拷后整体替换。
 // 文件与独立版相同（user/files/pi-index.json、pi-p-<id>.json、pi-c-<id>.json），两边可互读。
 import { INDEX_FILE, chatFile, emptyChat, emptyIndex, newProject, normalizeChat, normalizeIndex, normalizeProject, normalizeSettings, projectFile } from './core/store.js';
@@ -120,8 +120,8 @@ export function createPlotData({ host, onChange = () => {}, onError = () => {} }
         return next;
     }
 
-    async function createProject(name, group = '') {
-        const project = newProject(name);
+    async function createProject(name, group = '', mode = 'normal') {
+        const project = newProject(name, Date.now(), mode);
         projects.set(project.id, project);
         const bytes = await files.write(projectFile(project.id), project);
         index = {

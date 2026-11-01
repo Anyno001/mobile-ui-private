@@ -1,4 +1,6 @@
 import { filterStageData, flattenUnits, splitStageKey, splitVolumeKey, stageLabel, stageNodes, volumeLabel } from './outline.js';
+import { INFINITE_SLOT } from './infinite.js';
+import { buildInfiniteDetail, emptyInfinite } from './infinite-flow.js';
 import { SETTING_SLOT, offNodes, unitStates } from './progress.js';
 import { stringifyYaml } from './yaml.js';
 
@@ -173,6 +175,14 @@ export function buildEntries(project, progress, settings) {
             slotId: SETTING_SLOT, kind: 'setting', title: '设定',
             content: settingText, ...pickParams(defaults.setting, progress.slots[SETTING_SLOT]),
         });
+    }
+    if (project.mode === 'infinite') {
+        const inf = progress.infinite || emptyInfinite();
+        entries.push({
+            slotId: INFINITE_SLOT, kind: 'detail', title: '无限流状态',
+            content: buildInfiniteDetail(inf, project.infinite && project.infinite.config), ...pickParams(defaults.detail, progress.slots[INFINITE_SLOT]),
+        });
+        return entries;
     }
     const units = flattenUnits(project.outline && project.outline.volumes);
     if (units.length) {

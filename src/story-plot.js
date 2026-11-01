@@ -14,6 +14,8 @@ import { groupProjects, normalizeChat, normalizeProject } from './plot-injector/
 import { PLOT_TABS, renderPlotHomeCard, renderPlotNotices, renderPlotPage, renderPlotPrefs, renderPlotSettings, renderPlotSheet, renderPlotStage } from './story-plot-views.js';
 import { downloadText, openPlotDialog, pickOption, pickTextFile, promptText, showText } from './story-plot-io.js';
 import { createPlotSettingActions } from './story-plot-setting.js';
+import { createInfiniteActions } from './story-plot-infinite.js';
+import { normalizeInfinite } from './plot-injector/core/infinite.js';
 import { escapeAttr as rawEscapeAttr, escapeHtml as rawEscapeHtml } from './ui.js';
 
 // 剧情数据来自 YAML，值可能是数字或布尔：先转字符串再转义。
@@ -103,7 +105,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         const mains = unit ? stageNodes(unit.stage.data).filter(node => node.kind === 'main') : [];
         const s = settings();
         const stage = stageId && shown ? shown.outline.volumes.map(volume => ({ volume, stage: volume.stages.find(item => item.id === stageId) })).find(item => item.stage) || null : null;
-        return {
+        const vm = {
             ready,
             owner: plotApi?.owner || 'tianyin',
             yielded: plotApi?.owner === 'standalone',
@@ -129,6 +131,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
             settingDraft: settingDraft && settingDraft.projectId === shown?.id ? settingDraft : null,
             outlineDraft: outlineDraft && outlineDraft.projectId === shown?.id ? outlineDraft : null,
         };
+        return { ...vm, ...infinite.viewFields(vm) };
     }
 
     // ---- 提供给剧情助手各页的片段 ----
@@ -212,6 +215,9 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     const confirmAction = message => (typeof globalThis.confirm === 'function' ? globalThis.confirm(message) : false);
     const runtimeForViewed = () => (viewed()?.id === activeId() ? api().runtime : null);
 
+    // 无限流项目的世界库、骰池、主空间参数在 story-plot-infinite.js。
+    const infinite = createInfiniteActions(deps, { api, viewed, updateViewed, runtimeForViewed, toast, rerender, confirmAction });
+
     // 设定页签与设置页的动作在 story-plot-setting.js；草稿仍由这里持有。
     const settingCtx = {
         api, project, activeId, viewed, settings, guideText, talkText, runAi, commitSetting, setSetting, toast, rerender, confirmAction,
@@ -230,11 +236,17 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         rerender();
     }
 
+    const modeToggle = checked => `<label class="pm-plot-choice-item"><input type="checkbox" name="infinite" ${checked ? 'checked' : ''}><span><b>无限流</b><small>主空间出发、世界库，由正文状态块触发，不使用检测</small></span></label>`;
+
     async function newProject() {
         if (!hasCard()) { toast('info', '先打开一张角色卡的聊天。'); return; }
-        const name = await promptText(deps, { title: '新项目', label: '项目名（一条if线）', placeholder: '如：龙宫温养' });
-        if (name == null) return;
-        const created = await api().data.createProject(String(name).trim() || '新项目');
+        const result = await openPlotDialog(deps, {
+            title: '新项目',
+            body: `<label class="pm-settings-field"><span class="pm-cfg-label">项目名（一条if线）</span><input class="pm-cfg-input" name="name" placeholder="如：龙宫温养"></label>${modeToggle(false)}`,
+            read: overlay => ({ name: overlay.querySelector('[name="name"]').value.trim(), mode: overlay.querySelector('[name="infinite"]').checked ? 'infinite' : 'normal' }),
+        });
+        if (!result) return;
+        const created = await api().data.createProject(result.name || '新项目', '', result.mode);
         if (!activeId()) await api().runtime.switchProject(created.id, 'chat');
         viewedId = created.id;
         tab = 'setting';
@@ -272,14 +284,17 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     async function renameProject(id) {
         const meta = index().projects.find(item => item.id === id);
         if (!meta) return;
+        await ensureProject(id);
+        const mode = project(id)?.mode === 'infinite' ? 'infinite' : 'normal';
         const result = await openPlotDialog(deps, {
             title: '改名、分组',
-            body: `<label class="pm-settings-field"><span class="pm-cfg-label">名称</span><input class="pm-cfg-input" name="name" value="${escapeAttr(meta.name)}"></label><label class="pm-settings-field"><span class="pm-cfg-label">分组（留空不分组）</span><input class="pm-cfg-input" name="group" value="${escapeAttr(meta.group || '')}"></label>`,
-            read: overlay => ({ name: overlay.querySelector('[name="name"]').value.trim(), group: overlay.querySelector('[name="group"]').value.trim() }),
+            body: `<label class="pm-settings-field"><span class="pm-cfg-label">名称</span><input class="pm-cfg-input" name="name" value="${escapeAttr(meta.name)}"></label><label class="pm-settings-field"><span class="pm-cfg-label">分组（留空不分组）</span><input class="pm-cfg-input" name="group" value="${escapeAttr(meta.group || '')}"></label>${modeToggle(mode === 'infinite')}`,
+            read: overlay => ({ name: overlay.querySelector('[name="name"]').value.trim(), group: overlay.querySelector('[name="group"]').value.trim(), mode: overlay.querySelector('[name="infinite"]').checked ? 'infinite' : 'normal' }),
         });
         if (!result) return;
-        await ensureProject(id);
         api().data.renameProject(id, result.name, result.group);
+        if (result.mode !== mode) api().data.updateProject(id, item => ({ ...item, mode: result.mode, infinite: normalizeInfinite(item.infinite) }));
+        api().runtime.refresh?.();
         rerender();
     }
 
@@ -688,6 +703,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         'guide-edit': editGuide,
         diagnose,
         stop,
+        ...infinite.actions,
     };
     // 剧情助手的点击总入口先交给这里；返回 true 表示已处理。
     function handleClick(button, onError) {
@@ -736,6 +752,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         stageId = '';
         settingDraft = null;
         outlineDraft = null;
+        infinite.reset();
         viewedId = '';
         tab = 'progress';
     }
