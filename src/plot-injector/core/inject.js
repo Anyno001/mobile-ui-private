@@ -129,13 +129,18 @@ export function paceText(settings, pace) {
     return String((settings.paceText && settings.paceText[key]) || '').trim() || PACE_TEXT[key];
 }
 
-// 延续：已过阶段里还勾着（没演）的支线事件与世界动态，带到当前阶段继续可用。返回 [{ unit, node }]
-export function carriedNodes(units, states, progress) {
+// 延续：已过阶段里还勾着（没演）的支线事件与世界动态，带到当前阶段继续可用。返回 [{ unit, node, off }]
+// withOff：连已取消的也返回（off 为 true），供执行页显示灰色项以便勾回。
+export function carriedNodes(units, states, progress, { withOff = false } = {}) {
     const out = [];
     for (const unit of units) {
         if (states[unit.id] !== 'done') continue;
         const off = new Set(offNodes(progress, unit.id));
-        for (const node of stageNodes(unit.stage.data)) if (node.kind !== 'main' && !off.has(node.id)) out.push({ unit, node });
+        for (const node of stageNodes(unit.stage.data)) {
+            if (node.kind === 'main') continue;
+            if (!off.has(node.id)) out.push({ unit, node, off: false });
+            else if (withOff) out.push({ unit, node, off: true });
+        }
     }
     return out;
 }

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 // 剧情注入器核心（src/plot-injector/core/）逐字拷自 PlotInjector src/core/，只在 PlotInjector 改。这里比对哈希：不一致就失败。
 // PlotInjector 改了核心后：用 git show <tag>:src/core/<名> 重新拷过来（保持 LF），用本脚本打印的实际哈希更新下表（node scripts/check-plot-core.mjs --print）。
-// 当前对应 PlotInjector 版本：v0.1.18。
+// 当前对应 PlotInjector 版本：v0.1.19。
 const EXPECTED = Object.freeze({
     'acu.js': '6d8226b018cd5d6e535875c0b2ebe7ef82e6ee40928b7fe779e0da860b3ca062',
     'check.js': '3192bc30afbca837eaf43f84ef4bf187eab3ed7701959412d2501641ba566206',
@@ -14,7 +14,7 @@ const EXPECTED = Object.freeze({
     'infinite-state.js': '8d3017c8ab9deb5c2213a983ac8df6d0239df2c045cde6b279de54cc10ef5bb1',
     'infinite-world.js': '8b46fb88637f66afd3186ea4de4538452c5405bdee017910155d97eef6db0b14',
     'infinite.js': 'd1a0f04b7de4e0c6d954a48b8fe03dc79748fd654dbcc2a8b4b4be22d8665767',
-    'inject.js': '454682d0a608f1be2cc694600211bb96fdca8925aa94dd549599c9b4a1d59431',
+    'inject.js': '5924e4e50bf54ce2266631678a35720ce34e8dfe71d30bbfe66b4aaf1fb62485',
     'outline.js': '072f91810e5c6e42e2bfeaee3e429d2a1324e66f9f431a1c4142327122ef8ed6',
     'progress.js': '53feeaeca8b09979e35c4768b36e1eeac787421a53301a96b3c0526cd12024f4',
     'prompts.js': '61a8891cf5ba14453fff2b7cfe952abb749b02275d47e5905723113581a6a4da',

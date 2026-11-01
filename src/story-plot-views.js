@@ -150,7 +150,7 @@ function timeline(vm) {
         if (state === 'active') {
             const off = new Set(offNodes(vm.progress, unit.id));
             const list = stageNodes(unit.stage.data).map(node => nodeRow(unit.id, node, off.has(node.id))).join('');
-            const carried = vm.carried.map(entry => nodeRow(entry.unit.id, entry.node, false, stageLabel(entry.unit.stage.key))).join('');
+            const carried = vm.carried.map(entry => nodeRow(entry.unit.id, entry.node, entry.off, stageLabel(entry.unit.stage.key))).join('');
             nodes = list || carried ? `<div class="pm-plot-nodes">${list}${carried}</div>` : '';
         }
         return `<li class="pm-plot-tl-item is-${state}"><div class="pm-plot-tl-head"><span class="pm-plot-tl-name">${escapeHtml(stageLabel(unit.stage.key))}</span>${notes ? `<small>${escapeHtml(notes)}</small>` : ''}${menu}</div>${nodes}</li>`;
