@@ -70,6 +70,9 @@ export function createCommunityFileSync({
     // 对账后的基线：当前聊天的社区与共享模板的 JSON；保存后与之比较判断是否有本地改动。
     let baseline = null;
     let uploadTimer = null;
+    // 在当前聊天里改动了别的聊天的社区（全局固定）：这些聊天的社区 JSON 基线，保存后有变化就同样记时间并上传。
+    const foreignBaselines = new Map();
+    let foreignEpoch = 0;
     const pendingUploads = new Map();
 
     const readStamps = () => {
@@ -142,10 +145,26 @@ export function createCommunityFileSync({
     };
 
     /** 社区保存成功后调用：当前聊天的社区或共享模板有变化就记时间并排队上传。 */
+    const noteForeignChanges = store => {
+        let changed = false;
+        for (const [foreignId, foreignJson] of foreignBaselines) {
+            const json = localScopeJson(store, foreignId);
+            if (json === foreignJson) continue;
+            const updatedAt = now();
+            writeStamp([foreignId], updatedAt);
+            scheduleUpload(foreignId, updatedAt);
+            foreignBaselines.set(foreignId, json);
+            changed = true;
+        }
+        return changed;
+    };
+
     const noteLocalChange = () => {
         const storageId = getStorageId();
         const store = getStore();
-        if (!baseline || !store || baseline.storageId !== storageId) return false;
+        if (!store) return false;
+        const foreignChanged = noteForeignChanges(store);
+        if (!baseline || baseline.storageId !== storageId) return foreignChanged;
         const scopeJson = localScopeJson(store, storageId);
         const templatesJson = localTemplatesJson(store);
         const updatedAt = now();
@@ -161,7 +180,7 @@ export function createCommunityFileSync({
             changed = true;
         }
         baseline = { storageId, scopeJson, templatesJson };
-        return changed;
+        return changed || foreignChanged;
     };
 
     /** 关闭手机、页面挂起时立即上传排队中的改动。 */
@@ -200,6 +219,8 @@ export function createCommunityFileSync({
     const reconcile = async () => {
         const storageId = getStorageId();
         baseline = null;
+        foreignBaselines.clear();
+        foreignEpoch += 1;
         if (!validStorageId(storageId)) return 'skipped';
         const store = await Promise.resolve(loadStore()).catch(() => null);
         if (!store) return 'skipped';
@@ -239,5 +260,37 @@ export function createCommunityFileSync({
         return `${scopeResult.action}/${templatesResult.action}`;
     };
 
-    return { reconcile, noteLocalChange, flush, dispose, markLocalAuthoritative };
+    /**
+     * 要在当前聊天里改别的聊天的社区（打开它固定的社区）前调用：先按同一规则对账那个聊天的文件（文件更新就先采用，不会拿旧数据盖掉），
+     * 再登记基线；之后的改动会写时间戳并排队上传，回到那个聊天时本地更新、不会被旧文件覆盖。
+     */
+    async function reconcileForeign(foreignId) {
+        if (!validStorageId(foreignId) || foreignId === getStorageId()) return 'skipped';
+        foreignBaselines.delete(foreignId);
+        const epoch = ++foreignEpoch;
+        const store = await Promise.resolve(loadStore()).catch(() => null);
+        if (!store) return 'skipped';
+        let result;
+        try { result = await reconcileOne(foreignId, store); }
+        catch (error) {
+            console.warn('[phone-mode] 社区文件对账失败，本次沿用本地', error?.message || error?.name || 'Error');
+            return 'skipped';
+        }
+        let trusted = result.action !== 'adopt';
+        if (result.action === 'adopt') {
+            try {
+                await commitStore(current => ({ ...current, scopes: { ...current.scopes, [foreignId]: result.remote.data } }));
+                writeStamp([foreignId], result.remote.updatedAt);
+                trusted = true;
+            } catch (error) {
+                console.warn('[phone-mode] 酒馆社区文件无法采用，沿用本地', error?.message || error?.name || 'Error');
+            }
+        }
+        // 读文件失败或采用失败时不登记：之后改动不会带新时间戳去覆盖另一台设备的新文件；等待期间已切聊天（reconcile 已清空）也不登记。
+        if (trusted && epoch === foreignEpoch) foreignBaselines.set(foreignId, localScopeJson(getStore(), foreignId));
+        if (pendingUploads.size) void runUploads();
+        return result.action;
+    }
+
+    return { reconcile, reconcileForeign, noteLocalChange, flush, dispose, markLocalAuthoritative };
 }

@@ -170,48 +170,69 @@ export function applyIgsChatSync(scope, { floors, liveHashes = null, window = fl
         }
     }
     let lastRoute = null;
+    // 上一块落到的会话（私聊或群）。只有 User 自己发言的块（旁白把一段聊天拆开时常见）没有对方可认，
+    // 跟同一楼后面第一个能落地的块走；后面没有，跟这个走。
+    let lastPlaced = null;
     for (const info of window) {
         const blocks = collect(info);
         if (!Array.isArray(blocks)) continue;
         const writable = !adding || adding.has(info.hash);
+        let selfOnly = [];
         for (const block of blocks) {
             if (!block || !Array.isArray(block.messages)) continue;
             const route = routeChatBlock(block, { histories, groups, selfNames, lastRoute });
-            if (!route) continue;
+            if (!route) {
+                if (hasSelfMessage(block, selfNames)) selfOnly.push(block);
+                continue;
+            }
             lastRoute = route.isGroup ? route : null;
-            if (!writable) continue;
-            const fresh = freshEntries(block, info, existing, selfNames, route.isGroup);
-            if (!fresh.length) continue;
-            if (route.create && !autoCreate) continue;
-            if (route.create) {
-                if (route.isGroup) {
-                    route.key = createGroupKey();
-                    groups[route.key] = { name: route.create.name, members: [...route.create.members] };
-                    result.changedGroups.add(route.key);
-                    result.createdGroups.push(route.key);
-                } else {
-                    histories[route.key] = [];
-                    owned.add(route.key);
-                    result.createdContacts.push(route.key);
-                }
-                delete route.create;
-            }
-            if (route.isGroup) {
-                const missing = missingMembers(groups[route.key], fresh.map(item => item.sender).filter(Boolean));
-                if (missing.length) ownGroup(route.key).members.push(...missing);
-            }
-            const history = ownHistory(route.key);
-            const members = route.isGroup ? groups[route.key].members : [];
-            for (const item of fresh) {
-                const entry = buildEntry(item, info, route.isGroup, members);
-                insertEntry(history, entry, now);
-                existing.add(item.key);
-                result.added += 1;
-            }
-            result.touched.add(route.key);
+            lastPlaced = route;
+            if (!writable) { selfOnly = []; continue; }
+            place(block, info, route);
+            for (const pending of selfOnly) place(pending, info, route);
+            selfOnly = [];
         }
+        if (writable && lastPlaced) for (const pending of selfOnly) place(pending, info, lastPlaced);
     }
     return result;
+
+    function place(block, info, route) {
+        const fresh = freshEntries(block, info, existing, selfNames, route.isGroup);
+        if (!fresh.length) return;
+        if (route.create && !autoCreate) return;
+        if (route.create) {
+            if (route.isGroup) {
+                route.key = createGroupKey();
+                groups[route.key] = { name: route.create.name, members: [...route.create.members] };
+                result.changedGroups.add(route.key);
+                result.createdGroups.push(route.key);
+            } else {
+                histories[route.key] = [];
+                owned.add(route.key);
+                result.createdContacts.push(route.key);
+            }
+            delete route.create;
+        }
+        if (route.isGroup) {
+            const missing = missingMembers(groups[route.key], fresh.map(item => item.sender).filter(Boolean));
+            if (missing.length) ownGroup(route.key).members.push(...missing);
+        }
+        const history = ownHistory(route.key);
+        const members = route.isGroup ? groups[route.key].members : [];
+        for (const item of fresh) {
+            const entry = buildEntry(item, info, route.isGroup, members);
+            insertEntry(history, entry, now);
+            existing.add(item.key);
+            result.added += 1;
+        }
+        result.touched.add(route.key);
+    }
+}
+
+// 块里有 User 自己发的、能存的消息。
+function hasSelfMessage(block, selfNames) {
+    return block.messages.some(message => message.kind === 'msg' && !message.system && chatMessageText(message)
+        && selfNames.has(normalizeChatName(message.sender)));
 }
 
 // 群里还没有的发送者（不计大小写、括号），按出现顺序去重。

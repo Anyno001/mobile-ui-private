@@ -226,6 +226,26 @@ check('路由：标题同名群优先于发言人数；全是 User 自己的块�
     assert.equal(routeChatBlock(block(0, '', [msg('我', '自言自语')]), { histories: {}, groups, selfNames }), null);
 });
 
+check('旁白把聊天拆开：只有 User 的块跟同楼后面的会话走，不丢', () => {
+    const scope = emptyScope();
+    const chat = [ai(floorText([block(0, '', [msg('小雪', '在吗')]), block(1, '', [msg('小明', '在')]), block(2, '', [msg('小雪', '晚上见')])]))];
+    const result = run(scope, chat);
+    assert.equal(result.added, 3);
+    assert.deepEqual(scope.histories['小雪'].map(entry => [entry.role, entry.content]), [['assistant', '在吗'], ['user', '在'], ['assistant', '晚上见']]);
+    const leading = emptyScope();
+    run(leading, [ai(floorText([block(0, '', [msg('小明', '到了吗')]), block(1, '', [msg('小雪', '马上')])]))]);
+    assert.deepEqual(leading.histories['小雪'].map(entry => entry.role), ['user', 'assistant']);
+});
+
+check('只有 User 的块在楼尾或下一楼开头：跟上一块的会话走；之前没有会话就跳过', () => {
+    const scope = emptyScope();
+    const chat = [ai(floorText([block(0, '', [msg('小雪', '在吗')])])), user('x'), ai(floorText([block(0, '', [msg('小明', '刚到')])]))];
+    run(scope, chat);
+    assert.deepEqual(scope.histories['小雪'].map(entry => [entry.role, entry.content]), [['assistant', '在吗'], ['user', '刚到']]);
+    const lone = emptyScope();
+    assert.equal(run(lone, [ai(floorText([block(0, '', [msg('我', '自言自语')])]))]).added, 0);
+});
+
 check('设置与接口探测：默认值、层数封顶、旧版 IGS 不认', () => {
     const config = normalizeIgsLinkConfig(null);
     assert.deepEqual([config.syncChats, config.autoCreateContacts, config.chatFloors], [true, true, 20]);

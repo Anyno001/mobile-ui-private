@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { renderPhoneDesktop } from '../src/interactive-scene-views.js';
+import { normalizePhoneUiState, PHONE_UI_STATE_VERSION, toggleScenePin, pinnedSceneIdsOf } from '../src/interactive-scene-model.js';
+import { buildDesktopPins, storageSourceLabel } from '../src/interactive-scene-global-pins.js';
 import { renderCommunitySource } from '../src/community-injection.js';
 import { LIVE_APP_ICON_SVG, LIVE_ICON_SVG } from '../src/icons.js';
 
@@ -164,6 +167,61 @@ check('未知平台与缺少平台回落到小组论坛，空场景返回空串'
     assert.match(renderCommunitySource({ ...base, scene: { title: '无平台', posts: [post('p', '甲', '正文')] } }), /^【社区·小组论坛：无平台】/);
     assert.equal(renderCommunitySource({ ...base, scene: { title: '空', platform: 'weibo', posts: [] } }), '');
     assert.equal(renderCommunitySource(null), '');
+});
+
+check('固定社区：数据里没有这个聊天时保留固定项，有这个聊天但社区已删才清掉', () => {
+    const raw = { version: PHONE_UI_STATE_VERSION, scopes: { chatA: { pinnedSceneIds: ['scene_a'] }, chatB: { pinnedSceneIds: ['scene_b', 'scene_gone'] } } };
+    const store = { version: 3, scopes: { chatB: { scenes: { scene_b: scene('scene_b', 'B') } } } };
+    const state = normalizePhoneUiState(raw, store);
+    assert.deepEqual(state.globalPins, [{ storageId: 'chatA', sceneId: 'scene_a' }, { storageId: 'chatB', sceneId: 'scene_b' }]);
+    assert.equal(state.scopes.chatA.pinnedSceneIds, undefined, '旧的按聊天固定项迁入全局后不再保留');
+});
+check('全局固定：迁移保持顺序去重，已有全局项在前；二次规范化不变', () => {
+    const store = { version: 3, scopes: { chatA: { scenes: { a1: scene('a1', 'A1'), a2: scene('a2', 'A2') } }, chatB: { scenes: { b1: scene('b1', 'B1') } } } };
+    const raw = { version: PHONE_UI_STATE_VERSION, globalPins: [{ storageId: 'chatB', sceneId: 'b1' }, { storageId: 'chatB', sceneId: 'b1' }, { storageId: 'chatA', sceneId: 'gone' }],
+        scopes: { chatA: { pinnedSceneIds: ['a2', 'a1', 'a2'] }, chatB: { pinnedSceneIds: ['b1'] } } };
+    const state = normalizePhoneUiState(raw, store);
+    assert.deepEqual(state.globalPins, [{ storageId: 'chatB', sceneId: 'b1' }, { storageId: 'chatA', sceneId: 'a2' }, { storageId: 'chatA', sceneId: 'a1' }]);
+    assert.deepEqual(normalizePhoneUiState(state, store), state);
+    assert.deepEqual(pinnedSceneIdsOf(state, 'chatA'), ['a2', 'a1']);
+});
+check('全局固定：在任意聊天里切换都改同一份列表，社区被删后清掉', () => {
+    const store = { version: 3, scopes: { chatA: { scenes: { a1: scene('a1', 'A1') } }, chatB: { scenes: { b1: scene('b1', 'B1') } } } };
+    let state = normalizePhoneUiState({ version: PHONE_UI_STATE_VERSION, scopes: {} }, store);
+    state = toggleScenePin(state, 'chatA', 'a1', store);
+    state = toggleScenePin(state, 'chatB', 'b1', store);
+    assert.deepEqual(state.globalPins, [{ storageId: 'chatA', sceneId: 'a1' }, { storageId: 'chatB', sceneId: 'b1' }]);
+    state = toggleScenePin(state, 'chatA', 'a1', store);
+    assert.deepEqual(state.globalPins, [{ storageId: 'chatB', sceneId: 'b1' }]);
+    const deleted = { version: 3, scopes: { chatA: { scenes: {} }, chatB: store.scopes.chatB } };
+    state = toggleScenePin(state, 'chatA', 'a1', store);
+    assert.deepEqual(normalizePhoneUiState(state, deleted).globalPins, [{ storageId: 'chatB', sceneId: 'b1' }]);
+});
+check('桌面：别的聊天固定的社区也显示，带来源名与 storage 标识；自己的不带', () => {
+    const store = { version: 3, scopes: {
+        'sms_cur.png__c1': { scenes: { own: scene('own', '本聊社区') } },
+        'sms_other.png__c2': { scenes: { far: scene('far', '外聊社区') } },
+    } };
+    const state = { version: PHONE_UI_STATE_VERSION, scopes: {}, globalPins: [
+        { storageId: 'sms_other.png__c2', sceneId: 'far' }, { storageId: 'sms_cur.png__c1', sceneId: 'own' }, { storageId: 'sms_other.png__c2', sceneId: 'gone' }] };
+    const characters = [{ name: '小林', avatar: 'cur.png' }, { name: '阿远', avatar: 'other.png' }];
+    const pins = buildDesktopPins({ store, phoneUiState: state, currentStorageId: 'sms_cur.png__c1', characters });
+    assert.deepEqual(pins.map(pin => pin.scene.id), ['far', 'own'], '按固定先后排列，找不到的不显示');
+    const html = renderPhoneDesktop({ scenes: store.scopes['sms_cur.png__c1'].scenes }, { desktopPins: pins }, [], { now: NOW });
+    assert.match(html, /data-scene-id="far" data-storage-id="sms_other.png__c2"/);
+    assert.match(html, /pm-desktop-pin-status">阿远 · /);
+    assert.match(html, /data-action="unpin-scene" data-scene-id="far" data-storage-id="sms_other.png__c2"/);
+    assert.doesNotMatch(html, /data-scene-id="own" data-storage-id/);
+    assert.equal(storageSourceLabel('sms_unknown.png__c', characters), '', '取不到来源名时不显示');
+    assert.equal(storageSourceLabel('sms_other.png__c2', { 0: characters[1] }), '阿远');
+});
+check('固定社区：写入前重读浏览器存储，不拿本窗口旧缓存覆盖', () => {
+    const code = readFileSync(new URL('../src/interactive-scenes.js', import.meta.url), 'utf8');
+    assert.match(code, /latestPhoneUiState = store => \{ runtime\.phoneUiState = null;/);
+    assert.match(code, /getStorageId: \(\) => runtime\.openSceneStorageId \|\| getStorageId\(\)/, '操作有效性要认当前打开社区所在的聊天');
+    for (const call of ['patchPhoneUiScope', 'toggleScenePin', 'dismissCommunityTemplate', 'publishCommunityTemplate', 'unpublishCommunityTemplate']) {
+        assert.ok(code.includes(`${call}(latestPhoneUiState(`), `${call} 要基于最新状态`);
+    }
 });
 
 console.log(`community desktop checks passed (${count})`);

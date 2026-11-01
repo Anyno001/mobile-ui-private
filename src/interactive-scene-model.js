@@ -182,7 +182,6 @@ export function stripPersistedV2ContentRating(rawStore) {
 
 export function createDefaultPhoneUiScope() {
     return {
-        pinnedSceneIds: [],
         lastPage: 'desktop',
         lastSceneId: null,
         lastTab: 'feed',
@@ -208,19 +207,31 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
     const interactiveScopes = interactiveStore?.scopes && typeof interactiveStore.scopes === 'object'
         ? interactiveStore.scopes
         : {};
+    // 全局固定：[{ storageId, sceneId }]，按固定先后保持顺序并去重。该聊天的社区已加载却没有这个社区时视为已删除；未加载的不清。
+    const globalPins = [];
+    const seenPins = new Set();
+    const addGlobalPin = (pinStorageId, pinSceneId) => {
+        if (typeof pinStorageId !== 'string' || !pinStorageId || pinStorageId !== pinStorageId.trim() || pinStorageId.length > 160 || isUnsafeDictionaryKey(pinStorageId)) return;
+        if (typeof pinSceneId !== 'string' || !pinSceneId || pinSceneId !== pinSceneId.trim() || pinSceneId.length > 80) return;
+        const pinScenes = interactiveScopes[pinStorageId]?.scenes;
+        if (pinScenes && typeof pinScenes === 'object' && !Object.hasOwn(pinScenes, pinSceneId)) return;
+        const key = `${pinStorageId} ${pinSceneId}`;
+        if (seenPins.has(key)) return;
+        seenPins.add(key);
+        globalPins.push({ storageId: pinStorageId, sceneId: pinSceneId });
+    };
+    for (const pin of Array.isArray(raw.globalPins) ? raw.globalPins : []) {
+        if (pin && typeof pin === 'object') addGlobalPin(pin.storageId, pin.sceneId);
+    }
     for (const [storageId, value] of Object.entries(raw.scopes)) {
         if (!storageId || storageId !== storageId.trim() || storageId.length > 160 || isUnsafeDictionaryKey(storageId)) continue;
         if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
         const scenes = interactiveScopes[storageId]?.scenes;
         const availableSceneIds = new Set(scenes && typeof scenes === 'object' ? Object.keys(scenes) : []);
-        const pinnedSceneIds = [];
-        const seenPins = new Set();
-        for (const candidate of Array.isArray(value.pinnedSceneIds) ? value.pinnedSceneIds : []) {
-            if (typeof candidate !== 'string' || !candidate || candidate !== candidate.trim() || candidate.length > 80) continue;
-            if (!availableSceneIds.has(candidate) || seenPins.has(candidate)) continue;
-            seenPins.add(candidate);
-            pinnedSceneIds.push(candidate);
-        }
+        // 这个聊天的社区不在传入的数据里（未加载）时不按「已删除」清掉固定项；渲染时找不到的社区自然不显示。
+        const scopeLoaded = !!scenes && typeof scenes === 'object';
+        // 旧版按聊天保存的固定项迁入全局固定列表；之后这里不再保留 pinnedSceneIds。
+        for (const candidate of Array.isArray(value.pinnedSceneIds) ? value.pinnedSceneIds : []) addGlobalPin(storageId, candidate);
         const validLastSceneId = typeof value.lastSceneId === 'string'
             && value.lastSceneId
             && value.lastSceneId === value.lastSceneId.trim()
@@ -244,7 +255,6 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
             dismissedCommunityTemplateIds.push(templateId);
         }
         result.scopes[storageId] = {
-            pinnedSceneIds,
             ...(Object.keys(importedTemplateSceneIds).length ? { importedTemplateSceneIds } : {}),
             ...(dismissedCommunityTemplateIds.length ? { dismissedCommunityTemplateIds } : {}),
             lastPage,
@@ -255,6 +265,7 @@ export function normalizePhoneUiState(raw, interactiveStore = createEmptyInterac
         };
     }
     if (sharedCommunityTemplates.length) result.sharedCommunityTemplates = sharedCommunityTemplates;
+    if (globalPins.length) result.globalPins = globalPins;
     return result;
 }
 
@@ -276,9 +287,6 @@ export function patchPhoneUiScope(phoneUiState, storageId, patch, interactiveSto
             [storageId]: {
                 ...currentScope,
                 ...patch,
-                pinnedSceneIds: Object.hasOwn(patch, 'pinnedSceneIds')
-                    ? [...(Array.isArray(patch.pinnedSceneIds) ? patch.pinnedSceneIds : [])]
-                    : [...currentScope.pinnedSceneIds],
                 dismissedCommunityTemplateIds: Object.hasOwn(patch, 'dismissedCommunityTemplateIds')
                     ? [...(Array.isArray(patch.dismissedCommunityTemplateIds) ? patch.dismissedCommunityTemplateIds : [])] : [...(currentScope.dismissedCommunityTemplateIds || [])],
                 importedTemplateSceneIds: Object.hasOwn(patch, 'importedTemplateSceneIds')
@@ -296,11 +304,19 @@ export function toggleScenePin(phoneUiState, storageId, sceneId, interactiveStor
     const scenes = interactiveStore?.scopes?.[storageId]?.scenes;
     if (!scenes || typeof scenes !== 'object' || !Object.hasOwn(scenes, sceneId)) throw new Error('互动场景不存在');
     const normalized = normalizePhoneUiState(phoneUiState, interactiveStore);
-    const scope = normalized.scopes[storageId] || createDefaultPhoneUiScope();
-    const pinnedSceneIds = scope.pinnedSceneIds.includes(sceneId)
-        ? scope.pinnedSceneIds.filter(idValue => idValue !== sceneId)
-        : [...scope.pinnedSceneIds, sceneId];
-    return patchPhoneUiScope(normalized, storageId, { pinnedSceneIds }, interactiveStore);
+    const pins = normalized.globalPins || [];
+    const exists = pins.some(pin => pin.storageId === storageId && pin.sceneId === sceneId);
+    const globalPins = exists
+        ? pins.filter(pin => !(pin.storageId === storageId && pin.sceneId === sceneId))
+        : [...pins, { storageId, sceneId }];
+    const next = { ...normalized };
+    if (globalPins.length) next.globalPins = globalPins; else delete next.globalPins;
+    return normalizePhoneUiState(next, interactiveStore);
+}
+
+/** 某个聊天里被固定的社区编号（来自全局固定列表）。 */
+export function pinnedSceneIdsOf(phoneUiState, storageId) {
+    return (phoneUiState?.globalPins || []).filter(pin => pin.storageId === storageId).map(pin => pin.sceneId);
 }
 
 export function dismissCommunityTemplate(phoneUiState, storageId, templateId, interactiveStore) {

@@ -18,7 +18,16 @@ export function setCommunityFloorProvider(fn) {
     provider = typeof fn === 'function' ? fn : null;
 }
 
+// 在别的聊天的社区里写内容（全局固定后从当前聊天打开）时暂停记楼层：当前聊天的楼层对那个聊天没有意义，
+// 不打标记、不记旧版本，那个聊天回退时就会一直保留这些内容。
+let suppressDepth = 0;
+export async function withoutFloorMarks(fn) {
+    suppressDepth += 1;
+    try { return await fn(); } finally { suppressDepth -= 1; }
+}
+
 function currentMark() {
+    if (suppressDepth > 0) return null;
     try {
         const mark = provider?.();
         return mark && validFloor(mark.floor) ? mark : null;

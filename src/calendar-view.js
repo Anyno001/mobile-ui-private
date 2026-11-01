@@ -278,7 +278,7 @@ export function renderCalendarMonthDialog(scope, viewYear, viewMonth) {
             <input type="hidden" value="${viewMonth}" data-calendar-jump-month>
             <div class="pm-calendar-month-options" role="group" aria-label="选择月份">${months}</div>
             <label class="pm-calendar-panel-section">当前故事日期<input class="pm-calendar-base-date-input" type="text" inputmode="numeric" data-calendar-base-date value="${escapeAttr(baseDate)}" placeholder="例如 3726-08-17" aria-label="当前故事日期"></label>
-            <div class="pm-calendar-month-links"><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>使用设备日期</button><button type="button" data-action="calendar-today">回到今天</button></div>
+            <div class="pm-calendar-month-links"><button type="button" data-action="calendar-base-clear" ${baseDate ? '' : 'disabled'}>恢复自动识别</button><button type="button" data-action="calendar-set-today">设所选日为今日</button><button type="button" data-action="calendar-today">回到今天</button></div>
             <p class="pm-calendar-entry-error" data-calendar-month-error role="status" aria-live="polite"></p>
             <div class="pm-calendar-entry-actions"><button type="button" data-calendar-month-close>取消</button><button type="button" class="is-primary" data-action="calendar-month-jump">应用</button></div>
         </div>

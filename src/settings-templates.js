@@ -16,6 +16,7 @@ export function renderSettingsHome() {
       <button type="button" role="listitem" onclick="window.__pmShowConfig('backup')"><b>备份</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('worldbook')"><b>世界书读取</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('budget')"><b>上下文预算</b></button>
+      <button type="button" role="listitem" onclick="window.__pmShowConfig('text-replace')"><b>文字替换</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConversationInjection()"><b>正文注入</b></button>
       <button type="button" role="listitem" onclick="window.__pmShowConfig('igs-link')"><b>与gal前端联动</b></button>
       <div class="pm-global-setting" role="group" aria-labelledby="pm-wordy-label">

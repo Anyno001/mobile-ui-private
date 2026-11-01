@@ -209,9 +209,10 @@ export function installCalendar(state, deps) {
             const context = await gatherContext(null, { module: 'calendar', signal: task.signal, includeWorldBook: false });
             if (!tasks.active(task)) return false;
             if (assistantOnly && context.latestChatIsUser) return false;
-            const currentScope = scope(storageId);
-            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags) // 未设定故事日期时向前回溯
-                || (currentScope.baseDate ? null : firstCalendarBaseDate(context.recentAssistantRawTexts, currentScope.dateTags));
+            const currentScope = scope(storageId), hint = currentScope.baseDate || currentScope.storyInitialDate || '';
+            if (currentScope.baseDateManual && silent) return false; // 手动设定的今日优先，仅「保存并识别」可覆盖
+            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags, hint) // 未设定故事日期时向前回溯
+                || (currentScope.baseDate ? null : firstCalendarBaseDate(context.recentAssistantRawTexts, currentScope.dateTags, hint));
             if (!baseDate) {
                 if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。');
                 return false;
@@ -222,7 +223,7 @@ export function installCalendar(state, deps) {
             }
             if (!tasks.active(task)) return false;
             const committed = await commitScope(storageId, current => {
-                const next = { ...current, baseDate, lastAdjustedAt: Date.now() };
+                const next = { ...current, baseDate, lastAdjustedAt: Date.now() }; delete next.baseDateManual;
                 const event = storyWeatherEventForScope(storageId, next, baseDate);
                 if (event) next.weatherEvent = event;
                 return next;
@@ -360,7 +361,7 @@ export function installCalendar(state, deps) {
         const parsed = directDate || parseCalendarDate(extractedDate);
         if (!parsed) throw new Error('当前故事日期无效，请输入YYYY-MM-DD、YYYY/MM/DD或“YYYY年M月D日”');
         const normalizedDate = formatCalendarDate(parsed);
-        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate }), null, { refreshInjection: false });
+        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate, baseDateManual: true }), null, { refreshInjection: false });
         await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
         await deps.applyBidirectionalInjection?.();
         const current = viewFor(storageId);
@@ -374,7 +375,7 @@ export function installCalendar(state, deps) {
         rerender(storageId);
     }
     async function clearBaseDate(storageId) {
-        await commitScope(storageId, current => { const next = { ...current }; delete next.baseDate; return next; }, null, { refreshInjection: false });
+        await commitScope(storageId, current => { const next = { ...current }; delete next.baseDate; delete next.baseDateManual; return next; }, null, { refreshInjection: false });
         await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
         await deps.applyBidirectionalInjection?.();
         const today = calendarReferenceDate(scope(storageId));
@@ -430,8 +431,7 @@ export function installCalendar(state, deps) {
         });
         rerender(storageId);
     }
-    const showMonthDialog = storageId => showCalendarMonthDialog({ makeOverlay, closeOverlay, scope: scope(storageId), view: viewFor(storageId),
-        saveBaseDate: value => saveBaseDate(storageId, value), clearBaseDate: () => clearBaseDate(storageId),
+    const showMonthDialog = storageId => showCalendarMonthDialog({ makeOverlay, closeOverlay, scope: scope(storageId), view: viewFor(storageId), saveBaseDate: value => saveBaseDate(storageId, value), clearBaseDate: () => clearBaseDate(storageId).then(() => { autoDetect.reset(); autoDetect.run(storageId); }), setToday: () => saveBaseDate(storageId, viewFor(storageId).selectedDate),
         goToReferenceDate: () => goToReferenceDate(storageId), jumpToMonth: (year, month) => jumpToMonth(storageId, year, month) });
     function selectedDateEntries(storageId) {
         const date = viewFor(storageId).selectedDate, parsed = parseCalendarDate(date);

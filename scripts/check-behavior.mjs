@@ -5817,12 +5817,13 @@ const parsedV4Backup = parseBackupData({
 assert.equal(parsedV4Backup.theme.darkMode, 'light');
 assert.equal(parsedV4Backup.theme.ambientStatusEnabled, false);
 assert.deepEqual(parsedV4Backup.ambientStatus, { enabled: false });
+assert.deepEqual(parsedV4Backup.phoneUiState.globalPins, [{ storageId: 'story', sceneId: 'scene-v4' }, { storageId: 'other', sceneId: 'scene-v4' }], '备份里按聊天的固定项迁入全局固定');
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-v4'], lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'feed',
+    lastPage: 'community', lastSceneId: 'scene-v4', lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
 }, '备份里的旧 lastTab: live 必须归一为 feed');
 assert.deepEqual(parsedV4Backup.phoneUiState.scopes.other, {
-    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
 });
 const parsedV4Defaults = parseBackupData({ schemaVersion: 4 }, currentBackup);
@@ -6992,9 +6993,9 @@ await assert.rejects(runBackupTransaction({
     persist: backupHandlers.persist,
 }), /手机界面状态保存失败/);
 assert.equal(window.__pmTheme.ambientStatusEnabled, true);
-assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(window.__pmPhoneUiState.globalPins, [{ storageId: 'story', sceneId: 'scene-old' }]);
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
-assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).globalPins, [{ storageId: 'story', sceneId: 'scene-old' }]);
 assert.equal(JSON.parse(localValues.get(CALENDAR_HOLIDAY_STORAGE_KEY)).selectedCountry, 'JP');
 assert.equal(JSON.parse(localValues.get(CALENDAR_WEATHER_STORAGE_KEY)).location.name, 'scene-old');
 assert.equal(JSON.parse(localValues.get(CALENDAR_CYCLE_STORAGE_KEY)).scopes.story.cycleLength, 28);
@@ -7020,9 +7021,9 @@ await assert.rejects(runBackupTransaction({
 assert.ok(rollbackFailure);
 assert.match(rollbackFailure.rollbackError.message, /手机界面状态保存失败/);
 assert.equal(window.__pmTheme.ambientStatusEnabled, true);
-assert.deepEqual(window.__pmPhoneUiState.scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(window.__pmPhoneUiState.globalPins, [{ storageId: 'story', sceneId: 'scene-old' }]);
 assert.equal(JSON.parse(localValues.get('ST_SMS_THEME')).ambientStatusEnabled, true);
-assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).scopes.story.pinnedSceneIds, ['scene-old']);
+assert.deepEqual(JSON.parse(localValues.get('ST_SMS_PHONE_UI_STATE')).globalPins, [{ storageId: 'story', sceneId: 'scene-old' }]);
 assert.equal(JSON.parse(localValues.get(CALENDAR_HOLIDAY_STORAGE_KEY)).selectedCountry, 'JP');
 assert.equal(JSON.parse(localValues.get(CALENDAR_WEATHER_STORAGE_KEY)).location.name, 'scene-old');
 assert.equal(JSON.parse(localValues.get(CALENDAR_CYCLE_STORAGE_KEY)).scopes.story.cycleLength, 28);

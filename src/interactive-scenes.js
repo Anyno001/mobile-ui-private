@@ -3,15 +3,16 @@ import { generationErrorMessage } from './ai.js';
 import { buildCommunityRequest, COMMUNITY_PLATFORM_PROMPTS, parseCommunityResponse } from './interactive-scene-ai.js';
 import {
     INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, deleteSceneWork, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
-    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, setSceneHot, setSceneTonight, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
+    createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, pinnedSceneIdsOf, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, setSceneHot, setSceneTonight, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import { COMMUNITY_PLATFORMS } from './interactive-scene-constants.js';
 import {
     loadInteractiveScenes, loadPhoneUiState, saveInteractiveScenes, savePhoneUiScope, savePhoneUiState,
     setInteractivePersistListener,
 } from './storage.js';
+import { buildDesktopPins } from './interactive-scene-global-pins.js';
 import { createCommunityFileSync } from './community-file-sync.js';
-import { communityFloorMark, createCommunityRollbackRunner } from './community-floor-rollback.js';
+import { communityFloorMark, createCommunityRollbackRunner, withoutFloorMarks } from './community-floor-rollback.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
 import { createCommunityGenerationRunner, createCommunityTaskController } from './interactive-scene-scheduler.js';
 import { installLiveApp } from './live-app.js';
@@ -67,7 +68,7 @@ export function installInteractiveScenes(_state, deps) {
     const isTargetActive = target => (runtime.openSceneStorageId || getStorageId()) === target?.storageId
         && runtime.openSceneId === target?.sceneId
         && !!resolveTarget(target).scene && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
-    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({ getEpoch: () => runtime.contextEpoch, getStorageId,
+    const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({ getEpoch: () => runtime.contextEpoch, getStorageId: () => runtime.openSceneStorageId || getStorageId(),
         getOpenSceneId: () => runtime.openSceneId,
         isMounted: () => !!document.getElementById('pm-scene-app'),
     }, { epoch: runtime.contextEpoch, storageId, sceneId });
@@ -84,7 +85,8 @@ export function installInteractiveScenes(_state, deps) {
         setStore: store => { runtime.store = store; },
         saveStore: saveInteractiveScenes,
         syncStore: () => deps.applyBidirectionalInjection?.() });
-    const commit = queuedCommit;
+    // 当前打开的是别的聊天的社区时，这次写入不记楼层（见 community-floor-rollback.js）。
+    const commit = (mutator, isValid, context) => queuedCommit(() => (runtime.openSceneStorageId && runtime.openSceneStorageId !== getStorageId() ? withoutFloorMarks(mutator) : mutator()), isValid, context);
     const invalidate = (reason = 'community-context-invalidated') => {
         runtime.contextEpoch += 1;
         communityRunner?.cancel(reason, true);
@@ -109,8 +111,11 @@ export function installInteractiveScenes(_state, deps) {
         runtime.phoneUiState = merged;
         return merged;
     };
-    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(getPhoneUiState(store), storageId, patch, store), store);
-    const phoneScope = (storageId, store = runtime.store) => getPhoneUiState(store).scopes[storageId] || createDefaultPhoneUiScope();
+    // 写入前丢掉本窗口缓存、重读浏览器存储：别的窗口刚改的固定社区不会被这里的旧副本盖掉。
+    const latestPhoneUiState = store => { runtime.phoneUiState = null; return getPhoneUiState(store); };
+    const updatePhoneUiScope = (storageId, patch, store = runtime.store) => persistPhoneUiState(storageId, patchPhoneUiScope(latestPhoneUiState(store), storageId, patch, store), store);
+    // pinnedSceneIds 来自全局固定列表，只取属于这个聊天的社区。
+    const phoneScope = (storageId, store = runtime.store) => { const state = getPhoneUiState(store); return { ...(state.scopes[storageId] || createDefaultPhoneUiScope()), pinnedSceneIds: pinnedSceneIdsOf(state, storageId) }; };
     const commitWithPhoneUi = createCommitWithPhoneUi({ getPhoneUiState, persistPhoneUiState, getStore: () => runtime.store, commit });
     const communityUiScope = (storageId, store = runtime.store) => ({ ...phoneScope(storageId, store), storageId,
         sharedCommunityTemplates: getPhoneUiState(store).sharedCommunityTemplates || [] });
@@ -133,8 +138,9 @@ export function installInteractiveScenes(_state, deps) {
     function refreshDesktop(scopeId = getStorageId(), store = runtime.store) {
         const validScope = !!store && !!scopeId && scopeId !== 'sms_unknown__default';
         const scope = validScope ? getScope(store, scopeId) : { scenes: {} };
-        const uiScope = validScope ? communityUiScope(scopeId, store)
-            : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' };
+        // 桌面固定项是全局的：别的聊天固定的社区也显示在这里。
+        const desktopPins = store ? buildDesktopPins({ store, phoneUiState: getPhoneUiState(store), currentStorageId: scopeId, characters: getCtx()?.characters }) : [];
+        const uiScope = { ...(validScope ? communityUiScope(scopeId, store) : { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' }), desktopPins };
         return renderInto('.pm-desktop-page', renderPhoneDesktop(scope, uiScope, sharedTemplatesFor(scopeId, store), { pinsExpanded: runtime.desktopPinsExpanded === true }));
     }
     const showPhoneDesktopPage = () => { const scopeId = getStorageId(), phoneWindow = _state.phoneWindow; return runDesktopPageTransition({
@@ -183,9 +189,7 @@ export function installInteractiveScenes(_state, deps) {
         return rendered;
     }
     window.__pmReturnToCommunityDataSource = async () => {
-        const scopeId = runtime.openSceneStorageId || getStorageId();
-        const sceneId = runtime.openSceneId;
-        const tab = 'feed';
+        const scopeId = runtime.openSceneStorageId || getStorageId(), sceneId = runtime.openSceneId, tab = 'feed';
         document.getElementById('pm-overlay')?.remove();
         if (sceneId && renderCommunityWorkspace(scopeId, sceneId, tab)) {
             showPhonePage('community');
@@ -244,17 +248,21 @@ export function installInteractiveScenes(_state, deps) {
             ...getCommunityInjectionState(window.__pmBudgetConfig, scopeId, scene.id), ...igsSync?.viewState(),
         }),
     });
-    async function openScene(sceneId, tab = 'feed') {
+    // storageId 缺省为当前聊天；打开别的聊天固定的社区时传入它所在的聊天，之后一切操作都落在那个聊天的数据上。
+    async function openScene(sceneId, tab = 'feed', storageId = getStorageId()) {
         invalidate();
-        const scopeId = getStorageId();
+        const scopeId = storageId, foreign = scopeId !== getStorageId();
         await loadStore();
+        if (foreign) await deps.reconcileForeignCommunityFile?.(scopeId);
         const scope = getScope(runtime.store, scopeId);
         if (!scope.scenes?.[sceneId]) throw new Error('互动场景不存在');
         await commit(() => { getScope(runtime.store, scopeId).activeSceneId = sceneId; });
         runtime.openSceneId = sceneId;
         runtime.openSceneStorageId = scopeId;
         resetView(sceneId);
-        updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: 'feed' });
+        // 别的聊天的社区不记进当前聊天的页面状态：下次回来落在桌面。
+        if (foreign) updatePhoneUiScope(getStorageId(), { lastPage: 'desktop', lastSceneId: null });
+        else updatePhoneUiScope(scopeId, { lastPage: 'community', lastSceneId: sceneId, lastTab: 'feed' });
         renderCommunityWorkspace(scopeId, sceneId, 'feed');
         showPhonePage('community');
     }
@@ -450,7 +458,7 @@ export function installInteractiveScenes(_state, deps) {
             rerender, setStatus,
         })) return;
         if (action === 'desktop-open-scene') {
-            await openScene(button.dataset.sceneId, 'feed');
+            await openScene(button.dataset.sceneId, 'feed', button.dataset.storageId || undefined);
             return;
         }
         if (action === 'desktop-import-community-template') {
@@ -459,7 +467,7 @@ export function installInteractiveScenes(_state, deps) {
         }
         if (action === 'dismiss-community-template') {
             const scopeId = getStorageId();
-            const nextState = dismissCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.templateId, runtime.store);
+            const nextState = dismissCommunityTemplate(latestPhoneUiState(runtime.store), scopeId, button.dataset.templateId, runtime.store);
             persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
             return;
@@ -475,22 +483,24 @@ export function installInteractiveScenes(_state, deps) {
             return;
         }
         if (action === 'toggle-scene-pin' || action === 'unpin-scene') {
-            const scopeId = getStorageId();
-            const nextState = toggleScenePin(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+            // 固定是全局的：在任意聊天里都改同一份列表；桌面上别的聊天的固定项带 data-storage-id；社区页里的社区取当前打开的所在聊天。
+            const scopeId = getStorageId(), pinScopeId = button.dataset.storageId || (runtime.openSceneId && runtime.openSceneStorageId) || scopeId;
+            const nextState = toggleScenePin(latestPhoneUiState(runtime.store), pinScopeId, button.dataset.sceneId, runtime.store);
             persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
+            deps.applyBidirectionalInjection?.();
             if (button.closest('#pm-scene-app') && !button.closest('.pm-scene-card')) {
                 rerender('feed', { preserveFeedScroll: true });
             } else if (button.closest('.pm-community-page')) {
-                const pinned = nextState.scopes[scopeId]?.pinnedSceneIds.includes(button.dataset.sceneId) === true, pinLabel = pinned ? '取消固定社区' : '固定社区'; button.setAttribute('aria-pressed', String(pinned)); button.setAttribute('aria-label', pinLabel); button.title = pinLabel;
+                const pinned = pinnedSceneIdsOf(nextState, pinScopeId).includes(button.dataset.sceneId), pinLabel = pinned ? '取消固定社区' : '固定社区'; button.setAttribute('aria-pressed', String(pinned)); button.setAttribute('aria-label', pinLabel); button.title = pinLabel;
             }
             return;
         }
         if (action === 'publish-community-template' || action === 'unpublish-community-template') {
             const scopeId = getStorageId();
             const nextState = action === 'publish-community-template'
-                ? publishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store)
-                : unpublishCommunityTemplate(getPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
+                ? publishCommunityTemplate(latestPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store)
+                : unpublishCommunityTemplate(latestPhoneUiState(runtime.store), scopeId, button.dataset.sceneId, runtime.store);
             persistPhoneUiState(scopeId, nextState);
             refreshDesktop(scopeId);
             renderCommunityLauncher(scopeId);
@@ -675,7 +685,7 @@ export function installInteractiveScenes(_state, deps) {
         if (!scopeId || scopeId === 'sms_unknown__default') { alert('请先打开有效的角色聊天。'); return; }
         try {
             const store = await loadStore();
-            runtime.openSceneId = null;
+            clearOpenScene();
             renderCommunityLauncher(scopeId, store);
             showPhonePage('community');
         } catch (error) {
@@ -688,6 +698,7 @@ export function installInteractiveScenes(_state, deps) {
         cancelCommunityGeneration: invalidate,
         bindPhonePageUi,
         refreshPhoneDesktop: () => refreshDesktop(),
+        getCommunityPins: () => getPhoneUiState(runtime.store).globalPins || [],
         showPhoneCalendarPage,
         showPhoneDesktopPage,
         async restorePhoneChat(defaultContact) {
@@ -706,6 +717,7 @@ export function installInteractiveScenes(_state, deps) {
         async restorePhoneUi() {
             const scopeId = getStorageId();
             if (!scopeId || scopeId === 'sms_unknown__default') {
+                clearOpenScene();
                 refreshDesktop(scopeId, null);
                 showPhonePage('desktop');
                 return;
@@ -723,21 +735,21 @@ export function installInteractiveScenes(_state, deps) {
                 return;
             }
             if (uiScope.lastPage === 'calendar' && deps.renderCalendar?.(scopeId)) {
-                runtime.openSceneId = null;
+                clearOpenScene();
                 showPhonePage('calendar');
                 return;
             }
-            if (uiScope.lastPage === 'today-trend' && await deps.showTodayTrendPage?.(scopeId)) { runtime.openSceneId = null; return; }
-            if (uiScope.lastPage === 'story-oracle' && await deps.showStoryOraclePage?.(scopeId)) { runtime.openSceneId = null; return; }
-            if (uiScope.lastPage === 'live' && await deps.showLivePage?.({ resume: true })) { runtime.openSceneId = null; return; }
-            if (uiScope.lastPage === 'shop' && await deps.showShopPage?.({ resume: true })) { runtime.openSceneId = null; return; }
-            if (uiScope.lastPage === 'origin' && deps.showOriginPage?.({ resume: true })) { runtime.openSceneId = null; return; }
-            runtime.openSceneId = null;
+            if (uiScope.lastPage === 'today-trend' && await deps.showTodayTrendPage?.(scopeId)) { clearOpenScene(); return; }
+            if (uiScope.lastPage === 'story-oracle' && await deps.showStoryOraclePage?.(scopeId)) { clearOpenScene(); return; }
+            if (uiScope.lastPage === 'live' && await deps.showLivePage?.({ resume: true })) { clearOpenScene(); return; }
+            if (uiScope.lastPage === 'shop' && await deps.showShopPage?.({ resume: true })) { clearOpenScene(); return; }
+            if (uiScope.lastPage === 'origin' && deps.showOriginPage?.({ resume: true })) { clearOpenScene(); return; }
+            clearOpenScene();
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },
         showPhoneChatPage(storageId = getStorageId()) {
             invalidate();
-            runtime.openSceneId = null;
+            clearOpenScene();
             showPhonePage('chat');
             loadStore().then(store => {
                 updatePhoneUiScope(storageId, { lastPage: 'chat', lastSceneId: null }, store);
@@ -746,7 +758,7 @@ export function installInteractiveScenes(_state, deps) {
         },
         persistPhoneUiSnapshot() {
             return persistCurrentPhoneUiSnapshot({
-                runtime, storageId: getStorageId(),
+                runtime, storageId: getStorageId(), openStorageId: runtime.openSceneStorageId,
                 page: document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page,
                 phoneScope, updatePhoneUiScope,
                 chatType: _state.isGroupChat && _state.currentGroupKey ? 'group'
@@ -755,7 +767,7 @@ export function installInteractiveScenes(_state, deps) {
             });
         },
         invalidateInteractiveStore() {
-            invalidate(); storeLoader.invalidateStore(); runtime.openSceneId = null; runtime.phoneUiState = null;
+            invalidate(); storeLoader.invalidateStore(); clearOpenScene(); runtime.phoneUiState = null;
         },
     });
 
@@ -769,6 +781,7 @@ export function installInteractiveScenes(_state, deps) {
     setInteractivePersistListener(communityFiles.noteLocalChange);
     Object.assign(deps, {
         reconcileCommunityFiles: communityFiles.reconcile,
+        reconcileForeignCommunityFile: communityFiles.reconcileForeign,
         flushCommunityFiles: communityFiles.flush,
         markCommunityFilesLocalAuthoritative: communityFiles.markLocalAuthoritative,
     });

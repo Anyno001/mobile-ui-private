@@ -214,6 +214,7 @@ export function mergePhoneUiBranchScope(currentState, desiredState, expectedStat
         ...(current.sharedCommunityTemplates?.length
             ? { sharedCommunityTemplates: current.sharedCommunityTemplates }
             : {}),
+        ...(current.globalPins?.length ? { globalPins: current.globalPins } : {}),
     }, interactiveStore);
 }
 

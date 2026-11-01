@@ -276,6 +276,18 @@ assert.equal(extractCalendarBaseDate('<when>2024-10-29</when><date>2024-10-27</d
 assert.equal(extractCalendarBaseDate('<2027 10 28>'), '2027-10-28', '旧日期标签仍须支持明确年份');
 assert.equal(extractCalendarBaseDate('十月二十八日'), null, '今天基准不得接受无年份日期');
 assert.equal(extractCalendarBaseDate('明天见面'), null, '今天基准不得接受相对日期');
+// 状态栏无年份写法：以故事日期年份补全，跨年取最近一年
+assert.equal(extractCalendarBaseDate('<date>3月5日 星期三 14:30</date>', ['date'], '2025-03-01'), '2025-03-05', '无年份状态栏日期须按当前故事日期补年');
+assert.equal(extractCalendarBaseDate('<date>十月二十八日</date>', ['date'], '3726-08-17'), '3726-10-28', '中文数字无年份须按故事年补全');
+assert.equal(extractCalendarBaseDate('<date>01-02</date>', ['date'], '2025-12-30'), '2026-01-02', '年末到年初须取最近一年');
+assert.equal(extractCalendarBaseDate('<date>12月30日</date>', ['date'], '2026-01-02'), '2025-12-30', '年初回看年末须取最近一年');
+assert.equal(extractCalendarBaseDate('<date>2025年03月05日 14:30 | 地点：教室 | 天气：晴</date>'), '2025-03-05', '带时分与附加信息的状态栏日期须可识别');
+assert.match(extractCalendarBaseDate('<date>3月5日</date>'), /^\d{4}-03-05$/, '无提示日期时按设备年份补全');
+assert.equal(extractCalendarBaseDate('3月5日'), null, '标签外的无年份文本仍不识别');
+assert.equal(normalizeCalendarScope({ baseDate: '2025-03-05', baseDateManual: true }).baseDateManual, true, '手动今日标记必须保留');
+assert.equal(normalizeCalendarScope({ baseDate: '2025-03-05' }).baseDateManual, undefined, '自动识别的今日不带手动标记');
+assert.equal(normalizeCalendarScope({ baseDateManual: true }).baseDateManual, undefined, '无今日时不保留手动标记');
+assert.match(renderCalendarMonthDialog({ baseDate: '2025-03-05', baseDateManual: true }, 2025, 3), /data-action="calendar-set-today"[^>]*>设所选日为今日/, '跳转弹窗必须提供设为今日');
 assert.equal(extractCalendarBaseDate('```2027-10-28```'), '2027-10-28', '模型函数只负责日期语义，不承担宿主正文清洗');
 assert.equal(extractCalendarDate('二十八日见面', semanticReference), null, '缺月份必须拒绝');
 assert.equal(extractCalendarDate('大前天整理资料', semanticReference), '2026-12-19');

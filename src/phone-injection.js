@@ -278,7 +278,7 @@ export function renderCalendarContextInjection({
 export function buildContextInjectionPrompts({
     currentStorageId, currentActorName, currentConversationKey, selectedByStorage, historiesByStorage, groupsByStorage,
     injectionConfig, interactiveStore, budgetConfig, userName, emojis, safeMaxTokens, calendarStore,
-    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore, storyOraclePlans = [], shopStore = null,
+    calendarOccasions, calendarHolidays, calendarWeather, calendarCycles, calendarRecipes, calendarOutfits, todayTrendStore, storyOraclePlans = [], shopStore = null, communityPins = [],
 } = {}) {
     const config = normalizeBudgetConfig(budgetConfig);
     const phonePermission = resolvePhoneSources({
@@ -290,6 +290,23 @@ export function buildContextInjectionPrompts({
         selectionsByStorage: config.communitySelectionsByStorage,
         store: interactiveStore,
     });
+    // 全局固定、来自其他聊天的社区：按它在自己聊天下的注入选择并入；未固定的别聊天社区不注入，读取失败的跳过。
+    const foreignSources = [];
+    const pinsByStorage = new Map();
+    for (const pin of Array.isArray(communityPins) ? communityPins : []) {
+        if (!pin || typeof pin.storageId !== 'string' || typeof pin.sceneId !== 'string' || pin.storageId === currentStorageId) continue;
+        if (!pinsByStorage.has(pin.storageId)) pinsByStorage.set(pin.storageId, new Set());
+        pinsByStorage.get(pin.storageId).add(pin.sceneId);
+    }
+    for (const [pinStorageId, pinnedIds] of pinsByStorage) {
+        const foreign = resolveCommunitySources({
+            currentStorageId: pinStorageId,
+            sceneIdsByStorage: config.communitySceneIdsByStorage,
+            selectionsByStorage: config.communitySelectionsByStorage,
+            store: interactiveStore,
+        });
+        if (foreign.allowed) foreignSources.push(...foreign.sources.filter(source => pinnedIds.has(source.sourceId)));
+    }
     const injection = normalizeInjectionConfig(injectionConfig);
     const phoneInjection = injection.phone;
     const phoneItems = phonePermission.allowed ? phonePermission.sources.flatMap(source => {
@@ -307,17 +324,18 @@ export function buildContextInjectionPrompts({
             ...placement,
         }];
     }) : [];
-    const communityItems = communityPermission.allowed ? communityPermission.sources.flatMap(source => {
+    const communitySources = [...(communityPermission.allowed ? communityPermission.sources : []), ...foreignSources];
+    const communityItems = communitySources.flatMap(source => {
         const body = renderCommunitySource(source);
         if (!body) return [];
         return [{
-            key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.sourceId)}`,
+            key: `${COMMUNITY_KEY_PREFIX}${encodeURIComponent(source.storageId === currentStorageId ? source.sourceId : `${source.storageId}:${source.sourceId}`)}`,
             source: 'community',
             content: `[互动社区记忆 — 当前角色可见]\n${body}\n[结束]`,
             position: injection.community.position,
             depth: injection.community.depth,
         }];
-    }) : [];
+    });
     let calendarItems = [];
     const calendarScope = calendarStore && currentStorageId ? calendarScopeFor(calendarStore, currentStorageId) : null;
     if (calendarScope && (calendarScope.injectionScheduleEnabled || calendarScope.injectionWeatherEnabled || calendarScope.injectionCycleEnabled)) {

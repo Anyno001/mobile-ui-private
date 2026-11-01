@@ -587,6 +587,33 @@ assert.ok(communityPrompt);
 assert.match(communityPrompt.content, /帖子正文/);
 assert.equal(communityPrompt.position, 2);
 assert.equal(communityPrompt.depth, 3);
+
+// 固定社区跨聊天共用：全局固定、来自其他聊天的社区按它在自己聊天下的注入选择并入；未固定的、没有注入选择的都不进。
+{
+    const base = store.scopes['story-a'];
+    const crossStore = { version: 3, scopes: {
+        'story-a': base,
+        'story-z': { ...base, scenes: { 'scene-z': { ...scene, id: 'scene-z', title: '外聊已固定社区' }, 'scene-u': { ...scene, id: 'scene-u', title: '外聊未固定社区' } }, sceneOrder: ['scene-z', 'scene-u'], activeSceneId: 'scene-z', liveRooms: {}, liveOrder: [] },
+        'story-y': { ...base, scenes: { 'scene-y': { ...scene, id: 'scene-y', title: '外聊无选择社区' } }, sceneOrder: ['scene-y'], activeSceneId: 'scene-y', liveRooms: {}, liveOrder: [] },
+    } };
+    const crossBudget = {
+        targetTokens: 4000, sourceWeights: { phone: 1, community: 1 }, sourcePriority: ['community', 'phone'], redistributeUnused: true,
+        communitySceneIdsByStorage: { 'story-a': ['scene-a'], 'story-z': ['scene-z', 'scene-u'] },
+    };
+    const communityTitles = plan => plan.prompts.filter(prompt => prompt.key.includes(':community:')).map(prompt => /【社区·[^：]+：([^】]+)】/.exec(prompt.content)?.[1] ?? '');
+    const pinned = buildContextInjectionPrompts({ ...baseInjectionInput, interactiveStore: crossStore, budgetConfig: crossBudget,
+        communityPins: [{ storageId: 'story-z', sceneId: 'scene-z' }, { storageId: 'story-y', sceneId: 'scene-y' }, { storageId: 'story-a', sceneId: 'scene-a' }] });
+    const titles = communityTitles(pinned);
+    assert.ok(titles.includes('外聊已固定社区'), '固定的别聊天社区必须按它自己的注入选择并入当前聊天');
+    assert.ok(!titles.includes('外聊未固定社区'), '别聊天里未固定的社区不得注入，即使它在自己聊天里允许注入');
+    assert.ok(!titles.includes('外聊无选择社区'), '固定了但在自己聊天里没有注入选择的社区不得注入');
+    assert.equal(titles.length, 2, '当前聊天自己的社区照常注入，固定在当前聊天的项不重复');
+    assert.equal(new Set(pinned.prompts.map(prompt => prompt.key)).size, pinned.prompts.length, '别聊天社区的注入键不得与当前聊天的重复');
+    const unpinned = buildContextInjectionPrompts({ ...baseInjectionInput, interactiveStore: crossStore, budgetConfig: crossBudget, communityPins: [] });
+    assert.equal(communityTitles(unpinned).length, 1, '没有全局固定时只注入当前聊天的社区');
+    const brokenForeign = buildContextInjectionPrompts({ ...baseInjectionInput, interactiveStore: crossStore, budgetConfig: crossBudget, communityPins: [{ storageId: 'story-gone', sceneId: 'x' }] });
+    assert.equal(communityTitles(brokenForeign).length, 1, '别聊天数据缺失时跳过，不影响当前聊天');
+}
 const productionCommunityCalls = [];
 const productionCommunityResult = applyContextInjections({
     context: { setExtensionPrompt: (...args) => productionCommunityCalls.push(args) },

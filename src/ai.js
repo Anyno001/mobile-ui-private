@@ -1,4 +1,5 @@
 import { normalizeApiUrls } from './config.js';
+import { applyTextReplace } from './text-replace.js';
 
 export const DEFAULT_INDEPENDENT_API_TEMPERATURE = 1.2;
 
@@ -300,7 +301,7 @@ export function createAiClient({
             const content = extractAiResponseContent(json);
             if (!content) throw new Error('独立API响应缺少可用文本内容');
             throwIfAborted(signal);
-            return content;
+            return applyTextReplace(content);
         }
 
         const context = getContext();
@@ -314,13 +315,13 @@ export function createAiClient({
                 trimNames: false,
             }), signal);
             throwIfAborted(signal);
-            return result;
+            return applyTextReplace(result);
         }
         if (typeof context.generateQuietPrompt !== 'function') throw new Error('当前SillyTavern上下文缺少generateQuietPrompt');
         const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
         throwIfAborted(signal);
         const result = await raceAbort(context.generateQuietPrompt({ quietPrompt: fullPrompt }), signal);
         throwIfAborted(signal);
-        return result;
+        return applyTextReplace(result);
     };
 }

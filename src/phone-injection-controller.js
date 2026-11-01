@@ -49,6 +49,7 @@ export function createPhoneInjectionController({ state, runtime, deps, getCtx, g
             todayTrendStore: todayTrendStore === undefined
                 ? runtime.todayTrend?.pendingInjectionStore ?? runtime.todayTrend?.store : todayTrendStore,
             storyOraclePlans, shopStore,
+            communityPins: deps.getCommunityPins?.() || [],
         };
     }
 

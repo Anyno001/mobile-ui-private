@@ -141,4 +141,84 @@ assert.equal(decideCommunitySync({ remote: { updatedAt: 9, data: {} }, hasLocal:
     void sync;
 }
 
+// 固定社区跨聊天：在 B 里改动了 A 的社区 → A 的文件更新，回到 A 对账时本地更新、不被旧文件覆盖。
+{
+    const sidB = 'sms_b.png__聊天 2';
+    const fileA = communityFileName(sid);
+    const files = { [fileA]: { version: 1, updatedAt: 500, storageId: sid, scope: scope('A旧') } };
+    const { host, sync, runTimers, tick } = harness({ storageId: sidB, store: { version: 3, scopes: { [sid]: scope('A旧'), [sidB]: scope('B') } }, files });
+    await sync.reconcile();
+    const uploadsBefore = host.uploads.length;
+    assert.equal(await sync.reconcileForeign(sid), 'same', '登记别聊天社区前先对账，内容相同不上传');
+    assert.equal(host.uploads.length, uploadsBefore);
+    tick(10);
+    host.store = { ...host.store, scopes: { ...host.store.scopes, [sid]: scope('A在B里改过') } };
+    assert.equal(sync.noteLocalChange(), true, '在 B 里改动 A 的社区必须算本地改动');
+    await runTimers();
+    assert.equal(host.files[fileA].scope.scenes.s1.title, 'A在B里改过', 'A 的酒馆社区文件必须随之更新');
+    assert.equal(host.files[fileA].storageId, sid);
+    assert.deepEqual(host.uploads.slice(uploadsBefore).map(item => item.name), [fileA], '只上传被改动的 A，B 自己没改动不上传');
+    // 回到 A：本地时间戳新于（或等于）文件，不得被旧内容覆盖。
+    host.storageId = sid;
+    host.files[fileA] = { version: 1, updatedAt: 500, storageId: sid, scope: scope('A旧') };
+    assert.equal((await sync.reconcile()).startsWith('push'), true, '回到 A 时本地更新必须以本地为准');
+    assert.equal(host.store.scopes[sid].scenes.s1.title, 'A在B里改过');
+}
+// 别的聊天的文件比本地新（另一台设备改过）：打开前先采用，不拿旧数据盖掉。
+{
+    const sidB = 'sms_b.png__聊天 2';
+    const fileA = communityFileName(sid);
+    const files = { [fileA]: { version: 1, updatedAt: 900, storageId: sid, scope: scope('A新') } };
+    const { host, sync, runTimers } = harness({ storageId: sidB, store: { version: 3, scopes: { [sid]: scope('A旧'), [sidB]: scope('B') } }, files });
+    await sync.reconcile();
+    const uploadsBefore = host.uploads.length;
+    assert.equal(await sync.reconcileForeign(sid), 'adopt');
+    assert.equal(host.store.scopes[sid].scenes.s1.title, 'A新');
+    assert.equal(sync.noteLocalChange(), false, '采用文件不算本地改动');
+    await runTimers();
+    assert.equal(host.uploads.length, uploadsBefore);
+    assert.equal(await sync.reconcileForeign(sidB), 'skipped', '当前聊天自己不走别聊天通道');
+}
+
+// 读文件失败 / 采用失败 / 等待期间切了聊天：不登记基线，之后改 A 不会带新时间戳覆盖另一台设备的新文件。
+{
+    const sidB = 'sms_b.png__聊天 2';
+    const fileA = communityFileName(sid);
+    const mk = opts => harness({ storageId: sidB, store: { version: 3, scopes: { [sid]: scope('A旧'), [sidB]: scope('B') } }, ...opts });
+    const edit = host => { host.store = { ...host.store, scopes: { ...host.store.scopes, [sid]: scope('A本地改') } }; };
+    {
+        const h = mk({});
+        await h.sync.reconcile();
+        h.host.files = {}; // 先让 B 对账成功，再让读取失败
+        const failing = harness({ storageId: sidB, store: h.host.store, failRead: true });
+        assert.equal(await failing.sync.reconcileForeign(sid), 'skipped');
+        edit(failing.host);
+        assert.equal(failing.sync.noteLocalChange(), false, '读文件失败时不登记，改动不触发上传');
+    }
+    {
+        const files = { [fileA]: { version: 1, updatedAt: 900, storageId: sid, scope: scope('A新') } };
+        const h = mk({ files });
+        const real = h.host;
+        const failingCommit = createCommunityFileSync({
+            getCtx: () => ({}), getStorageId: () => sidB, getStore: () => real.store,
+            commitStore: async () => { throw new Error('结构不合规'); },
+            fetchImpl: async url => ({ ok: true, status: 200, json: async () => files[url.replace(/^\/user\/files\//, '').replace(/\?.*$/, '')] }),
+            storage: memoryStorage(), setTimer: () => 0, clearTimer: () => {},
+        });
+        assert.equal(await failingCommit.reconcileForeign(sid), 'adopt');
+        edit(real);
+        assert.equal(failingCommit.noteLocalChange(), false, '采用失败时不登记');
+    }
+    {
+        const files = { [fileA]: { version: 1, updatedAt: 100, storageId: sid, scope: scope('A旧') } };
+        const h = mk({ files });
+        await h.sync.reconcile();
+        const pendingForeign = h.sync.reconcileForeign(sid);
+        await h.sync.reconcile(); // 等待期间重新对账（等同切聊天）会清空登记
+        await pendingForeign;
+        edit(h.host);
+        assert.equal(h.sync.noteLocalChange(), false, '等待期间已切聊天，不得再登记别聊天基线');
+    }
+}
+
 console.log('Community file sync verified.');

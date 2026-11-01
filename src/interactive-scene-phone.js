@@ -164,7 +164,7 @@ export async function handleCommunityInjectionUiAction(action, {
 }
 
 export function persistCurrentPhoneUiSnapshot({
-    runtime, storageId, page, phoneScope, updatePhoneUiScope, chatType = null, chatKey = null,
+    runtime, storageId, openStorageId = null, page, phoneScope, updatePhoneUiScope, chatType = null, chatKey = null,
 }) {
     if (!runtime?.store || !storageId || storageId === 'sms_unknown__default'
         || !PHONE_UI_PAGES.includes(page)) return false;
@@ -173,8 +173,9 @@ export function persistCurrentPhoneUiSnapshot({
     const normalizedChatKey = normalizedChatType && typeof chatKey === 'string' && chatKey.trim()
         ? chatKey.trim() : null;
     updatePhoneUiScope(storageId, {
-        lastPage: page,
-        lastSceneId: page === 'community' ? runtime.openSceneId : null,
+        // 开着别的聊天的社区时记成桌面：别聊天的社区编号不属于这个聊天。
+        lastPage: page === 'community' && openStorageId && openStorageId !== storageId ? 'desktop' : page,
+        lastSceneId: page === 'community' && !(openStorageId && openStorageId !== storageId) ? runtime.openSceneId : null,
         lastTab: scope.lastTab,
         lastChatType: normalizedChatKey ? normalizedChatType : null,
         lastChatKey: normalizedChatKey,

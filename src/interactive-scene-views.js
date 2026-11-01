@@ -67,8 +67,11 @@ function sceneStatusText(scene, now) {
     return time.datetime ? `${time.label}更新` : '已有内容';
 }
 
-function renderDesktopPinRow(scene, now) {
-    return `<article class="pm-desktop-pin" data-community-platform="${platformOf(scene)}"${accentStyleOf(scene)}><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"><span class="pm-desktop-pin-dot" aria-hidden="true"></span><b>${escapeHtml(scene.title)}</b><span class="pm-desktop-pin-status">${escapeHtml(sceneStatusText(scene, now))}</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}" aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></article>`;
+// pin：{ scene, storageId?, source? }；storageId 只在来自其他聊天时带上，source 是来源聊天或角色名（取不到则为空）。
+function renderDesktopPinRow({ scene, storageId = '', source = '' }, now) {
+    const storageAttr = storageId ? ` data-storage-id="${escapeAttr(storageId)}"` : '';
+    const status = [source, sceneStatusText(scene, now)].filter(Boolean).join(' · ');
+    return `<article class="pm-desktop-pin" data-community-platform="${platformOf(scene)}"${accentStyleOf(scene)}><button type="button" data-action="desktop-open-scene" data-scene-id="${escapeAttr(scene.id)}"${storageAttr}><span class="pm-desktop-pin-dot" aria-hidden="true"></span><b>${escapeHtml(scene.title)}</b><span class="pm-desktop-pin-status">${escapeHtml(status)}</span></button><button type="button" data-action="unpin-scene" data-scene-id="${escapeAttr(scene.id)}"${storageAttr} aria-label="移除 ${escapeAttr(scene.title)} 快捷方式">移除</button></article>`;
 }
 
 function renderDesktopTemplateRow(template) {
@@ -77,13 +80,16 @@ function renderDesktopTemplateRow(template) {
 
 // 桌面小组件：固定社区（最多 3 行）与可导入的共享模板各成一组；两组都为空时整张卡不渲染。
 function renderDesktopWidget(scope, uiScope, sharedCommunityTemplates, now, pinsExpanded = false) {
-    const pinned = (uiScope.pinnedSceneIds || []).map(sceneId => scope.scenes?.[sceneId]).filter(Boolean);
+    // desktopPins 是跨聊天的全局固定项；没有时退回当前聊天的 pinnedSceneIds。
+    const pinned = Array.isArray(uiScope.desktopPins)
+        ? uiScope.desktopPins.filter(pin => pin?.scene)
+        : (uiScope.pinnedSceneIds || []).map(sceneId => scope.scenes?.[sceneId]).filter(Boolean).map(scene => ({ scene }));
     const templates = Array.isArray(sharedCommunityTemplates) ? sharedCommunityTemplates : [];
     if (!pinned.length && !templates.length) return '';
     const hiddenCount = pinned.length - DESKTOP_PIN_LIMIT;
     const shown = pinsExpanded ? pinned : pinned.slice(0, DESKTOP_PIN_LIMIT);
     const toggle = hiddenCount > 0 ? `<button type="button" class="pm-desktop-pin-more" data-action="desktop-toggle-pins" aria-expanded="${pinsExpanded}">${pinsExpanded ? '收起' : `还有 ${hiddenCount} 个`}</button>` : '';
-    const pinGroup = pinned.length ? `<div class="pm-desktop-pin-group"><h3>固定社区</h3>${shown.map(scene => renderDesktopPinRow(scene, now)).join('')}${toggle}</div>` : '';
+    const pinGroup = pinned.length ? `<div class="pm-desktop-pin-group"><h3>固定社区</h3>${shown.map(pin => renderDesktopPinRow(pin, now)).join('')}${toggle}</div>` : '';
     const templateGroup = templates.length ? `<div class="pm-desktop-pin-group"><h3>可导入的模板</h3>${templates.map(renderDesktopTemplateRow).join('')}</div>` : '';
     return `<section class="pm-desktop-pins">${pinGroup}${templateGroup}</section>`;
 }

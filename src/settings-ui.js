@@ -20,6 +20,7 @@ import { createWordyLimitController } from './settings-wordy-controller.js';
 import { showModelPicker } from './settings-model-picker.js';
 import { installQuickReplySettings } from './settings-quick-reply.js';
 import { installWorldBookSettings } from './settings-worldbook.js';
+import { installTextReplaceSettings } from './settings-text-replace.js';
 import {
     renderApiSettings, renderAppearancePackPreview, renderAppearancePackSettings, renderBackupSettings, renderBudgetSettings, renderLookSettings, renderSettingsHome, renderSettingsModal, resolveBudgetPercentageInput,
 } from './settings-templates.js';
@@ -52,6 +53,7 @@ export function installSettingsUi(deps) {
     const quickReplySettings = installQuickReplySettings({ makeOverlay, addNote, saveTheme });
     const worldBookSettings = installWorldBookSettings({ makeOverlay, addNote, getCtx: deps.getCtx });
     const igsLinkSettings = installIgsLinkSettings({ makeOverlay, getIgsLink: () => deps.igsLink });
+    const textReplaceSettings = installTextReplaceSettings({ makeOverlay });
     const apiDraftMode = createApiDraftMode();
     const requireInjectionSuccess = createInjectionResultGuard();
     const wordySettings = createWordyLimitController({ saveWordyLimit });
@@ -207,6 +209,10 @@ export function installSettingsUi(deps) {
             return;
         }
         if (page === 'igs-link' && igsLinkSettings.showPage()) return;
+        if (page === 'text-replace') {
+            textReplaceSettings.showPage();
+            return;
+        }
         if (page === 'worldbook') {
             await worldBookSettings.showPage();
             return;

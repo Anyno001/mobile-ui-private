@@ -216,7 +216,7 @@ export function normalizeCalendarScope(value) {
     const weatherEvent = normalizeStoryWeatherEvent(source.weatherEvent);
     if (weatherEvent) normalized.weatherEvent = weatherEvent;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
-    if (parseCalendarDate(source.baseDate)) normalized.baseDate = source.baseDate;
+    if (parseCalendarDate(source.baseDate)) { normalized.baseDate = source.baseDate; if (source.baseDateManual === true) normalized.baseDateManual = true; }
     return normalized;
 }
 
@@ -343,7 +343,7 @@ const relativeLabels = Object.freeze({
 });
 const chineseDigits = Object.freeze({ 零: 0, 〇: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 });
 const dateNumberToken = '[0-9零〇一二三四五六七八九十]+';
-const taggedDatePattern = /<\s*([A-Za-z][A-Za-z0-9:_-]{0,31})\s*>([^<>]{1,120})<\s*\/\s*([A-Za-z][A-Za-z0-9:_-]{0,31})\s*>/g;
+const taggedDatePattern = /<\s*([A-Za-z][A-Za-z0-9:_-]{0,31})\s*>([^<>]{1,240})<\s*\/\s*([A-Za-z][A-Za-z0-9:_-]{0,31})\s*>/g;
 
 export function normalizeCalendarDateTags(value) {
     const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[,，\s]+/) : [];
@@ -405,13 +405,24 @@ function shiftCalendarDate(now, offset) {
 const hasExplicitCalendarYear = value => /(?:\d{4}|[零〇一二三四五六七八九]{4})\s*年/.test(value)
     || /(?:^|\D)\d{4}[\s./-]+\d{1,2}[\s./-]+\d{1,2}(?:\D|$)/.test(value);
 
-export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+// 状态栏常只写「3月5日 星期三」；标签内容无年份时，以提示日期（当前故事日期，缺省为设备日期）的年份补全，并取距离最近的一年。
+function yearlessTaggedDate(content, hint) {
+    const reference = parseCalendarDate(hint) || new Date();
+    const monthDay = content.match(/^\s*(\d{1,2})\s*[./-]\s*(\d{1,2})(?!\d)/);
+    const guessed = monthDay ? calendarDateFromParts(reference.getFullYear(), Number(monthDay[1]), Number(monthDay[2])) : dateFromNaturalText(content, reference);
+    const parsed = parseCalendarDate(guessed);
+    if (!parsed) return null;
+    const candidates = [-1, 0, 1].map(offset => calendarDateFromParts(parsed.getFullYear() + offset, parsed.getMonth() + 1, parsed.getDate())).filter(Boolean);
+    const distance = value => Math.abs(parseCalendarDate(value).getTime() - reference.getTime());
+    return candidates.sort((left, right) => distance(left) - distance(right))[0] || null;
+}
+
+export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS, hint = '') {
     const source = String(text ?? '').trim();
     if (!source) return null;
     const reference = new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags).reverse()) {
-        if (!hasExplicitCalendarYear(content)) continue;
-        const date = dateFromNaturalText(content, reference);
+        const date = hasExplicitCalendarYear(content) ? dateFromNaturalText(content, reference) : yearlessTaggedDate(content, hint);
         if (date) return date;
     }
     const legacyTag = source.match(/<\s*(\d{4})[\s年./-]+(\d{1,2})[\s月./-]+(\d{1,2})\s*日?\s*>/);
@@ -419,9 +430,9 @@ export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_T
     return hasExplicitCalendarYear(source) ? dateFromNaturalText(source, reference) : null;
 }
 
-export function firstCalendarBaseDate(texts, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+export function firstCalendarBaseDate(texts, dateTags = DEFAULT_CALENDAR_DATE_TAGS, hint = '') {
     for (const text of Array.isArray(texts) ? texts : []) {
-        const date = extractCalendarBaseDate(text, dateTags);
+        const date = extractCalendarBaseDate(text, dateTags, hint);
         if (date) return date;
     }
     return null;

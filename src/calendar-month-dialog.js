@@ -1,7 +1,7 @@
 import { renderCalendarMonthDialog } from './calendar-view.js';
 
 // 跳转日期弹窗：年月与故事日期都在弹窗内暂存，点「应用」才写入。
-export function showCalendarMonthDialog({ makeOverlay, closeOverlay, scope, view, saveBaseDate, clearBaseDate, goToReferenceDate, jumpToMonth }) {
+export function showCalendarMonthDialog({ makeOverlay, closeOverlay, scope, view, saveBaseDate, clearBaseDate, setToday, goToReferenceDate, jumpToMonth }) {
     const originalBase = scope.baseDate || '';
     const overlay = makeOverlay(renderCalendarMonthDialog(scope, view.viewYear, view.viewMonth));
     const yearInput = overlay.querySelector('[data-calendar-jump-year]');
@@ -22,6 +22,7 @@ export function showCalendarMonthDialog({ makeOverlay, closeOverlay, scope, view
         overlay.querySelectorAll('[data-calendar-month-option]').forEach(option => option.setAttribute('aria-pressed', String(option === node)));
     }));
     overlay.querySelector('[data-action="calendar-base-clear"]')?.addEventListener('click', guard(() => clearBaseDate()));
+    overlay.querySelector('[data-action="calendar-set-today"]')?.addEventListener('click', guard(() => setToday()));
     overlay.querySelector('[data-action="calendar-today"]')?.addEventListener('click', guard(() => goToReferenceDate()));
     overlay.querySelector('[data-action="calendar-month-jump"]')?.addEventListener('click', guard(async () => {
         const base = baseInput?.value.trim() || '';

@@ -577,12 +577,16 @@ const normalizedPhoneUiState = normalizePhoneUiState({
         ' invalid ': { pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed' },
     },
 }, phoneInteractiveStore);
+assert.deepEqual(normalizedPhoneUiState.globalPins, [
+    { storageId: 'story', sceneId: 'scene-a' }, { storageId: 'story', sceneId: 'scene-b' }, { storageId: 'chatOnly', sceneId: 'cross-scope' },
+], '旧的按聊天固定项必须按顺序去重迁入全局固定，已加载聊天里不存在的社区被清掉，未加载聊天的保留');
+assert.equal(normalizedPhoneUiState.scopes.story.pinnedSceneIds, undefined, '迁移后不再保留按聊天的固定项');
 assert.deepEqual(normalizedPhoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-a', 'scene-b'], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: 'group', lastChatKey: '__group_saved',
 });
 assert.deepEqual(normalizedPhoneUiState.scopes.chatOnly, {
-    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed',
+    lastPage: 'chat', lastSceneId: null, lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 }, '旧状态里的 lastTab: live 必须归一为 feed');
 assert.equal(normalizedPhoneUiState.scopes[' invalid '], undefined);
@@ -593,7 +597,7 @@ const validCommunityState = normalizePhoneUiState({
     },
 }, phoneInteractiveStore);
 assert.deepEqual(validCommunityState.scopes.story, {
-    pinnedSceneIds: ['scene-b'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
+    lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
 });
 const pollutedPhoneUiState = JSON.parse('{"version":1,"scopes":{"__proto__":{"pinnedSceneIds":[],"lastPage":"desktop","lastSceneId":null,"lastTab":"feed"}}}');
@@ -642,10 +646,10 @@ const patchedPhoneUiState = patchPhoneUiScope(phoneUiInput, 'story', {
     lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'prompt',
 }, phoneInteractiveStore);
 assert.deepEqual(patchedPhoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
+    lastPage: 'community', lastSceneId: 'scene-b', lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 });
-assert.deepEqual(patchedPhoneUiState.scopes.other, { ...phoneUiInput.scopes.other, lastTab: 'feed' });
+assert.deepEqual(patchedPhoneUiState.scopes.other, { lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null });
 assert.deepEqual(phoneUiInput, phoneUiInputSnapshot, 'patchPhoneUiScope 不得修改输入状态');
 const newScopePhoneUiState = patchPhoneUiScope(phoneUiInput, 'new-scope', { lastPage: 'chat' }, phoneInteractiveStore);
 assert.deepEqual(newScopePhoneUiState.scopes['new-scope'], {
@@ -655,11 +659,12 @@ assert.throws(() => patchPhoneUiScope(phoneUiInput, ' story ', { lastPage: 'chat
 assert.throws(() => patchPhoneUiScope(phoneUiInput, 'story', null, phoneInteractiveStore), /补丁必须是对象/);
 
 const pinnedPhoneUiState = toggleScenePin(phoneUiInput, 'story', 'scene-b', phoneInteractiveStore);
-assert.deepEqual(pinnedPhoneUiState.scopes.story.pinnedSceneIds, ['scene-a', 'scene-b']);
+assert.deepEqual(pinnedPhoneUiState.globalPins, [{ storageId: 'story', sceneId: 'scene-a' }, { storageId: 'story', sceneId: 'scene-b' }]);
 assert.deepEqual(phoneUiInput, phoneUiInputSnapshot, 'toggleScenePin 不得修改输入状态');
 const unpinnedPhoneUiState = toggleScenePin(pinnedPhoneUiState, 'story', 'scene-a', phoneInteractiveStore);
+assert.deepEqual(unpinnedPhoneUiState.globalPins, [{ storageId: 'story', sceneId: 'scene-b' }]);
 assert.deepEqual(unpinnedPhoneUiState.scopes.story, {
-    pinnedSceneIds: ['scene-b'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed',
+    lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 });
 assert.throws(() => toggleScenePin(phoneUiInput, 'story', 'missing', phoneInteractiveStore), /互动场景不存在/);
@@ -937,8 +942,9 @@ const prunedStore = structuredClone(phoneInteractiveStore);
 delete prunedStore.scopes.story.scenes['scene-a'];
 prunedStore.scopes.story.sceneOrder = ['scene-b'];
 prunedStore.scopes.story.activeSceneId = 'scene-b';
+assert.deepEqual(normalizePhoneUiState(phoneUiInput, prunedStore).globalPins, undefined, '已加载聊天里社区被删除时全局固定项必须清掉');
 assert.deepEqual(normalizePhoneUiState(phoneUiInput, prunedStore).scopes.story, {
-    pinnedSceneIds: [], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: 'contact', lastChatKey: 'Alice',
 });
 
@@ -993,6 +999,15 @@ assert.notEqual(storedContactSnapshot.lastChatKey, storedGroupSnapshot.lastChatK
 assert.deepEqual(resolvePhoneChatTarget(
     storedGroupSnapshot, { Default: [] }, {}, 'Default',
 ), { type: 'contact', key: 'Default' }, 'snapshot 指向已删除群聊时必须回退默认联系人');
+{
+    const foreignRuntime = { ...snapshotRuntime, openSceneId: 'foreign-scene' };
+    assert.equal(persistCurrentPhoneUiSnapshot({
+        runtime: foreignRuntime, storageId: 'story', openStorageId: 'someone-else', page: 'community',
+        phoneScope: snapshotPhoneScope, updatePhoneUiScope: updateSnapshotPhoneUiScope,
+    }), true);
+    assert.equal(snapshotPhoneUiState.scopes.story.lastPage, 'desktop', '开着别聊天的社区关手机，当前聊天按桌面记');
+    assert.equal(snapshotPhoneUiState.scopes.story.lastSceneId, null);
+}
 assert.equal(persistCurrentPhoneUiSnapshot({
     runtime: snapshotRuntime,
     storageId: 'sms_unknown__default',
@@ -2136,16 +2151,17 @@ const mergedPhoneUiScope = savePhoneUiScope('story', {
     },
 }, phoneInteractiveStore);
 assert.deepEqual(mergedPhoneUiScope.scopes.branchTarget, {
-    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
+    lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
 }, '普通手机 UI 保存必须按 scope 合并，不得用旧运行态覆盖分支新建 target scope');
+assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).globalPins, [{ storageId: 'story', sceneId: 'scene-a' }], '按 scope 保存时全局固定项必须一并写入并读回');
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.story, {
-    pinnedSceneIds: ['scene-a'], lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed', lastChatType: null, lastChatKey: null,
+    lastPage: 'community', lastSceneId: 'scene-a', lastTab: 'feed', lastChatType: null, lastChatKey: null,
 }, 'lastTab: live 保存后读回必须归一为 feed');
 const phoneUiBranchToken = markDirectoryBranchScope('phoneUi', 'branchTarget');
 assert.equal(savePhoneUiState(validCommunityState, phoneInteractiveStore), true);
 completeDirectoryBranchScope('phoneUi', phoneUiBranchToken);
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.branchTarget, {
-    pinnedSceneIds: [], lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
+    lastPage: 'chat', lastSceneId: null, lastTab: 'feed', lastChatType: null, lastChatKey: null,
 }, '普通整库手机 UI 保存必须保护正在提交的分支 target scope');
 localData.set(PHONE_UI_STORAGE_KEY, JSON.stringify({
     version: 1,
@@ -2153,8 +2169,9 @@ localData.set(PHONE_UI_STORAGE_KEY, JSON.stringify({
         story: { pinnedSceneIds: ['scene-b', 'missing'], lastPage: 'community', lastSceneId: 'missing', lastTab: 'broken' },
     },
 }));
+assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).globalPins, [{ storageId: 'story', sceneId: 'scene-b' }]);
 assert.deepEqual(loadPhoneUiState(phoneInteractiveStore).scopes.story, {
-    pinnedSceneIds: ['scene-b'], lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
+    lastPage: 'desktop', lastSceneId: null, lastTab: 'feed',
     lastChatType: null, lastChatKey: null,
 });
 localData.set(PHONE_UI_STORAGE_KEY, '{broken-json');
@@ -3031,7 +3048,7 @@ try {
     listeners.get('click')({ target: pinButton });
     await Promise.resolve();
     const pinnedUiState = loadPhoneUiState(await deps.getInteractiveStore());
-    assert.deepEqual(pinnedUiState.scopes['interactive-installation-scope'].pinnedSceneIds, [savedScene.id],
+    assert.deepEqual(pinnedUiState.globalPins, [{ storageId: 'interactive-installation-scope', sceneId: savedScene.id }],
         '启动页点击固定必须持久化场景标识');
     assert.deepEqual(pinAttributes, { 'aria-pressed': 'true', 'aria-label': '取消固定社区' });
     assert.equal(pinButton.title, '取消固定社区');
@@ -3040,12 +3057,48 @@ try {
     listeners.get('click')({ target: pinButton });
     await Promise.resolve();
     const unpinnedUiState = loadPhoneUiState(await deps.getInteractiveStore());
-    assert.deepEqual(unpinnedUiState.scopes['interactive-installation-scope'].pinnedSceneIds, [],
+    assert.deepEqual(unpinnedUiState.globalPins, undefined,
         '启动页再次点击必须取消固定');
     assert.deepEqual(pinAttributes, { 'aria-pressed': 'false', 'aria-label': '固定社区' });
     assert.equal(pinButton.title, '固定社区');
     assert.equal(communityPage.innerHTML, launcherHtmlBeforePin, '启动页取消固定不得重绘整个社区页面');
     assert.equal(launcher.scrollTop, 684, '启动页取消固定不得改变滚动位置');
+
+    // ===== 固定社区跨聊天：在 B 聊天里显示、打开并修改 A 聊天的社区 =====
+    {
+        const foreignId = 'sms_role.png__chatA', foreignSceneId = 'foreign-scene';
+        const crossStore = await deps.getInteractiveStore();
+        const foreignScope = createEmptyInteractiveScope();
+        foreignScope.scenes[foreignSceneId] = normalizeScene({ id: foreignSceneId, title: '外聊社区', platform: 'weibo' });
+        foreignScope.sceneOrder.push(foreignSceneId);
+        foreignScope.activeSceneId = foreignSceneId;
+        crossStore.scopes[foreignId] = foreignScope;
+        const settle = async () => { for (let i = 0; i < 30; i += 1) await new Promise(resolve => setTimeout(resolve, 0)); };
+        const plainButton = dataset => ({ tagName: 'BUTTON', dataset, closest(selector) { return selector === '[data-action]' ? this : (selector === '.pm-desktop-page' ? desktopPage : null); }, setAttribute() {} });
+        listeners.get('click')({ target: plainButton({ action: 'toggle-scene-pin', sceneId: foreignSceneId, storageId: foreignId }) });
+        await settle();
+        assert.deepEqual(loadPhoneUiState(crossStore).globalPins, [{ storageId: foreignId, sceneId: foreignSceneId }], '在别的聊天固定的社区必须进全局固定列表');
+        assert.match(desktopPage.innerHTML, new RegExp(`data-action="desktop-open-scene" data-scene-id="${foreignSceneId}" data-storage-id="${foreignId}"`), '当前聊天桌面必须显示别的聊天固定的社区');
+        assert.match(desktopPage.innerHTML, /pm-desktop-pin-status">角色 · /, '别的聊天的固定项必须带来源名');
+        assert.deepEqual(deps.getCommunityPins(), [{ storageId: foreignId, sceneId: foreignSceneId }], '注入用的全局固定列表必须可取');
+        listeners.get('click')({ target: plainButton({ action: 'desktop-open-scene', sceneId: foreignSceneId, storageId: foreignId }) });
+        await settle();
+        assert.equal(mainUi.dataset.page, 'community', '点开别聊天的固定社区必须进入社区页');
+        const ownTitle = crossStore.scopes['interactive-installation-scope'].scenes[savedScene.id].title;
+        sceneTitleInput.value = '外聊社区改名';
+        listeners.get('click')({ target: savePromptButton });
+        await settle();
+        assert.equal(crossStore.scopes[foreignId].scenes[foreignSceneId].title, '外聊社区改名', '在当前聊天里改别聊天的社区必须写进那个聊天的数据');
+        assert.equal(crossStore.scopes['interactive-installation-scope'].scenes[savedScene.id].title, ownTitle, '当前聊天自己的社区不得被改动');
+        sceneTitleInput.value = '更新后的社区';
+        listeners.get('click')({ target: plainButton({ action: 'unpin-scene', sceneId: foreignSceneId, storageId: foreignId }) });
+        await settle();
+        assert.equal(loadPhoneUiState(crossStore).globalPins, undefined, '桌面上取消固定别聊天的社区必须改全局列表');
+        listeners.get('click')({ target: plainButton({ action: 'desktop-open-scene', sceneId: savedScene.id }) });
+        await settle();
+        assert.equal(deps.getCommunityPins().length, 0);
+        delete crossStore.scopes[foreignId];
+    }
 
 
     sceneAccentInput.value = '#xyzxyz';

@@ -1,7 +1,7 @@
 // 社区与直播间的删楼回退（community-floor-rollback.js）定向检查：楼层标记、旧版本记录、回退、存取。
 import assert from 'node:assert/strict';
 import {
-    applyCommunityFloorRollback, communityFloorMark, pruneCommunityRollback, setCommunityFloorProvider,
+    applyCommunityFloorRollback, communityFloorMark, pruneCommunityRollback, setCommunityFloorProvider, withoutFloorMarks,
 } from '../src/community-floor-rollback.js';
 import {
     addSceneComment, appendLiveDanmaku, appendScenePosts, createEmptyInteractiveScope, createLiveRoom, deleteLiveDanmaku, deleteSceneComment,
@@ -12,7 +12,8 @@ import { floorMarkFor } from '../src/phone-floor-rollback.js';
 import { parseBackupData } from '../src/settings-backup-validate.js';
 
 let checks = 0;
-const check = (name, run) => { try { run(); } catch (error) { error.message = `${name}：${error.message}`; throw error; } checks += 1; };
+const pending = [];
+const check = (name, run) => { try { const out = run(); if (out?.then) pending.push(out.catch(error => { error.message = `${name}：${error.message}`; throw error; })); } catch (error) { error.message = `${name}：${error.message}`; throw error; } checks += 1; };
 
 let sendSeq = 0;
 const ai = text => ({ is_user: false, mes: text, name: 'AI', send_date: `t${(sendSeq += 1)}` });
@@ -217,4 +218,26 @@ check('旧数据（没有楼层标记）回退时原样保留', () => {
     assert.equal(scene.posts[0].comments.length, 1);
 });
 
+check('别的聊天的社区里生成的内容不打楼层标记、不记旧版本，回到那个聊天回退时保留', async () => {
+    chat = [user('a'), ai('b')];
+    const { scope, scene } = freshScope();
+    const early = post(scope, scene, '早帖');
+    chat = [...chat, user('c'), ai('d')];
+    let foreign;
+    await withoutFloorMarks(() => {
+        assert.deepEqual(communityFloorMark(), {}, '外聊写入时不带楼层');
+        foreign = post(scope, scene, '在别的聊天里生成的帖子');
+        const comment = addSceneComment(scope, 'sid', scene, early.id, seeds[1], '外聊评论');
+        assert.equal(comment.floor, undefined);
+        updateScenePost(scene, early.id, '外聊改过');
+        assert.equal(scene.floorRollback, undefined, '外聊的编辑不记旧版本');
+    });
+    assert.equal(foreign.floor, undefined);
+    assert.equal(communityFloorMark().floor, 4, '写完后恢复记楼层');
+    chat = chat.slice(0, 2);
+    applyCommunityFloorRollback(scope, chat, { limits });
+    assert.deepEqual(scene.posts.map(item => item.content).sort(), ['外聊改过', '在别的聊天里生成的帖子'].sort(), '那个聊天回退时外聊内容不得被删');
+    assert.equal(scene.posts.find(item => item.id === early.id).comments.length, 1);
+});
+await Promise.all(pending);
 console.log(`Community floor rollback checks passed (${checks}).`);
