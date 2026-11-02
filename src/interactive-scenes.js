@@ -199,9 +199,9 @@ export function installInteractiveScenes(_state, deps) {
     };
     async function contextText(signal) {
         const ctx = await gatherContext(null, { module: 'community', signal });
-        const context = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario, ctx.mainChatText]
-            .filter(Boolean).join('\n').slice(0, 9000);
-        return { context, worldBookText: ctx.worldBookText };
+        const chat = String(ctx.mainChatText || '').slice(-6000); // 正文保留末尾，角色卡吃剩余额度
+        const card = [ctx.cardDesc, ctx.cardPersonality, ctx.cardScenario].filter(Boolean).join('\n').slice(0, Math.max(0, 9000 - chat.length - 1));
+        return { context: [card, chat].filter(Boolean).join('\n'), worldBookText: ctx.worldBookText };
     }
     // 返回解析后的 items；热搜 / 今夜信箱这类 meta 以不可枚举属性挂在 items 上，由 commitFeed 取用，调度器无需改动。
     async function request(kind, extra = {}, target = null) {

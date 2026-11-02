@@ -522,7 +522,7 @@ export function contextPayload(context, now, {
             scenario: String(context.cardScenario || '').slice(0, 1200),
         },
         worldFacts: String(context.worldBookText || '').replace(/<[^>]+>/g, ' ').slice(0, 3000),
-        recentConversation: String(context.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(0, 3000),
+        recentConversation: String(context.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(-3000),
     };
 }
 

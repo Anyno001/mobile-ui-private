@@ -56,8 +56,9 @@ const dynamicsCapacityPolicyBatch = (scope) => {
     return `${dynamicsCapacityLine(scope)}已满：archive + create 同批仅在 archive 引用既有 active 且 history_batch_data 明确支持真实终局、且设置同时允许 autoComplete 与 archiveCompleted 时才允许；本批 create 不得在本批被 archive。${allowArchive ? '' : '当前设置不允许归档，'}若条件不满足，本批 create 必须为 []，并改用 appendStages、history.daySummaries 或 world.upserts吸收事实。不得删除 active，不得捏造 outcome/finalResult，不得为了腾位改 type。尊重已有 incident 权限与 outcome 表。`;
 };
 
-const block = (name, value, max) => {
-    const text = String(value || '').trim().slice(0, max);
+const block = (name, value, max, tail = false) => {
+    const full = String(value || '').trim();
+    const text = tail ? full.slice(-max) : full.slice(0, max);
     if (!text) return '';
     const encoded = JSON.stringify(text).replace(/[<>&]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
     return `<${name} encoding="json-string">\n${encoded}\n</${name}>`;
@@ -99,7 +100,7 @@ dynamics 必须仅含 active 与 archived。事件仅含 id,type,lifecycle,title
         block('user_data', `${context.user?.name || ''}\n${context.user?.description || ''}`, 720),
         block('character_data', [context.character?.description, context.character?.personality, context.character?.scenario, context.character?.firstMessage, context.character?.exampleMessages].filter(Boolean).join('\n'), 2800),
         block('world_book_data', context.worldBookText, 6000),
-        block('main_chat_data', [context.mainChatText, context.latestChatText].filter(Boolean).join('\n'), 9000),
+        block('main_chat_data', [context.mainChatText, context.latestChatText].filter(Boolean).join('\n'), 9000, true),
         block('generation_mode', modeInstruction, 1200),
         block('initialization_requirements', context.source?.userRequirements, 600),
         `目标角色：${context.characterName}\n目标聊天：${context.storageId}\n请基于资料一次生成四个模块规则、模块结构与初始世界态势、个人风评、势力图谱和事件追踪。动态事件必须服务于世界设定和可持续的 NPC 群像因果，不要为了填充而强行制造事件。`,
@@ -137,7 +138,7 @@ dynamics 非 null 时必须仅含 active、archived。事件仅含 id,type,lifec
         block('character_data', [context.character?.description, context.character?.personality, context.character?.scenario, context.character?.firstMessage, context.character?.exampleMessages].filter(Boolean).join('\n'), 2800),
         block('world_book_data', context.worldBookText, 6000),
         Array.isArray(historyBatch) ? block('history_batch_data', historyBatch.map(message => `${message.role}：${message.content}`).join('\n'), 9000)
-            : block('main_chat_data', [context.mainChatText, context.latestChatText].filter(Boolean).join('\n'), 9000),
+            : block('main_chat_data', [context.mainChatText, context.latestChatText].filter(Boolean).join('\n'), 9000, true),
         block('world_rule', preset.moduleRules?.world, 600),
         Array.isArray(historyBatch) ? block('world_items_schema', preset.moduleSchemas?.worldItems, 600) : '',
         block('reputation_rule', preset.moduleRules?.reputation, 600),

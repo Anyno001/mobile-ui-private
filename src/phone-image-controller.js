@@ -3,7 +3,7 @@
 
 import { generateDbgenImage, dbgenStatus } from './phone-image-dbgen.js';
 import { chatImageScene, communityImageScene, namesMentioned, phoneImageDescription } from './phone-image-describe.js';
-import { createImageDnaService } from './phone-image-dna.js';
+import { createIgsDnaReader, createImageDnaService } from './phone-image-dna.js';
 import { bindingKey, createImageStore, imageUrl } from './phone-image-store.js';
 import { imageSizeFor, loadImageSettings, profileForModule } from './phone-image-settings.js';
 import { paintNai } from './phone-image-nai.js';
@@ -28,7 +28,10 @@ export function cleanShotDescription(value) {
 
 export function installPhoneImages(state, deps) {
     const { getCtx, getStorageId, getUserPersona, makeOverlay, closeOverlay } = deps;
-    const dna = createImageDnaService({ callAI: (...args) => deps.callAI(...args), gatherContext: deps.gatherContext, getCtx, getUserPersona });
+    // 联动开关（总开关 + 生图读取角色形象与衣装）关着时不碰 globalThis.IGS。
+    const igsDna = createIgsDnaReader({ getConfig: () => deps.igsLink?.getConfig?.() });
+    const dna = createImageDnaService({ callAI: (...args) => deps.callAI(...args), gatherContext: deps.gatherContext, getCtx, getUserPersona,
+        readIgsDna: (...args) => igsDna.read(...args), readIgsOutfit: (...args) => igsDna.readOutfit(...args), igsAvailable: () => igsDna.available() });
     const store = createImageStore({ getCtx });
     const jobs = new Map();
     let queue = Promise.resolve();

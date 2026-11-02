@@ -31,7 +31,7 @@ export async function gatherTodayTrendContext({
             firstMessage: text(host?.cardFirstMes), exampleMessages: text(host?.cardMesExample),
         },
         worldBookText: text(host?.worldBookText, worldBookMaxChars),
-        mainChatText: Array.isArray(historyBatch) ? '' : includeExistingChat === true ? text(host?.mainChatText, 8000) : '',
+        mainChatText: Array.isArray(historyBatch) ? '' : includeExistingChat === true ? String(host?.mainChatText || '').trim().slice(-8000) : '',
         latestChatText: Array.isArray(historyBatch) ? '' : includeExistingChat === true ? text(host?.latestChatText, 1600) : '',
     };
 }

@@ -1,4 +1,6 @@
-// 角色 DNA：手机独立保存，不读写其他插件的资料。没有就用手机的 API 写一份，按角色卡（群聊按群）分开存。
+// 角色 DNA：手机自己保存，按角色卡（群聊按群）分开存。「与gal前端联动」里开了读取角色形象与衣装时，出图优先只读 IGS 的，不拷贝、不写入；
+// IGS 没有再用手机已存的，仍没有就用手机的 API 写一份。
+// 衣装：IGS 正文当前衣装 → IGS 默认衣装（IGS 已按此顺序给出）→ 手机日历当天穿搭 → 不写。
 // 结构沿用 IGS scene/character-dna.js：{ version:2, views:{ full_body|half_body|portrait:{subject,negative} }, personality }。
 
 import { parseFirstJsonObject } from './ai.js';
@@ -98,7 +100,37 @@ export function buildDnaUserPrompt({ name, isUser, cardDesc, cardPersonality, wo
     return parts.join('\n\n');
 }
 
-export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPersona,
+/** 读 IGS 角色形象与衣装（只读）。开关由 getConfig 提供；没开时不碰 globalThis.IGS。 */
+export function createIgsDnaReader({ getConfig, getGlobal = () => globalThis } = {}) {
+    const api = () => {
+        try {
+            const config = getConfig?.();
+            if (!config?.enabled || config.readDna !== true) return null;
+            const characters = getGlobal()?.IGS?.api?.characters;
+            return characters && Number(characters.version) >= 1 && typeof characters.dna === 'function' ? characters : null;
+        } catch (error) { return null; }
+    };
+    const outfitApi = () => {
+        const characters = api();
+        return characters && Number(characters.version) >= 2 && typeof characters.outfit === 'function' ? characters : null;
+    };
+    return {
+        available: () => !!api(),
+        /** 返回手机 outfit 结构 { name, description }；不支持、无效或出错都返回 null。 */
+        readOutfit(name, { isUser = false } = {}) {
+            try {
+                const outfit = outfitApi()?.outfit(name, { isUser })?.outfit;
+                const description = text(outfit?.description).slice(0, TEXT_LIMIT);
+                return description ? { name: text(outfit?.name).slice(0, TEXT_LIMIT), description } : null;
+            } catch (error) { return null; }
+        },
+        read(name, { isUser = false } = {}) {
+            try { return api()?.dna(name, { isUser }) ?? null; } catch (error) { return null; }
+        },
+    };
+}
+
+export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPersona, readIgsDna, readIgsOutfit, igsAvailable,
     readStore = () => pmIDBGet(IMAGE_DNA_STORE_KEY), writeStore = value => pmIDBSet(IMAGE_DNA_STORE_KEY, value) } = {}) {
     let cache = null;
     const inflight = new Map();
@@ -157,14 +189,25 @@ export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPe
 
     /**
      * 解析一个出图角色：{ characterKey, dna, outfit, source }。
-     * source：phone = 手机已存；written = 刚写好；none = 没有 DNA（写失败或不允许写）。
+     * source：igs = 读自gal前端（只读）；phone = 手机已存；written = 刚写好；none = 没有 DNA（写失败或不允许写）。
      */
-    async function resolve(name, { isUser = false, storageId = '', storyDate = '', allowWrite = true, signal } = {}) {
+    async function resolve(name, { isUser = false, storageId = '', storyDate = '', allowWrite = true, igs = true, signal } = {}) {
         const scopeKey = imageScopeKey(getCtx?.());
         const display = text(name) || (isUser ? text(getUserPersona?.()?.name) || '我' : '');
-        const outfit = calendarOutfit(storageId, isUser ? OUTFIT_SELF_SUBJECT : `role:${display}`, storyDate);
+        let outfit = null;
+        if (igs && typeof readIgsOutfit === 'function') {
+            try { outfit = readIgsOutfit(display, { isUser }) || null; } catch (error) { outfit = null; }
+            if (!text(outfit?.description)) outfit = null;
+        }
+        outfit ||= calendarOutfit(storageId, isUser ? OUTFIT_SELF_SUBJECT : `role:${display}`, storyDate);
         const base = { characterKey: display, ...(outfit && { outfit }) };
         const storeName = isUser ? USER_DNA_KEY : display;
+        // IGS 优先；返回值过一遍手机的校验，结构不合格当作没有。
+        if (igs && typeof readIgsDna === 'function') {
+            let fromIgs = null;
+            try { fromIgs = normalizeDnaRecord({ dna: (await readIgsDna(display, { isUser }))?.dna }); } catch (error) { fromIgs = null; }
+            if (fromIgs) return { ...base, dna: fromIgs.dna, source: 'igs' };
+        }
         const saved = (await load()).scopes[scopeKey]?.[storeName];
         if (saved) return { ...base, dna: saved.dna, source: 'phone' };
         if (!allowWrite || typeof callAI !== 'function') return { ...base, source: 'none' };
@@ -178,5 +221,5 @@ export function createImageDnaService({ callAI, gatherContext, getCtx, getUserPe
     }
 
     const invalidate = () => { cache = null; };
-    return { resolve, list, saveManual, clear, write, invalidate, scopeKey: () => imageScopeKey(getCtx?.()) };
+    return { resolve, igsAvailable: () => { try { return !!igsAvailable?.(); } catch (error) { return false; } }, list, saveManual, clear, write, invalidate, scopeKey: () => imageScopeKey(getCtx?.()) };
 }

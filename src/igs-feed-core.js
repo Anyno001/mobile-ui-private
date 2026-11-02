@@ -24,7 +24,7 @@ export function normalizeChatFloors(value) {
 // 总开关默认关；打开时「自动同步」跟着开，「同步后自动续写」默认关（省 token）。
 // 「同步直播间」跟着总开关一起开（计划 §6.6）。
 export const DEFAULT_IGS_LINK = Object.freeze({
-    enabled: false, autoSync: true, autoContinue: false, syncLive: true, syncChats: true, autoCreateContacts: true, chatFloors: DEFAULT_CHAT_FLOORS,
+    enabled: false, autoSync: true, autoContinue: false, syncLive: true, syncChats: true, autoCreateContacts: true, chatFloors: DEFAULT_CHAT_FLOORS, readDna: false,
 });
 
 export function normalizeIgsLinkConfig(value) {
@@ -37,6 +37,7 @@ export function normalizeIgsLinkConfig(value) {
         syncChats: source.syncChats !== false,
         autoCreateContacts: source.autoCreateContacts !== false,
         chatFloors: normalizeChatFloors(source.chatFloors),
+        readDna: source.readDna === true,
     };
 }
 

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { captionHasPromptText, findDbgenApi, generateDbgenImage } from '../src/phone-image-dbgen.js';
 import { namesMentioned, phoneImageDescription } from '../src/phone-image-describe.js';
-import { createImageDnaService, imageScopeKey, normalizeImageDnaStore, parseDnaResponse } from '../src/phone-image-dna.js';
+import { createIgsDnaReader, createImageDnaService, imageScopeKey, normalizeImageDnaStore, parseDnaResponse } from '../src/phone-image-dna.js';
 import { bindingKey, createImageStore, latestForBinding, normalizeImageCatalog, uploadImage } from '../src/phone-image-store.js';
 import { captionKindOf, cleanShotDescription, moduleOf } from '../src/phone-image-controller.js';
 import { createPresetFrom, imageSizeFor, normalizeImageProfile, normalizeImageSettings, profileForModule } from '../src/phone-image-settings.js';
@@ -11,6 +11,8 @@ import { buildNaiRequest, foldCharsForRelay, imageFromResponse, paintNai, resolv
 import { dnaTags, mergeNaiSlot } from '../src/phone-image-nai-writer.js';
 import { imageCardMarkup, imageSpecialDescription } from '../src/messaging.js';
 import { parseCommunityResponse } from '../src/interactive-scene-ai.js';
+import { updateOutfitProfile, upsertOutfit, createEmptyOutfitStore, OUTFIT_SELF_SUBJECT } from '../src/calendar-outfit-model.js';
+import { saveCalendarOutfits } from '../src/calendar-storage.js';
 import { appendScenePosts, createEmptyInteractiveScope, INTERACTIVE_STORE_VERSION, normalizeInteractiveStore, normalizeScene } from '../src/interactive-scene-model.js';
 
 const caption = { v4_prompt: { caption: { base_caption: '1girl, smile', char_captions: [] } } };
@@ -89,6 +91,106 @@ const pngDataUrl = 'data:image/png;base64,iVBORw0KGgo=';
     const readOnly = await service.resolve('路人', { allowWrite: false });
     assert.equal(readOnly.source, 'none');
     assert.throws(() => parseDnaResponse('{"full_body":"","half_body":"","portrait":""}'), /缺少外貌标签/);
+}
+
+// 读 IGS 角色形象：开关关时不碰 IGS；IGS 优先；无效或出错回退手机；isUser 透传。
+{
+    const good = { name: '阿杰', dna: { version: 2, views: { portrait: { subject: '1boy, igs hair' } } } };
+    let touched = 0;
+    const calls = [];
+    const igsGlobal = { get IGS() { touched += 1; return { api: { characters: { version: 1, dna: (name, opts) => { calls.push([name, opts]); return reply(); } } } }; } };
+    let reply = () => good;
+    let config = { enabled: false, readDna: true };
+    const reader = createIgsDnaReader({ getConfig: () => config, getGlobal: () => igsGlobal });
+    assert.equal(reader.read('阿杰'), null);
+    assert.equal(reader.available(), false);
+    config = { enabled: true, readDna: false };
+    assert.equal(reader.read('阿杰'), null);
+    assert.equal(touched, 0, '开关关时不碰 globalThis.IGS');
+    config = { enabled: true, readDna: true };
+    assert.equal(reader.available(), true);
+    assert.deepEqual(reader.read('阿杰', { isUser: true }), good);
+    assert.deepEqual(calls.at(-1), ['阿杰', { isUser: true }]);
+
+    let aiCalls = 0;
+    let saved = null;
+    const make = readIgsDna => createImageDnaService({
+        getCtx: () => ({ characterId: 0, characters: [{ name: '恋爱卡' }] }), readIgsDna,
+        callAI: async () => { aiCalls += 1; return '{"full_body":"1boy, phone","half_body":"1boy, phone","portrait":"1boy, phone"}'; },
+        gatherContext: async () => { throw new Error('无法定位'); },
+        readStore: async () => saved, writeStore: async value => { saved = value; return true; },
+    });
+    const seen = [];
+    const service = make((name, opts) => { seen.push([name, opts]); return reader.read(name, opts); });
+    const hit = await service.resolve('阿杰', { isUser: true });
+    assert.equal(hit.source, 'igs');
+    assert.equal(hit.dna.views.portrait.subject, '1boy, igs hair');
+    assert.deepEqual(seen[0][1], { isUser: true });
+    assert.equal(aiCalls, 0);
+    assert.equal(saved, null, '读 IGS 不写手机存储');
+    assert.equal((await service.resolve('阿杰', { igs: false, allowWrite: false })).source, 'none');
+    for (const bad of [() => null, () => { throw new Error('boom'); }, () => ({ dna: { views: { portrait: { subject: '' } } } }), () => 'x']) {
+        reply = bad;
+        aiCalls = 0; saved = null;
+        const fallback = await make(reader.read).resolve('阿杰');
+        assert.equal(fallback.source, 'written', '无效或出错时回退手机写一份');
+        assert.equal(aiCalls, 1);
+        assert.equal((await make(reader.read).resolve('阿杰')).source, 'phone', '之后用手机已存');
+    }
+    assert.equal((await make(undefined).resolve('阿杰')).source, 'phone');
+}
+
+// 读 IGS 衣装：IGS current/default 有效就用；null/抛错/空描述/version 1 回落手机日历；开关关或 igs:false 不读。
+{
+    const memory = new Map();
+    const previous = globalThis.localStorage;
+    globalThis.localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value) };
+    const store = updateOutfitProfile(createEmptyOutfitStore(), 's1', 'role:阿杰', profile => upsertOutfit(profile, { date: '2026-01-02', text: '日历卫衣' }));
+    assert.equal(saveCalendarOutfits(store), true);
+
+    let touched = 0;
+    const calls = [];
+    let version = 2;
+    let reply = () => ({ name: '阿杰', outfit: { name: '战斗服', description: ' black armor ' }, source: 'current' });
+    const igsGlobal = { get IGS() { touched += 1; return { api: { characters: { version, dna: () => null, ...(version >= 2 && { outfit: (name, opts) => { calls.push([name, opts]); return reply(); } }) } } }; } };
+    let config = { enabled: false, readDna: true };
+    const reader = createIgsDnaReader({ getConfig: () => config, getGlobal: () => igsGlobal });
+    assert.equal(reader.readOutfit('阿杰'), null);
+    config = { enabled: true, readDna: false };
+    assert.equal(reader.readOutfit('阿杰'), null);
+    assert.equal(touched, 0, '开关关时不碰 globalThis.IGS');
+    assert.equal(calls.length, 0);
+    config = { enabled: true, readDna: true };
+    assert.deepEqual(reader.readOutfit('阿杰', { isUser: true }), { name: '战斗服', description: 'black armor' });
+    assert.deepEqual(calls.at(-1), ['阿杰', { isUser: true }]);
+    reply = () => ({ outfit: { name: '', description: 'x'.repeat(5000) }, source: 'default' });
+    assert.equal(reader.readOutfit('阿杰').description.length, 4096);
+
+    const service = createImageDnaService({ getCtx: () => ({ characterId: 0, characters: [{ name: '恋爱卡' }] }),
+        readIgsOutfit: (...args) => reader.readOutfit(...args), readStore: async () => null, writeStore: async () => true });
+    const opts = { storageId: 's1', storyDate: '2026-01-02', allowWrite: false };
+    reply = () => ({ outfit: { name: '睡衣', description: 'pajamas' }, source: 'default' });
+    assert.deepEqual((await service.resolve('阿杰', opts)).outfit, { name: '睡衣', description: 'pajamas' }, 'IGS default 有效就用');
+    reply = () => ({ outfit: { name: '战斗服', description: 'armor' }, source: 'current' });
+    assert.equal((await service.resolve('阿杰', opts)).outfit.description, 'armor');
+    const calendar = { name: '', description: '日历卫衣' };
+    for (const bad of [() => null, () => { throw new Error('boom'); }, () => ({ outfit: { name: 'a', description: '  ' } }), () => ({ outfit: {} }), () => 'x']) {
+        reply = bad;
+        assert.deepEqual((await service.resolve('阿杰', opts)).outfit, calendar, '无效或出错回落日历');
+    }
+    reply = () => ({ outfit: { description: 'armor' } });
+    calls.length = 0;
+    assert.deepEqual((await service.resolve('阿杰', { ...opts, igs: false })).outfit, calendar, 'igs:false 不读 IGS 衣装');
+    assert.equal(calls.length, 0);
+    version = 1;
+    assert.equal(reader.readOutfit('阿杰'), null, 'version 1 视为不支持');
+    assert.deepEqual((await service.resolve('阿杰', opts)).outfit, calendar);
+    config = { enabled: false, readDna: true };
+    touched = 0; version = 2;
+    assert.deepEqual((await service.resolve('阿杰', opts)).outfit, calendar, '开关关回落日历');
+    assert.equal(touched, 0);
+    globalThis.localStorage = previous;
+    void OUTFIT_SELF_SUBJECT;
 }
 
 // 上传与目录：上传失败不写目录；同一气泡取最新；删除先删文件；元数据只带路径。

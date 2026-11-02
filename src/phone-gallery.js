@@ -88,7 +88,7 @@ export function installPhoneGallery(state, deps) {
         const rows = [];
         for (const name of [USER_DNA_KEY, ...names]) {
             const isUser = name === USER_DNA_KEY;
-            const resolved = await dna.resolve(isUser ? userName() : name, { isUser, allowWrite: false });
+            const resolved = await dna.resolve(isUser ? userName() : name, { isUser, allowWrite: false, igs: false });
             const label = isUser ? userLabel() : name;
             const source = resolved.dna ? '已保存' : '尚未建立';
             rows.push(`<li class="pm-gallery-person"><div class="pm-gallery-person-text"><b>${escapeHtml(label)}</b><small>${source}</small></div><button type="button" class="pm-gallery-chip" data-gallery-action="edit-dna" data-name="${escapeAttr(name)}">${resolved.dna ? '查看' : '建立'}</button></li>`);
@@ -97,6 +97,7 @@ export function installPhoneGallery(state, deps) {
         writePage(`<div class="pm-gallery-shell">
   ${header('角色形象', { back: 'grid' })}
   <div class="pm-gallery-scroll">
+    ${dna.igsAvailable() ? '<p class="pm-gallery-intro">出图优先使用gal前端的角色形象与衣装，此处形象为备用。</p>' : ''}
     <p class="pm-gallery-intro">出图时将以下外貌交给数据库生图，使同一角色长相一致。尚未建立的角色在首次出图时由手机API生成，也可在此手动填写。</p>
     ${notice ? `<p class="pm-gallery-notice" role="status">${escapeHtml(notice)}</p>` : ''}
     <ul class="pm-gallery-people">${rows.join('')}</ul>

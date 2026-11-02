@@ -208,7 +208,7 @@ export function buildRecipePrompts(context, recipeScope, start = new Date(), { d
             scenario: String(context?.cardScenario || '').slice(0, 1600),
         },
         worldFacts: String(context?.worldBookText || '').replace(/<[^>]+>/g, ' ').slice(0, 3500),
-        recentConversation: String(context?.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(0, 3500),
+        recentConversation: String(context?.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(-3500),
         userProfile: String(context?.userDesc || '').slice(0, 1000),
     };
     return {

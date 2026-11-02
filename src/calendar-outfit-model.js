@@ -147,7 +147,7 @@ export function buildOutfitPrompts(context, profile, start = new Date(), { days 
     const targetName = target.name || (isUser ? userName || '用户' : outfitRoleName(subject) || '当前角色');
     const evidence = {
         targetProfile: { kind: isUser ? 'user' : target.kind || 'role', name: targetName, description: String(context?.cardDesc || '').slice(0, 1600), personality: String(context?.cardPersonality || '').slice(0, 800), scenario: String(context?.cardScenario || '').slice(0, 1600) },
-        environmentContext: { worldFacts: String(context?.worldBookText || '').replace(/<[^>]+>/g, ' ').slice(0, 3500), recentConversation: String(context?.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(0, 3500) },
+        environmentContext: { worldFacts: String(context?.worldBookText || '').replace(/<[^>]+>/g, ' ').slice(0, 3500), recentConversation: String(context?.mainChatText || '').replace(/<[^>]+>/g, ' ').slice(-3500) },
         userProfile: String(context?.userDesc || '').slice(0, 1000),
     };
     // 近期对话把用户发言统一标为“用户”，必须显式告诉模型这就是记录对象本人，否则会套用角色卡人物的服饰。

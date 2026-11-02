@@ -58,8 +58,8 @@ const allPosts = scope => scope.sceneOrder.flatMap(id => scope.scenes[id].posts)
 const weiboPost = (text, offset, extra = '雨城热搜') => ({ platform: 'weibo', owner: '', author: '苏小满', text, extra, replies: [{ author: '阿禾', text: '前排' }], offset });
 
 check('配置默认值', () => {
-    assert.deepEqual(normalizeIgsLinkConfig(null), { enabled: false, autoSync: true, autoContinue: false, syncLive: true, syncChats: true, autoCreateContacts: true, chatFloors: 20 }, '同步直播间跟着总开关一起开');
-    assert.deepEqual(normalizeIgsLinkConfig({ enabled: true, autoSync: false, autoContinue: 'yes', syncLive: false }), { enabled: true, autoSync: false, autoContinue: false, syncLive: false, syncChats: true, autoCreateContacts: true, chatFloors: 20 });
+    assert.deepEqual(normalizeIgsLinkConfig(null), { enabled: false, autoSync: true, autoContinue: false, syncLive: true, syncChats: true, autoCreateContacts: true, chatFloors: 20, readDna: false }, '同步直播间跟着总开关一起开');
+    assert.deepEqual(normalizeIgsLinkConfig({ enabled: true, autoSync: false, autoContinue: 'yes', syncLive: false }), { enabled: true, autoSync: false, autoContinue: false, syncLive: false, syncChats: true, autoCreateContacts: true, chatFloors: 20, readDna: false });
 });
 
 check('接口探测：没有、过旧、抛错都安静降级', () => {
