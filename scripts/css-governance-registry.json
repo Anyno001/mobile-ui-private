@@ -23,7 +23,8 @@
       "--pm-gallery-*",
       "--pm-live-*",
       "--pm-shop-*",
-      "--pm-origin-*"
+      "--pm-origin-*",
+      "--pm-gl-*"
     ],
     "compat": [
       "--pm-palette-*",
@@ -406,6 +407,14 @@
         ".pm-origin"
       ],
       "themeStrategy": "五档稀有度浅底与深字在 .pm-origin-shell 声明浅色值并在 #pm-iphone[data-theme=\"dark\"] .pm-origin-shell 声明深色值；固定几何不随主题改变"
+    },
+    {
+      "prefix": "--pm-gl-",
+      "owner": "greenlin",
+      "rootSelectors": [
+        ".pm-gl"
+      ],
+      "themeStrategy": "装饰几何（圆形图标位与姓氏圆章、叠放小章、日期圆章、主卡地球仪及线宽、大号时间字号）在 .pm-gl-shell 声明，不随主题改变；颜色一律引用公共 token"
     },
     {
       "prefix": "--pm-live-",

@@ -83,6 +83,7 @@
 | `--pm-shop-side` / `-photo-tall` / `-photo-mid` / `-photo-short` / `-hero-height` / `-thumb` / `-check` / `-step` / `-avatar` / `-logo` / `-art` / `-art-icon` / `-price-size` / `-price-large` / `-indicator` / `-indicator-inset` | `.pm-shop-shell` | 桃宝固定几何：顶栏左右两组的等宽列（保证标题在整屏正中）、瀑布流商品图三档高度、商品页大图高度、购物车与订单缩略图、勾选圆、数量加减钮、评价头像、店铺头像、空状态插画圆与其图标、价格数字字号（展示型 18px 与商品页 24px）、订单栏下划线的高度与左右内缩。不随主题改变。 |
 | `--pm-origin-tier-n` / `-r` / `-sr` / `-ssr` / `-ur` 与各自 `-ink` | `.pm-origin-shell` | 金手指稀有度五档的浅底与深字（浅色 `#eef0f4/#4f5664`、`#e3eefb/#2f5f93`、`#ece6fb/#5b47a3`、`#fcecd9/#8a5310`、`#fbe4ea/#a33a58`，深色各给一组暗的实色），只用于稀有度小标与抽奖结果卡。全部实色，亮暗成对。 |
 | `--pm-origin-bar` / `-number` / `-menu` / `-art` / `-art-icon` / `-hero-title` / `-sheet-max` | `.pm-origin-shell` | 金手指固定几何：进度条高度、数字输入框宽度、⋯ 菜单宽度、空状态插画圆与其图标、主线大卡与抽奖结果的展示型标题字号（18px）、底部表单最大高度。不随主题改变。 |
+| `--pm-gl-lead` / `-seal-hero` / `-seal-stack` / `-day` / `-deco` / `-deco-stroke` / `-time` | `.pm-gl-shell` | 格林推演装饰几何：事件与事实的圆形图标位及姓氏圆章（34px）、人物主卡圆章（40px）、参与者叠放小章（24px）、历史日期圆章（26px）、世界页主卡地球仪（120px，线宽 .55）、主卡大号时间字号（34px）。不随主题改变；颜色一律引用公共 token。 |
 | `--pm-desktop-badge` | `.pm-desktop-app-badge` | 桌面图标右上角红点的直径（9px）；颜色用 `--pm-color-danger`。不随主题改变。 |
 | `--pm-calendar-day-height` / `-day-circle` / `-dot` / `-band-inset` / `-textarea-height` / `-rule-height` | `.pm-calendar-shell` | 日历 v3 页面几何：月历日期格高度、日历小圆点直径、生理期色带上下内缩、设置页多行输入与生成规则框的最小高度。不随主题改变。 |
 | `--pm-calendar-holiday*` / `-occasion*` / `-outfit-*` / `-meal-*` / `-band-*` / `-weather` | `.pm-calendar-shell` | 分类色：节假日、纪念日、穿搭、菜谱胶囊的浅底与文字，生理期月格色带与图例，天气月格图标色。只用于日历小标记与分类胶囊，不用于选中态；亮暗成对。 |

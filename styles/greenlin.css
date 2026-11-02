@@ -1,11 +1,22 @@
 /*格林推演 App：版式复用金手指（pm-origin-*），这里只放它自有的少量版面。*/
+/* 装饰几何（只作用于本 App，不随主题改变）：圆形图标位/姓氏圆章、主卡人物章、叠放小章、日期圆章、主卡地球仪与它的线宽、大号时间。 */
+.pm-gl-shell{--pm-gl-lead:34px;--pm-gl-seal-hero:40px;--pm-gl-seal-stack:24px;--pm-gl-day:26px;--pm-gl-deco:120px;--pm-gl-deco-stroke:.55;--pm-gl-time:34px;}
 /* 底栏选中态用墨色（粉色已在主卡与「新」小标上出现，再用会失衡）；只作用于本 App，不影响金手指。 */
 .pm-gl-shell .pm-origin-tab[aria-selected="true"]{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
 /* 主卡头不可点，不要手型光标（共用的金手指样式里带了）。 */
 .pm-gl-shell .pm-origin-hero-head{cursor:default;}
 /* 主卡标题：长纪要最多三行。 */
 .pm-gl-shell .pm-gl-title{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow-wrap:anywhere;}
-/* 局势：名称、进度条、数值、涨跌四列对齐；涨用主题色，跌用次要灰字。 */
+/* 分组头右侧小字（进行中 N）。 */
+.pm-gl-group-side{color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);}
+/* 摘要最多两行；标题可换行，不挤掉右侧小字。 */
+.pm-gl-shell .pm-gl-clamp{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere;}
+.pm-gl-shell .pm-origin-row-main b{display:block;overflow:visible;overflow-wrap:anywhere;}
+.pm-gl-shell .pm-origin-row-main b .pm-gl-new{margin-left:var(--pm-space-1-5);vertical-align:middle;}
+/* 点开后的详情：完整摘要下接若干键值行。 */
+.pm-gl-detail{display:flex;flex-direction:column;gap:var(--pm-space-1);padding-top:var(--pm-space-1);}
+.pm-gl-shell .pm-origin-row.is-open{gap:var(--pm-space-2);}
+/* 局势（旧版栏目）：名称、进度条、数值、涨跌四列对齐；涨用主题色，跌用次要灰字。 */
 .pm-gl-dims{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:var(--pm-space-2) var(--pm-space-3);}
 .pm-gl-dim{display:contents;font-size:var(--pm-font-size-compact);}
 .pm-gl-dim b{justify-self:end;font-weight:var(--pm-font-weight-semibold);}
@@ -34,3 +45,28 @@
 .pm-gl-empty{flex:1;justify-content:center;padding-top:var(--pm-space-0);padding-bottom:var(--pm-space-5);}
 .pm-gl-empty .pm-origin-op{margin-top:var(--pm-space-2);padding-inline:var(--pm-space-5);}
 @media(prefers-reduced-motion:reduce){.pm-gl-fold svg{transition:none;}}
+
+/* 世界页主卡：右下角裁出一枚大号线条地球仪（实色、被卡片边缘裁掉一角），摘要右侧留出空位；人物页主卡不放。 */
+.pm-gl-shell .pm-gl-hero{position:relative;overflow:hidden;}
+.pm-gl-shell .pm-gl-hero>:not(.pm-gl-deco){position:relative;}
+.pm-gl-deco{position:absolute;right:calc(var(--pm-gl-deco) * -0.22);bottom:calc(var(--pm-gl-deco) * -0.28);color:var(--pm-color-surface);pointer-events:none;}
+.pm-gl-deco svg{display:block;width:var(--pm-gl-deco);height:var(--pm-gl-deco);stroke-width:var(--pm-gl-deco-stroke);}
+.pm-gl-hero .pm-origin-hero-desc{padding-right:calc(var(--pm-gl-deco) * 0.6);}
+.pm-gl-time{font-size:var(--pm-gl-time);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}
+.pm-gl-date{margin-left:var(--pm-space-2);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);}
+/* 行首装饰：事件与事实的圆形图标位（主题浅色底、主题色线条图）、人物与参与者的姓氏圆章。 */
+.pm-gl-lead,.pm-gl-seal{display:grid;place-items:center;flex:0 0 auto;width:var(--pm-gl-lead);height:var(--pm-gl-lead);border-radius:var(--pm-radius-circle);background:var(--pm-color-accent-soft);}
+.pm-gl-lead{color:var(--pm-color-accent);}
+.pm-gl-lead svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
+.pm-gl-seal{color:var(--pm-color-on-accent-soft);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-tight);}
+.pm-gl-seal.is-hero{width:var(--pm-gl-seal-hero);height:var(--pm-gl-seal-hero);background:var(--pm-color-surface);font-size:var(--pm-font-size-body);}
+.pm-gl-who{display:flex;align-items:center;gap:var(--pm-space-2);}
+/* 事件展开后的参与者：叠放的小姓氏章，后面跟名字。 */
+.pm-gl-faces{display:flex;align-items:center;gap:var(--pm-space-2);margin:var(--pm-space-0);font-size:var(--pm-font-size-compact);}
+.pm-gl-stack{display:inline-flex;align-items:center;}
+.pm-gl-stack .pm-gl-seal{width:var(--pm-gl-seal-stack);height:var(--pm-gl-seal-stack);font-size:var(--pm-font-size-micro);box-shadow:0 0 0 var(--pm-space-0-5) var(--pm-color-surface);}
+.pm-gl-stack .pm-gl-seal+.pm-gl-seal{margin-left:calc(var(--pm-gl-seal-stack) * -0.25);}
+/* 历史按天分段：段首一枚墨色日期圆章。 */
+.pm-gl-day{display:flex;align-items:center;gap:var(--pm-space-2);margin:var(--pm-space-3) var(--pm-space-1) var(--pm-space-2);color:var(--pm-color-label-2);font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);}
+.pm-gl-day:first-child{margin-top:var(--pm-space-1);}
+.pm-gl-day-n{display:grid;place-items:center;width:var(--pm-gl-day);height:var(--pm-gl-day);border-radius:var(--pm-radius-circle);background:var(--pm-color-ink);color:var(--pm-color-on-ink);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);}

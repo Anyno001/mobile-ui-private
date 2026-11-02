@@ -105,5 +105,16 @@ export const MINUS_ICON_SVG = icon('<path d="M5 12h14"/>');
 export const ORIGIN_APP_ICON_SVG = icon('<path d="M10 12.5V5a1.5 1.5 0 0 1 3 0v6"/><path d="M13 10.5a1.5 1.5 0 0 1 3 0V12"/><path d="M16 11.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9l-2.6-3.5a1.4 1.4 0 0 1 2.1-1.9L10 16"/><path d="M5 3.5v3M3.5 5h3"/>');
 // 格林推演：桌面图标（地球仪，纯线条）与未检测到插件时的插头图标。
 export const GREENLIN_APP_ICON_SVG = icon('<circle cx="12" cy="10" r="6"/><path d="M6 10h12M12 4c2 2 2 10 0 12M12 4c-2 2-2 10 0 12"/><path d="M18.5 15.5A8.5 8.5 0 0 1 6 17M12 18.5V21M9 21h6"/>');
+// 格林推演装饰图标：世界事件分类（公文包、楼宇、气泡、电话、柱状图、默认的圆点环）与事实（勾选圆、锁形圆）。
+export const GL_WORK_ICON_SVG = icon('<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12h18"/>');
+export const GL_CITY_ICON_SVG = icon('<path d="M4 20V9l5-3v14M9 20V4l7 3v13M16 20v-8l4 2v6M3 20h18"/>');
+export const GL_CHAT_ICON_SVG = icon('<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>');
+export const GL_PHONE_ICON_SVG = icon('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/>');
+export const GL_CHART_ICON_SVG = icon('<path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/>');
+export const GL_EVENT_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/>');
+export const GL_CHECK_ICON_SVG = icon('<circle cx="12" cy="12" r="8"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>');
+export const GL_LOCK_ICON_SVG = icon('<rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>');
+// 主卡右下角的装饰地球仪：只留圆与经纬线，去掉底座与支架，被卡片边缘裁切后不留碎线。
+export const GL_GLOBE_DECO_ICON_SVG = icon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>');
 export const PLUG_ICON_SVG = icon('<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>');
 export const BOX_ICON_SVG = icon('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>');

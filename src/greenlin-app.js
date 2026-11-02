@@ -5,7 +5,7 @@ import { renderGreenlinPage } from './greenlin-views.js';
 import { buildGreenlinView, makeSnapshot } from './greenlin-model.js';
 import { loadGreenlinSeen, saveGreenlinSeen } from './greenlin-store.js';
 
-const freshUi = () => ({ mode: 'noapi', tab: 'overview', open: { actors: false, seeds: false }, view: null });
+const freshUi = () => ({ mode: 'noapi', tab: 'world', open: {}, view: null });
 
 // 取数据库插件的推演接口：宿主页面（顶层窗口）和当前窗口都试一遍。
 export function findWorldSimulationApi(candidates = [globalThis.window?.parent, globalThis.window?.top, globalThis.window]) {
@@ -19,7 +19,7 @@ export function findWorldSimulationApi(candidates = [globalThis.window?.parent, 
 }
 
 // 推演账本必须是对象，且带版本号或任一主要栏目数组；{}、数组、其他值都按「还没有推演」处理。
-const LEDGER_LISTS = ['dimensions', 'seeds', 'actors', 'chronicle', 'rumors'];
+const LEDGER_LISTS = ['worldEvents', 'facts', 'historyMilestones', 'dimensions', 'seeds', 'actors', 'chronicle', 'rumors'];
 export const isLedger = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
     && (value.schemaVersion !== undefined || LEDGER_LISTS.some(key => Array.isArray(value[key])));
 
@@ -74,12 +74,12 @@ export function installGreenlinApp(state, deps) {
         if (!button || button.disabled) return;
         const { glAction: action, tab, fold } = button.dataset;
         if (action === 'desktop') { await deps.showPhoneDesktopPage?.(); return; }
-        if (action === 'tab') { ui = { ...ui, tab: tab || 'overview' }; render({ keepScroll: false }); return; }
+        if (action === 'tab') { ui = { ...ui, tab: tab || 'world' }; render({ keepScroll: false }); return; }
         if (action === 'fold' && fold) { ui = { ...ui, open: { ...ui.open, [fold]: ui.open[fold] !== true } }; render(); return; }
         if (action === 'refresh' || action === 'detect') {
             const wasOk = ui.mode === 'ok';
             load();
-            if (!wasOk) ui = { ...ui, tab: 'overview' };
+            if (!wasOk) ui = { ...ui, tab: 'world' };
             if (render({ keepScroll: wasOk })) commitSeen();
         }
     }
@@ -99,10 +99,10 @@ export function installGreenlinApp(state, deps) {
         return page;
     }
 
-    // resume：重新打开手机时回到上次的页签；其余情况从总览开始。每次打开都重新读取，并以上次打开时存的快照为基准。
+    // resume：重新打开手机时回到上次的页签；其余情况从世界页开始。每次打开都重新读取，并以上次打开时存的快照为基准。
     function show({ resume = false } = {}) {
         if (!ensurePage()) return false;
-        ui = resume ? { ...ui, open: { actors: false, seeds: false } } : freshUi();
+        ui = resume ? { ...ui, open: {} } : freshUi();
         session = { chat: '', base: null };
         load();
         if (globalThis.window?.__pmShowPhonePage?.('greenlin') !== true) return false;
