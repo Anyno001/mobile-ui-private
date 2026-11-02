@@ -1,6 +1,7 @@
 // 正文聊天块 → 手机私聊/群聊的运行时。由 igs-feed-sync 的同步轮调用（总开关与「同步聊天」都开着时）。
 // 自动同步只看最近 N 层聊天楼；手动导入走全部楼层。正在生成回复时整轮推迟，下一次消息事件再补。
 import { applyIgsChatSync, chatFloorHashes, indexChatFloors, normalizeChatName, resolveIgsChats } from './igs-chat-core.js';
+import { chatFingerprints } from './phone-floor-rollback.js';
 import { saveGroupMeta, saveHistoriesStrict } from './storage.js';
 
 const CACHE_LIMIT = 400;
@@ -45,7 +46,7 @@ export function installIgsChatSync(state, deps, { globalObject = globalThis } = 
         // 只浅拷贝外层：核心只替换改到的会话与群，不原地改，未改动的会话保持原引用。
         const scope = { histories: { ...(window.__pmHistories?.[storageId] || {}) }, groups: { ...(window.__pmGroupMeta?.[storageId] || {}) } };
         const result = applyIgsChatSync(scope, {
-            floors, liveHashes: chatFloorHashes(chat, hashCache), window: walkFloors, collect, adding, selfNames, autoCreate: config.autoCreateContacts,
+            floors, liveHashes: chatFloorHashes(chat, hashCache), anchors: new Set(chatFingerprints(chat)), window: walkFloors, collect, adding, selfNames, autoCreate: config.autoCreateContacts,
             createGroupKey: () => {
                 let key;
                 do key = `__group_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`; while (scope.groups[key]);

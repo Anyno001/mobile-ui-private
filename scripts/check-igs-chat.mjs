@@ -140,6 +140,17 @@ check('改楼/重新生成：旧原文的导入消息没改过的删掉、改过
     assert.deepEqual(scope.histories['小雪'].map(entry => entry.content), ['丙', '乙（我改过）']);
 });
 
+check('来源楼还在、正文被改写（插件回写/编辑）：导入的消息保留，不重复导入', () => {
+    const scope = emptyScope();
+    const chat = [ai(floorText([block(0, '', [msg('小雪', '甲')])]))];
+    run(scope, chat);
+    chat[0] = { ...chat[0], mes: `${chat[0].mes}\n（插件回写的一段）` };
+    const result = run(scope, chat);
+    assert.equal(result.removed, 0);
+    assert.equal(result.added, 0);
+    assert.deepEqual(scope.histories['小雪'].map(entry => entry.content), ['甲']);
+});
+
 check('隐藏的楼（/hide）不算删掉：导入的消息保留；主线没有聊天楼时不删', () => {
     const scope = emptyScope();
     const chat = [ai(floorText([block(0, '', [msg('小雪', '在吗')])]))];

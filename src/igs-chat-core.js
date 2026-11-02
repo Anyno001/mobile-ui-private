@@ -132,10 +132,12 @@ export function routeChatBlock(block, { histories, groups, selfNames, lastRoute 
 }
 
 // 对账：只替换改到的会话数组与群对象，传入的数组和群原样不动（调用方浅拷贝外层即可，不用整份深拷贝）。
-// 1. 原文已不在当前聊天里的导入消息：用户没改过的删掉，改过的保留。
+// 1. 来源楼本身已不在当前聊天里（删楼、重新生成、滑动换掉）的导入消息：用户没改过的删掉，改过的保留。
+//    来源楼还在、只是正文被改写（插件回写、编辑）时导入的消息照常保留：导入后就是手机自己的记录。
 // 2. adding 里的楼（null 为全部）：按楼层顺序走块，补上还没有的消息；会话不存在时按 autoCreate 新建。
-// floors 为当前聊天全部聊天楼（indexChatFloors），window 为本轮要走的楼（最近 N 层或全部）。
-export function applyIgsChatSync(scope, { floors, liveHashes = null, window = floors, collect, adding = null, selfNames, autoCreate = true, now = Date.now(), createGroupKey }) {
+// floors 为当前聊天全部聊天楼（indexChatFloors），window 为本轮要走的楼（最近 N 层或全部）；
+// anchors 为当前聊天全部楼的 messageFingerprint，缺省按 floors 取。
+export function applyIgsChatSync(scope, { floors, liveHashes = null, anchors = null, window = floors, collect, adding = null, selfNames, autoCreate = true, now = Date.now(), createGroupKey }) {
     const result = { added: 0, removed: 0, touched: new Set(), changedGroups: new Set(), createdContacts: [], createdGroups: [] };
     const histories = scope.histories;
     const groups = scope.groups;
@@ -150,17 +152,24 @@ export function applyIgsChatSync(scope, { floors, liveHashes = null, window = fl
         return groups[key];
     };
     const live = liveHashes || new Set(floors.map(info => info.hash));
+    const liveAnchors = anchors || new Set(floors.map(info => info.anchor));
     const existing = new Set();
+    const remember = (entry, parsed) => {
+        existing.add(entry.source.key);
+        const anchor = sourceAnchorOf(entry);
+        if (anchor) existing.add(anchorKeyOf(anchor, parsed.offset, parsed.signature));
+    };
     for (const [key, history] of Object.entries(histories)) {
         if (!Array.isArray(history)) continue;
-        // 主线一个聊天楼都没有（新聊天、切换途中）：只认已导入的，不删。
-        if (!live.size) { history.forEach(entry => { if (entry?.source?.type === 'igs') existing.add(entry.source.key); }); continue; }
         let drop = null;
         history.forEach((entry, index) => {
             const parsed = entry?.source?.type === 'igs' ? parseIgsKey(entry.source.key) : null;
             if (!parsed) return;
-            if (live.has(parsed.hash)) { existing.add(entry.source.key); return; }
-            if (hashText(entry.content) === parsed.signature) (drop || (drop = new Set())).add(index);
+            // 主线一个聊天楼都没有（新聊天、切换途中）、原文还在、来源楼还在或无从判断：都保留。
+            const anchor = sourceAnchorOf(entry);
+            const gone = live.size && !live.has(parsed.hash) && anchor && !liveAnchors.has(anchor);
+            if (gone && hashText(entry.content) === parsed.signature) (drop || (drop = new Set())).add(index);
+            else remember(entry, parsed);
         });
         if (drop) {
             histories[key] = history.filter((_, index) => !drop.has(index));
@@ -261,8 +270,10 @@ function freshEntries(block, info, existing, selfNames, isGroup) {
         if (RESERVED_KEYS.has(sender)) return;
         const content = isGroup && !self ? `${sender}：${text}` : text;
         const offset = (Number(block.index) || 0) * 1000 + index;
-        const key = `igs:${info.hash}:${offset}:${hashText(content)}`;
-        if (existing.has(key)) return;
+        const signature = hashText(content);
+        const key = `igs:${info.hash}:${offset}:${signature}`;
+        // 来源楼正文被改写后哈希变了：同一楼、同一位置、同样内容的消息已导入过，不再重复导入。
+        if (existing.has(key) || (info.anchor && existing.has(anchorKeyOf(info.anchor, offset, signature)))) return;
         items.push({ key, role: self ? 'user' : 'assistant', sender, content, storyDate });
     });
     return items;
@@ -275,9 +286,14 @@ function buildEntry(item, info, isGroup, members) {
     const entry = createMessageEntry({ role: item.role, content: item.content, descriptors, ...(item.storyDate ? { storyDate: item.storyDate } : {}) });
     entry.floor = info.floor + 1;
     entry.floorAnchor = info.anchor;
-    entry.source = { type: 'igs', floor: info.floor, key: item.key };
+    entry.source = { type: 'igs', floor: info.floor, key: item.key, ...(info.anchor ? { anchor: info.anchor } : {}) };
     return entry;
 }
+
+// 来源楼标识：source.anchor 导入时写定、删楼回退不会改；旧记录没有时退回 floorAnchor。
+const sourceAnchorOf = entry => (typeof entry?.source?.anchor === 'string' && entry.source.anchor)
+    || (typeof entry?.floorAnchor === 'string' ? entry.floorAnchor : '');
+const anchorKeyOf = (anchor, offset, signature) => `${anchor}\u0000${offset}\u0000${signature}`;
 
 export function summarizeChats(result) {
     if (result?.status === 'deferred') return '聊天稍后同步（手机正在回复或记录未读完）';
