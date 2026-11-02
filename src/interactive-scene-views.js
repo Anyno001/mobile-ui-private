@@ -5,7 +5,7 @@ import { DESKTOP_ICON_SIZE, isValidDesktopIconRuntimeData } from './desktop-icon
 import { DESKTOP_APPS, visibleDesktopApps } from './desktop-layout.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
-    BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG, ORIGIN_APP_ICON_SVG, SHOP_APP_ICON_SVG,
+    BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG, GREENLIN_APP_ICON_SVG, ORIGIN_APP_ICON_SVG, SHOP_APP_ICON_SVG,
     COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, PHOTO_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
@@ -107,6 +107,7 @@ const DESKTOP_APP_META = Object.freeze({
     gallery: { label: '相册', action: 'desktop-gallery', icon: PHOTO_ICON_SVG },
     shop: { label: appNameOf('shop'), action: 'desktop-shop', icon: SHOP_APP_ICON_SVG },
     origin: { label: appNameOf('origin'), action: 'desktop-origin', icon: ORIGIN_APP_ICON_SVG },
+    greenlin: { label: appNameOf('greenlin'), action: 'desktop-greenlin', icon: GREENLIN_APP_ICON_SVG },
 });
 const DATA_APP_OF = Object.fromEntries(DESKTOP_APPS.map(app => [app.id, app.dataApp]));
 

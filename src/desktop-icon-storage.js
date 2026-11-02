@@ -8,7 +8,7 @@ export const DESKTOP_ICON_MAX_TOTAL_BYTES = 1536 * 1024;
 export const DESKTOP_ICON_SIZE = 256;
 export const DESKTOP_ICON_MIME = 'image/png';
 export const DESKTOP_ICON_IDS = Object.freeze([
-    'chat', 'directory', 'settings', 'calendar', 'todayTrend', 'storyOracle', 'community', 'live', 'gallery', 'shop', 'origin',
+    'chat', 'directory', 'settings', 'calendar', 'todayTrend', 'storyOracle', 'community', 'live', 'gallery', 'shop', 'origin', 'greenlin',
 ]);
 
 const DESKTOP_ICON_ID_SET = new Set(DESKTOP_ICON_IDS);

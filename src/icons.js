@@ -103,4 +103,7 @@ export const STORE_ICON_SVG = icon('<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a
 export const MINUS_ICON_SVG = icon('<path d="M5 12h14"/>');
 // 金手指：桌面图标（竖起的食指加一点闪光，纯线条不填色）。
 export const ORIGIN_APP_ICON_SVG = icon('<path d="M10 12.5V5a1.5 1.5 0 0 1 3 0v6"/><path d="M13 10.5a1.5 1.5 0 0 1 3 0V12"/><path d="M16 11.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9l-2.6-3.5a1.4 1.4 0 0 1 2.1-1.9L10 16"/><path d="M5 3.5v3M3.5 5h3"/>');
+// 格林推演：桌面图标（地球仪，纯线条）与未检测到插件时的插头图标。
+export const GREENLIN_APP_ICON_SVG = icon('<circle cx="12" cy="10" r="6"/><path d="M6 10h12M12 4c2 2 2 10 0 12M12 4c-2 2-2 10 0 12"/><path d="M18.5 15.5A8.5 8.5 0 0 1 6 17M12 18.5V21M9 21h6"/>');
+export const PLUG_ICON_SVG = icon('<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>');
 export const BOX_ICON_SVG = icon('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>');

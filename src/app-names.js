@@ -17,6 +17,7 @@ export const APP_NAMES = Object.freeze({
     news: Object.freeze({ name: '今日猴条', slogan: '震惊！' }),
     shop: Object.freeze({ name: '桃宝', slogan: '亲，包邮哦' }),
     origin: Object.freeze({ name: '金手指', slogan: '宿主，今天也要变强哦' }),
+    greenlin: Object.freeze({ name: '格林推演', slogan: '世界后台' }),
 });
 
 export const appNameOf = key => APP_NAMES[key]?.name || String(key || '');

@@ -27,7 +27,7 @@ check('网格顺序：会话、联系人、日历、今日风向、社区、直�
     const order = [...render().matchAll(/class="pm-desktop-app" data-app="([\w-]+)"/g)].map(match => match[1]);
     assert.deepEqual(order.slice(0, 8), ['chat', 'directory', 'calendar', 'today-trend', 'community', 'live', 'story-oracle', 'settings']);
     assert.equal(order[8], 'gallery', '相册规格未列出，排在规格列出的八个之后');
-    assert.deepEqual(order.slice(9), order.slice(9).filter(app => ['shop', 'origin'].includes(app)), '之后只追加新的独立 App（桃宝、金手指）');
+    assert.deepEqual(order.slice(9), order.slice(9).filter(app => ['shop', 'origin', 'greenlin'].includes(app)), '之后只追加新的独立 App（桃宝、金手指、格林推演）');
     assert.equal(new Set(order).size, order.length, '桌面图标不重复');
 });
 check('桌面图标统一纯线条：直播图标不填色', () => {

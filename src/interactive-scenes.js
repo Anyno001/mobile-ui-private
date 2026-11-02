@@ -444,7 +444,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'desktop-today-trend') { await deps.showTodayTrendPage?.(); return; }
         if (action === 'desktop-story-oracle') { await deps.showStoryOraclePage?.(getStorageId()); return; }
         if (action === 'desktop-gallery' || action === 'desktop-shop') { await (action === 'desktop-shop' ? window.__pmOpenShopApp?.() : deps.showPhoneGalleryPage?.()); return; }
-        if (action === 'desktop-origin') { window.__pmOpenOriginApp?.(); return; }
+        if (action === 'desktop-origin' || action === 'desktop-greenlin') { (action === 'desktop-origin' ? window.__pmOpenOriginApp : window.__pmOpenGreenlinApp)?.(); return; }
         if (action === 'desktop-live') { await window.__pmOpenLiveApp?.(); return; }
         if (action === 'desktop-community') { await window.__pmOpenForumMode(); return; }
         if (action === 'desktop-toggle-pins') { runtime.desktopPinsExpanded = runtime.desktopPinsExpanded !== true; refreshDesktop(); return; }
@@ -743,7 +743,7 @@ export function installInteractiveScenes(_state, deps) {
             if (uiScope.lastPage === 'story-oracle' && await deps.showStoryOraclePage?.(scopeId)) { clearOpenScene(); return; }
             if (uiScope.lastPage === 'live' && await deps.showLivePage?.({ resume: true })) { clearOpenScene(); return; }
             if (uiScope.lastPage === 'shop' && await deps.showShopPage?.({ resume: true })) { clearOpenScene(); return; }
-            if (uiScope.lastPage === 'origin' && deps.showOriginPage?.({ resume: true })) { clearOpenScene(); return; }
+            if ((uiScope.lastPage === 'origin' && deps.showOriginPage?.({ resume: true })) || (uiScope.lastPage === 'greenlin' && deps.showGreenlinPage?.({ resume: true }))) { clearOpenScene(); return; }
             clearOpenScene();
             showPhonePage(uiScope.lastPage === 'chat' ? 'chat' : 'desktop');
         },

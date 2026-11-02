@@ -19,6 +19,7 @@ const CSS_MODULE_FILES = [
   'styles/video.css',
   'styles/shop.css',
   'styles/origin.css',
+  'styles/greenlin.css',
   'styles/plot.css',
   'styles/overrides.css',
 ];
@@ -5085,7 +5086,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.14.2') failures.push('version: expected release version 1.14.2');
+if (packageJson.version !== '1.15.0') failures.push('version: expected release version 1.15.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

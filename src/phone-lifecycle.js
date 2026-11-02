@@ -17,6 +17,7 @@ import { installPhoneImages } from './phone-image-controller.js';
 import { installPhoneGallery } from './phone-gallery.js';
 import { installShopApp } from './shop-app.js';
 import { installOriginApp } from './origin-app.js';
+import { installGreenlinApp } from './greenlin-app.js';
 import {
     loadBidirectional, loadBudgetConfig, loadEmojis, loadInjectionConfig,
     loadCharacterBehavior, loadGroupMeta, loadHistoriesFromIDB,
@@ -242,6 +243,7 @@ export function installPhoneLifecycle(state, deps) {
     installPhoneGallery(state, deps);
     installShopApp(state, deps);
     installOriginApp(state, deps);
+    installGreenlinApp(state, deps);
     let unbindSendGesture = null;
     let unbindIsland = null, unbindPhoneResize = null;
     const pageController = createPhonePageController({
@@ -440,6 +442,7 @@ export function installPhoneLifecycle(state, deps) {
         deps.destroyPhoneGalleryUi?.();
         deps.destroyPhoneImages?.();
         deps.destroyOriginApp?.();
+        deps.destroyGreenlinApp?.();
         deps.cancelTodayTrendInitialization?.('phone-closed');
         deps.cancelTodayTrendRuleRegeneration?.('phone-closed');
         deps.cancelTodayTrendGeneration?.('phone-closed', true);

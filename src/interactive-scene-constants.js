@@ -13,7 +13,7 @@ export const MOMENTS_LIKERS_MAX = 12;
 export const IGS_LINK_STORAGE_KEY = 'ST_SMS_IGS_LINK';
 export const COMMUNITY_POST_FLAGS = Object.freeze(['pinned', 'featured', 'help']);
 export const LIVE_DANMAKU_KINDS = Object.freeze(['chat', 'host', 'gift', 'system']);
-export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community', 'calendar', 'today-trend', 'story-oracle', 'live', 'gallery', 'shop', 'origin']);
+export const PHONE_UI_PAGES = Object.freeze(['desktop', 'chat', 'community', 'calendar', 'today-trend', 'story-oracle', 'live', 'gallery', 'shop', 'origin', 'greenlin']);
 export const PHONE_UI_TABS = Object.freeze(['feed']);
 
 const PRESET_PLATFORMS = Object.freeze({
