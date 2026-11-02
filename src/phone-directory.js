@@ -52,7 +52,7 @@ export async function refreshEditedGroupRuntime({
         state.groupRandomNpcPrompt = updated.randomNpcPrompt;
         state.groupColorMap = {};
         updated.members.forEach((name, index) => {
-            state.groupColorMap[name] = updated.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg;
+            state.groupColorMap[name] = updated.memberColors[name] || defaultGroupColor(index);
         });
         const injectionResult = await applyInjection();
         const injectionError = injectionFailure(injectionResult, '提交');
@@ -99,7 +99,7 @@ import {
 import { normalizeGroupMeta } from './behavior-config.js';
 import { DEFAULT_RANDOM_NPC_PROMPT } from './chat-prompts.js';
 import { getAutoPokeConfig } from './auto-poke-config.js';
-import { GROUP_COLORS } from './groups.js';
+import { defaultGroupColor, groupDotColor, groupDotSvg } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
     BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, EYE_ICON_SVG,
@@ -400,7 +400,7 @@ export function installPhoneDirectory(state, deps) {
         <section class="pm-settings-stack pm-settings-separator">
           <div class="pm-cfg-label">成员气泡颜色</div>
           <div class="pm-group-member-colors">
-            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color pm-color-pick" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupMeta.memberColors[name] || GROUP_COLORS[index % GROUP_COLORS.length].bg)}"></label>`).join('')}
+            ${groupMeta.members.map((name, index) => `<label><span>${escapeHtml(name)}</span><input class="pm-group-member-color pm-color-pick" data-member="${escapeAttr(name)}" type="color" value="${escapeAttr(groupDotColor(groupMeta.memberColors[name], index))}"></label>`).join('')}
           </div>
         </section>` : '';
 
@@ -557,10 +557,7 @@ export function installPhoneDirectory(state, deps) {
         if (!input) return;
         const names = parseGroupMembers(input.value);
         if (counter) { counter.textContent = `${names.length} 个角色`; counter.classList.toggle('has-members', names.length > 0); }
-        preview.innerHTML = names.map((n, i) => {
-            const gc = GROUP_COLORS[i % GROUP_COLORS.length];
-            return `<span class="pm-group-preview-chip" style="background:${gc.bg};color:${gc.text};">${escapeHtml(n)}</span>`;
-        }).join('');
+        preview.innerHTML = names.map((n, i) => `<span class="pm-group-preview-chip">${groupDotSvg(defaultGroupColor(i))}${escapeHtml(n)}</span>`).join('');
     };
 
     window.__pmConfirmGroup = async (mode) => {
@@ -588,7 +585,7 @@ export function installPhoneDirectory(state, deps) {
                 state.isGroupChat = true; state.groupMembers = names; state.groupExtras = [];
                 state.groupDisplayName = groupName; state.currentGroupKey = groupKey;
                 state.groupRandomNpcEnabled = false; state.groupNature = ''; state.groupRandomNpcPrompt = '';
-                state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = GROUP_COLORS[i % GROUP_COLORS.length]; });
+                state.groupColorMap = {}; names.forEach((n, i) => { state.groupColorMap[n] = defaultGroupColor(i); });
                 window.__pmSwitch(groupKey, previousSaveKey, state.activeStorageId, { previousConversationContext });
             }
         } catch (error) {

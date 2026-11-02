@@ -1,7 +1,7 @@
 import { VOICE_MAX_SEC } from './constants.js';
-import { GROUP_COLORS } from './groups.js';
+import { createGroupDot, defaultGroupColor, groupDotColor } from './groups.js';
 import { isRenderableEmojiSource } from './emoji-media.js';
-import { contrastText, escapeAttr, escapeHtml, renderBoldText } from './ui.js';
+import { escapeAttr, escapeHtml, renderBoldText } from './ui.js';
 
 const SPECIAL_KEYWORDS = {
     '转账':'转账','transfer':'转账','Transfer':'转账','TRANSFER':'转账','轉賬':'转账','轉帳':'转账',
@@ -76,16 +76,22 @@ export function getEmojiPrompt(contactKey, storageId, pokeConfig, emojis) {
 
 export function resolveGroupColor(name, groupColorMap, groupMembers) {
     if (!name) return null;
-    const normalizeColor = color => typeof color === 'string'
-        ? { bg: color, text: contrastText(color) }
-        : color;
-    if (groupColorMap[name]) return normalizeColor(groupColorMap[name]);
     const normalizedName = name.toLowerCase();
-    for (const [memberName, color] of Object.entries(groupColorMap)) {
-        if (memberName.toLowerCase() === normalizedName) return normalizeColor(color);
-    }
     const index = groupMembers.findIndex(memberName => memberName.toLowerCase() === normalizedName);
-    return index >= 0 ? GROUP_COLORS[index % GROUP_COLORS.length] : null;
+    if (groupColorMap[name]) return groupDotColor(groupColorMap[name], Math.max(0, index));
+    for (const [memberName, color] of Object.entries(groupColorMap)) {
+        if (memberName.toLowerCase() === normalizedName) return groupDotColor(color, Math.max(0, index));
+    }
+    return index >= 0 ? defaultGroupColor(index) : null;
+}
+
+/** 群聊成员名：颜色只画在名字前的小圆点上。 */
+function groupNameTag(senderName, groupColor) {
+    const nameTag = document.createElement('div');
+    nameTag.className = 'pm-group-name';
+    nameTag.textContent = senderName;
+    if (groupColor) nameTag.prepend(createGroupDot(groupColor));
+    return nameTag;
 }
 
 export function createBubbles(text, side, senderName, { groupColorMap, groupMembers, emojis, emojiBudget }) {
@@ -112,19 +118,9 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
             lines.forEach((line, index) => {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'pm-group-bubble-wrap';
-                if (index === 0) {
-                    const nameTag = document.createElement('div');
-                    nameTag.className = 'pm-group-name';
-                    nameTag.textContent = senderName;
-                    if (groupColor) nameTag.style.color = groupColor.bg;
-                    wrapper.appendChild(nameTag);
-                }
+                if (index === 0) wrapper.appendChild(groupNameTag(senderName, groupColor));
                 const inner = document.createElement('div');
                 inner.className = `pm-bubble pm-${side}`;
-                if (groupColor) {
-                    inner.style.setProperty('background', groupColor.bg, 'important');
-                    inner.style.setProperty('color', groupColor.text, 'important');
-                }
                 inner.innerHTML = renderLineHtml(line);
                 wrapper.appendChild(inner);
                 results.push(wrapper);
@@ -145,11 +141,7 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
         if (isGroupLeft) {
             container = document.createElement('div');
             container.className = 'pm-group-bubble-wrap';
-            const nameTag = document.createElement('div');
-            nameTag.className = 'pm-group-name';
-            nameTag.textContent = senderName;
-            if (groupColor) nameTag.style.color = groupColor.bg;
-            container.appendChild(nameTag);
+            container.appendChild(groupNameTag(senderName, groupColor));
         }
         const bubble = document.createElement('div');
         bubble.className = `pm-bubble pm-${side} pm-special`;
@@ -170,12 +162,8 @@ export function createBubbles(text, side, senderName, { groupColorMap, groupMemb
                 : length <= 40 ? 15 + Math.ceil((length - 15) * 0.8)
                 : Math.min(VOICE_MAX_SEC, 35 + Math.ceil((length - 40) * 0.5));
             const width = Math.min(240, Math.max(110, 90 + Math.min(length, 30) * 4));
-            let voiceStyle = `width:${width}px`;
-            let voiceClass = `pm-voice-card pm-voice-${side}`;
-            if (isGroupLeft && groupColor) {
-                voiceStyle = `width:${width}px;background:${groupColor.bg} !important;color:${groupColor.text} !important;`;
-                voiceClass = 'pm-voice-card pm-voice-left pm-voice-group';
-            }
+            const voiceStyle = `width:${width}px`;
+            const voiceClass = `pm-voice-card pm-voice-${side}`;
             bubble.innerHTML = `<div class="pm-voice-wrap"><div class="${voiceClass}" style="${voiceStyle}" onclick="window.__pmToggleVoice(this)"><span class="pm-voice-icon">🎤</span><span class="pm-voice-wave"><i></i><i></i><i></i></span><span class="pm-voice-dur">${duration}"</span></div><div class="pm-voice-text" hidden>${escapeHtml(voiceText)}</div></div>`;
         }
         if (container) { container.appendChild(bubble); results.push(container); }

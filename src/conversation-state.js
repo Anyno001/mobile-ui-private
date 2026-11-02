@@ -1,4 +1,4 @@
-import { GROUP_COLORS } from './groups.js';
+import { defaultGroupColor } from './groups.js';
 
 export function getConversationSaveKey(state) {
     return state.isGroupChat && state.currentGroupKey ? state.currentGroupKey : state.currentPersona;
@@ -35,7 +35,7 @@ export function applyConversationTarget(state, key, groupMeta) {
         state.groupColorMap = {};
         state.groupMembers.forEach((name, index) => {
             state.groupColorMap[name] = groupMeta.memberColors?.[name]
-                || GROUP_COLORS[index % GROUP_COLORS.length].bg;
+                || defaultGroupColor(index);
         });
         return;
     }

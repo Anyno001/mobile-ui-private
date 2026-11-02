@@ -204,7 +204,8 @@ try {
     assert.match(groupVoice.className, /pm-group-bubble-wrap/, '群聊无括号特殊消息必须保留成员包装');
     assert.equal(groupVoice.children[0].textContent, '小明', '群聊无括号特殊消息不得丢失成员名称');
     assert.match(groupVoice.children[1].className, /pm-special/, '群聊无括号特殊消息必须保留特殊气泡');
-    assert.match(groupVoice.children[1].innerHTML, /pm-voice-group/, '群聊无括号语音必须保留成员颜色分支');
+    assert.match(groupVoice.children[0].children[0].innerHTML, /#123456/, '群聊成员颜色只画在名字前的小圆点上');
+    assert.doesNotMatch(groupVoice.children[1].innerHTML, /#123456/, '群聊语音气泡不得按成员染色');
 
     for (const input of ['语音   ', '图片:', '图片：   ', '转账+', '收款:\t', '退还 \t']) {
         const plainBubble = createBubbles(input, 'left', undefined, specialOptions)[0];

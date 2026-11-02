@@ -154,17 +154,7 @@
       "--pm-model-visible-rows",
       "font-size"
     ],
-    "dataDrivenStyle": [
-      {
-        "file": "src/messaging.js",
-        "scope": "resolveGroupColor|createBubbles",
-        "properties": [
-          "color",
-          "background"
-        ],
-        "reason": "群成员动态颜色由 GROUP_COLORS/用户配置驱动，非稳定视觉"
-      }
-    ],
+    "dataDrivenStyle": [],
     "themeOwners": [
       "src/phone-theme.js",
       "src/settings-model-picker.js"
@@ -233,11 +223,9 @@
       {
         "file": "src/messaging.js",
         "properties": [
-          "color",
-          "background",
           "<dynamic-style-attribute>"
         ],
-        "reason": "群成员颜色与语音宽度由用户/群聊配置驱动"
+        "reason": "语音宽度由消息长度驱动"
       },
       {
         "file": "src/phone-appearance.js",
@@ -262,11 +250,9 @@
       {
         "file": "src/phone-directory.js",
         "properties": [
-          "top",
-          "background",
-          "color"
+          "top"
         ],
-        "reason": "群聊成员预览 chip 与目录锚定由 GROUP_COLORS/运行时数据驱动"
+        "reason": "目录锚定由运行时数据驱动"
       },
       {
         "file": "src/phone-island-gesture.js",
@@ -1030,7 +1016,7 @@
     "styles/core.css::root::.pm-input::padding::var(--pm-space-2) var(--pm-space-3) !important",
     "styles/core.css::root::.pm-left::align-self::flex-start !important",
     "styles/core.css::root::.pm-left::background::var(--pm-l-bg) !important",
-    "styles/core.css::root::.pm-left::border-bottom-left-radius::var(--pm-radius-bubble-tail) !important",
+    "styles/core.css::root::.pm-left::border-top-left-radius::var(--pm-radius-bubble-tail) !important",
     "styles/core.css::root::.pm-left::color::var(--pm-l-txt) !important",
     "styles/core.css::root::.pm-main-ui::background::var(--pm-bg) !important",
     "styles/core.css::root::.pm-main-ui::display::flex !important",
@@ -1067,7 +1053,7 @@
     "styles/core.css::root::.pm-phone-page[hidden]::display::none !important",
     "styles/core.css::root::.pm-right::align-self::flex-end !important",
     "styles/core.css::root::.pm-right::background::var(--pm-r-bg) !important",
-    "styles/core.css::root::.pm-right::border-bottom-right-radius::var(--pm-radius-bubble-tail) !important",
+    "styles/core.css::root::.pm-right::border-top-right-radius::var(--pm-radius-bubble-tail) !important",
     "styles/core.css::root::.pm-right::color::var(--pm-r-txt) !important",
     "styles/core.css::root::.pm-select-wrap::display::flex !important",
     "styles/core.css::root::.pm-select-wrap[data-align=\"center\"]::align-self::center !important",

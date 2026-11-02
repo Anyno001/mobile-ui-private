@@ -8228,7 +8228,7 @@ assert.equal(successfulEditedGroupState.groupRandomNpcEnabled, true);
 assert.equal(successfulEditedGroupState.groupNature, '气氛友好的同学群');
 assert.deepEqual(successfulEditedGroupState.groupColorMap, {
     Alice: '#abcdef',
-    Carol: '#b8e6c8',
+    Carol: '#6f9be8',
 }, '显式颜色应保留，默认颜色必须写入 CSS 色值字符串');
 
 const injectionFailureState = createEditedGroupRuntimeFixture();
