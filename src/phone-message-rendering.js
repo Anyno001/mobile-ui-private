@@ -43,7 +43,7 @@ function historyEntryFor(state, metadata) {
     return null;
 }
 
-export function createPhoneMessageRenderer({ state, quote, getStoryToday = () => '', onBubblesRendered = () => {} }) {
+export function createPhoneMessageRenderer({ state, quote, getStoryToday = () => '', getStoryClockAt = () => null, onBubblesRendered = () => {} }) {
     let emojiRenderBudget = createEmojiRenderBudget();
     const bubbleQuoteGestureUnbinders = new Map();
     const resetEmojiRenderBudget = () => { emojiRenderBudget = createEmojiRenderBudget(); };
@@ -114,12 +114,15 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
         root.appendChild(action);
     }
 
-    /** 消息的剧情日期或钟点与列表里最后一条分隔条不同时，先插一条时间分隔（仿微信）；没有钟点的消息只按日期分。 */
+    /** 消息的剧情日期或钟点与列表里最后一条分隔条不同时，先插一条时间分隔（仿微信）；没有钟点的消息只按日期分。
+     *  消息没存钟点时，按发送时的楼层回读正文状态栏补上。 */
     function ensureDateDivider(list, metadata) {
         const entry = historyEntryFor(state, metadata);
-        const storyDate = normalizeStoryDate(entry?.storyDate);
+        const stored = normalizeStoryTime(entry?.storyTime);
+        const clock = stored ? null : getStoryClockAt(entry?.floor);
+        const storyDate = normalizeStoryDate(clock?.date || entry?.storyDate);
         if (!storyDate) return;
-        const storyTime = normalizeStoryTime(entry?.storyTime);
+        const storyTime = stored || normalizeStoryTime(clock?.time);
         const dividers = list.getElementsByClassName('pm-date-divider');
         const last = dividers[dividers.length - 1]?.dataset;
         if (last?.storyDate === storyDate && (!storyTime || last.storyTime === storyTime)) return;

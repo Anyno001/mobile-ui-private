@@ -32,6 +32,7 @@ import {
 import { awaitPendingBranchInheritance } from './branch-scope-inheritance.js';
 import { createChatMetadataSync } from './chat-metadata-sync.js';
 import { setFloorMarkProvider, setStoryClockProvider } from './chat-message-model.js';
+import { createStoryClockLookup } from './story-clock.js';
 import { startOriginHost, trackBackgroundCalls } from './origin-host.js';
 import { startPlotInjector } from './plot-injector/plot-injector.js';
 import { floorMarkFor, loadRollbackFloors } from './phone-floor-rollback.js';
@@ -112,7 +113,13 @@ import { setCommunityFloorProvider } from './community-floor-rollback.js';
         const chat = getCtx()?.chat;
         return Array.isArray(chat) ? floorMarkFor(chat) : null;
     });
-    setStoryClockProvider(() => ({ date: deps.getStoryToday?.() || '', time: deps.getStoryTime?.() || '' }));
+    // 剧情时间：聊天时间条与新消息的钟点都按楼层回读正文状态栏，读不到再用日历记下的。
+    deps.getStoryClockAt = createStoryClockLookup({ getChat: () => getCtx()?.chat, getDateTags: () => deps.getStoryDateTags?.(), getHint: () => deps.getStoryToday?.() || '' });
+    deps.getStoryClockNow = () => { const chat = getCtx()?.chat; return Array.isArray(chat) ? deps.getStoryClockAt(chat.length) : null; };
+    setStoryClockProvider(() => {
+        const clock = deps.getStoryClockNow();
+        return clock?.time ? clock : { date: deps.getStoryToday?.() || '', time: deps.getStoryTime?.() || '' };
+    });
     // 社区与直播间同一套楼层标记，保留层数共用「删楼回退保留层数」。
     setCommunityFloorProvider(() => {
         const chat = getCtx()?.chat;

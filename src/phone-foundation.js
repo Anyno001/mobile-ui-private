@@ -139,7 +139,7 @@ export function installPhoneFoundation(state, deps) {
     const {
         addBubble, addNote, addDirector, batchRender, rebaseRenderedHistory, resetEmojiRenderBudget, showTyping, hideTyping,
         clearBubbleQuoteGesture, clearBubbleQuoteGestures, pruneDateDividers,
-    } = createPhoneMessageRenderer({ state, quote, getStoryToday: () => deps.getStoryToday?.() || '',
+    } = createPhoneMessageRenderer({ state, quote, getStoryToday: () => deps.getStoryClockNow?.()?.date || deps.getStoryToday?.() || '', getStoryClockAt: floor => deps.getStoryClockAt?.(floor) || null,
         onBubblesRendered: nodes => deps.hydrateImageCards?.(nodes) });
     const {
         beginGeneration, isGenerationTaskActive, finishGeneration, cancelGeneration, invalidateGeneration, syncGenerationControls,

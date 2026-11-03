@@ -791,6 +791,7 @@ export function installCalendar(state, deps) {
         renderCalendar: render,
         getStoryToday: (storageId = getStorageId()) => formatCalendarDate(calendarReferenceDate(scope(storageId))), // 日历「今天」，未设置时为现实日期
         getStoryTime: (storageId = getStorageId()) => scope(storageId).baseTime || '', // 正文状态栏里的剧情钟点 HH:MM，未识别为空
+        getStoryDateTags: (storageId = getStorageId()) => scope(storageId).dateTags,
         getPhoneOutfitPrompt: ({ storageId = getStorageId(), names = [], userName = '' } = {}) => renderPhoneOutfitPrompt({ store: runtime.outfitStore, storageId, enabled: scope(storageId).injectionOutfitEnabled, start: calendarReferenceDate(scope(storageId)), names, userName }),
     });
 }
