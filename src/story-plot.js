@@ -6,7 +6,7 @@ import { bindPressGesture } from './press-gesture.js';
 import { loadProfiles } from './storage-preferences.js';
 import { BUILTIN_GUIDE } from './plot-injector/core/guide.js';
 import { DEFAULT_PARAMS, POSITIONS, ROLES, buildIndexText, carriedNodes } from './plot-injector/core/inject.js';
-import { NODE_FIELDS, flattenUnits, makeId, outlineToText, parseOutlineText, replaceRest, stageLabel, stageNodes, stageToText, volumeLabel } from './plot-injector/core/outline.js';
+import { CHANGE_FIELD, NODE_FIELDS, changeLines, flattenUnits, makeId, outlineToText, parseOutlineText, replaceRest, stageLabel, stageNodes, stageToText, volumeLabel } from './plot-injector/core/outline.js';
 import { STATES, STATE_LABELS, currentIndex, emptyProgress, goTo, patchSlot, setNodeChecked, unitStates } from './plot-injector/core/progress.js';
 import { fixYamlMessages, outlineMessages, parseOutlineReply, rewriteRestMessages, transcript } from './plot-injector/core/prompts.js';
 import { joinBlocks, pushHistory, splitBlocks } from './plot-injector/core/setting.js';
@@ -225,7 +225,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         set draft(value) { settingDraft = value; },
     };
     const {
-        aiSetting, chooseWorldBookRefs, applyDraft, editFix, editBlock, newBlock, editFullSetting, settingHistory, importSettingFromBooks,
+        aiSetting, chooseWorldBookRefs, applyDraft, syncOutline, toggleMute, editFix, editBlock, newBlock, editFullSetting, settingHistory, importSettingFromBooks,
         setNumber, setChoice, editGuide, diagnose,
     } = createPlotSettingActions(deps, settingCtx);
 
@@ -360,7 +360,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         tab = 'outline';
         const recent = runtime.recentFloors(6).map(floor => floor.text).join('\n\n');
         const reply = await runAi('outline', 'outline', rewriteRestMessages({ setting: current.setting.text, volumes: current.outline.volumes, fromUnitIndex: from, units, recent, reason }));
-        if (reply) setOutlineDraft(reply, 'rewrite', { fromUnitId: units[from].id });
+        if (reply) setOutlineDraft(reply, 'rewrite', { fromUnitId: units[from].id, reason });
         rerender();
     }
 
@@ -461,7 +461,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     async function fixDraft() {
         const draft = outlineDraft;
         const reply = await runAi('outline', 'outline', fixYamlMessages(draft.yaml, draft.error));
-        if (reply) setOutlineDraft(reply, draft.mode, { fromUnitId: draft.fromUnitId });
+        if (reply) setOutlineDraft(reply, draft.mode, { fromUnitId: draft.fromUnitId, reason: draft.reason });
         rerender();
     }
 
@@ -469,11 +469,11 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         const draft = outlineDraft;
         const yaml = await promptText(deps, { title: '手动修改YAML', label: draft.error, value: draft.yaml, multiline: true, rows: 16 });
         if (yaml == null) return;
-        setOutlineDraft(`\`\`\`yaml\n${yaml}\n\`\`\``, draft.mode, { fromUnitId: draft.fromUnitId });
+        setOutlineDraft(`\`\`\`yaml\n${yaml}\n\`\`\``, draft.mode, { fromUnitId: draft.fromUnitId, reason: draft.reason });
         rerender();
     }
 
-    function applyRest() {
+    async function applyRest() {
         const draft = outlineDraft;
         const current = viewed();
         const unit = flattenUnits(current.outline.volumes).find(item => item.id === draft.fromUnitId);
@@ -486,6 +486,8 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         if (first && runtime) runtime.setProgress(goTo(runtime.progress(), flattenUnits(volumes), first.id));
         outlineDraft = null;
         rerender();
+        const from = first ? flattenUnits(volumes).findIndex(item => item.id === first.id) : 0;
+        await syncOutline({ from: Math.max(0, from), reason: draft.reason, auto: true });
     }
 
     const draftHere = () => Boolean(outlineDraft && outlineDraft.projectId === resolveViewedId());
@@ -501,6 +503,18 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     async function editStageField(field) {
         const found = findStage();
         if (!found) return;
+        if (field === CHANGE_FIELD) {
+            const value = await promptText(deps, { title: field, label: '每行一条，本阶段演完后接在设定后面注入', value: changeLines(found.stage.data).join('\n'), multiline: true, rows: 5 });
+            if (value == null) return;
+            const lines = String(value).split('\n').map(line => line.trim()).filter(Boolean);
+            updateStage(found.stage.id, stage => {
+                const data = { ...stage.data, [field]: lines };
+                if (!lines.length) delete data[field];
+                return { ...stage, data };
+            });
+            rerender();
+            return;
+        }
         const value = await promptText(deps, { title: field, label: field === '时间范围' ? '时间范围（用来判断何时切到下一段）' : 'AI指令', value: String(found.stage.data?.[field] ?? ''), multiline: field === 'AI指令', rows: 5 });
         if (value == null) return;
         updateStage(found.stage.id, stage => ({ ...stage, data: { ...stage.data, [field]: String(value) } }));
@@ -595,6 +609,8 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         params: editParams,
         'reset-base': () => { runtimeForViewed()?.resetBase?.(); toast('info', '已从当前楼重新计检测。'); rerender(); },
         'setting-ai': aiSetting,
+        'setting-sync': () => { const runtime = runtimeForViewed(); return syncOutline({ from: runtime ? Math.max(0, currentIndex(flattenUnits(viewed().outline.volumes), runtime.progress())) : 0 }); },
+        'block-mute': button => toggleMute(button.dataset.plotKey),
         'draft-apply-all': () => applyDraft(true),
         'draft-apply-picked': () => applyDraft(false),
         'draft-toggle': () => { if (settingDraft) settingDraft = { ...settingDraft, open: !settingDraft.open }; rerender(); },

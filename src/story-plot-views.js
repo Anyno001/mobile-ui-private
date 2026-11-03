@@ -1,12 +1,12 @@
 // 剧情助手里的「剧情」页（剧情注入器的项目、进度、设定、大纲）与首页项目卡的模板：只按视图模型输出 HTML。
 // 数据与动作在 story-plot.js；按钮统一用 data-plot-action，「⋯」菜单沿用剧情助手的 toggle-more。
 import {
-    BACK_ICON_SVG, BOOK_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, EDIT_ICON_SVG, FLAG_ICON_SVG, MORE_ICON_SVG, PLUS_ICON_SVG,
+    BACK_ICON_SVG, BOOK_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, EDIT_ICON_SVG, EYE_ICON_SVG, FLAG_ICON_SVG, MORE_ICON_SVG, PLUS_ICON_SVG,
     ROUTE_ICON_SVG, SEARCH_ICON_SVG, TRASH_ICON_SVG, DOWNLOAD_ICON_SVG, REFRESH_ICON_SVG, FORWARD_ICON_SVG,
 } from './icons.js';
 import { escapeAttr as rawEscapeAttr, escapeHtml as rawEscapeHtml } from './ui.js';
 import { PACES } from './plot-injector/core/inject.js';
-import { NODE_FIELDS, stageLabel, stageNodes, volumeLabel } from './plot-injector/core/outline.js';
+import { CHANGE_FIELD, NODE_FIELDS, changeLines, stageLabel, stageNodes, volumeLabel } from './plot-injector/core/outline.js';
 import { STATE_LABELS, offNodes } from './plot-injector/core/progress.js';
 import { splitBlocks } from './plot-injector/core/setting.js';
 import { findWorld, phaseLabels } from './plot-injector/core/infinite.js';
@@ -183,7 +183,7 @@ function settingDraft(vm) {
         const status = !before ? '新增' : before.text === block.text ? '未变' : '改动';
         return `<li><button type="button" class="pm-plot-node${picked.has(block.key) ? ' is-done' : ''}" data-plot-action="draft-pick" data-plot-key="${escapeAttr(block.key)}" aria-pressed="${picked.has(block.key)}"><span class="pm-plot-check" aria-hidden="true">${picked.has(block.key) ? CHECK_ICON_SVG : ''}</span><span class="pm-plot-node-name">${escapeHtml(block.title)}</span><small>${status}</small></button></li>`;
     }).join('')}</ul>` : `<p>${escapeHtml(blocks.map(block => block.title).join('、'))}</p>`;
-    return `<section class="pm-plot-block is-draft"><div class="pm-plot-block-head"><b>AI整理 · 新草稿</b><small>${blocks.length} 块${draft.check ? ` · 速查 ${escapeHtml(draft.check)}` : ''}</small></div>${rows}
+    return `<section class="pm-plot-block is-draft"><div class="pm-plot-block-head"><b>${draft.sync ? '按大纲校对' : 'AI整理'} · 新草稿</b><small>${draft.sync ? `改动 ${draft.keys.length} 块` : `${blocks.length} 块`}${draft.check ? ` · 速查 ${escapeHtml(draft.check)}` : ''}</small></div>${rows}
       <div class="pm-plot-card-actions">${draft.open ? btn('draft-apply-picked', `采用勾选的 ${picked.size} 块`, { cls: 'pm-plot-chip is-ink', enabled: picked.size > 0 }) : btn('draft-apply-all', '全部采用', { cls: 'pm-plot-chip is-ink' })}${btn('draft-toggle', draft.open ? '收起' : '逐块看', { cls: 'pm-plot-chip' })}${btn('draft-drop', '丢弃', { cls: 'pm-plot-chip' })}</div></section>`;
 }
 
@@ -196,16 +196,20 @@ function settingFixes(vm) {
 
 function settingBody(vm) {
     const blocks = splitBlocks(vm.viewed.setting.text).filter(block => block.text.trim());
+    const mute = new Set(vm.viewed.setting.mute || []);
     const cards = blocks.map(block => {
         const title = block.title === '开头' ? '开头（未分块）' : block.title;
+        const muted = mute.has(block.key);
         const menu = renderMore(`block:${block.key}`, [
             menuItem('block-edit', EDIT_ICON_SVG, '编辑', { attrs: `data-plot-key="${escapeAttr(block.key)}"` }),
+            menuItem('block-mute', EYE_ICON_SVG, muted ? '恢复注入' : '不注入正文', { attrs: `data-plot-key="${escapeAttr(block.key)}"` }),
             menuItem('block-del', TRASH_ICON_SVG, '删除', { attrs: `data-plot-key="${escapeAttr(block.key)}"`, danger: true }),
         ], vm.openMenuId);
-        return `<section class="pm-plot-block"><div class="pm-plot-block-head"><button type="button" class="pm-plot-block-title" data-plot-action="block-edit" data-plot-key="${escapeAttr(block.key)}">${escapeHtml(title)}</button><small>约 ${block.text.length} 字</small>${menu}</div><p>${escapeHtml(block.text.replace(/^.*[:：]\s*\n/, ''))}</p></section>`;
+        return `<section class="pm-plot-block"><div class="pm-plot-block-head"><button type="button" class="pm-plot-block-title" data-plot-action="block-edit" data-plot-key="${escapeAttr(block.key)}">${escapeHtml(title)}</button><small>${muted ? '不注入 · ' : ''}约 ${block.text.length} 字</small>${menu}</div><p>${escapeHtml(block.text.replace(/^.*[:：]\s*\n/, ''))}</p></section>`;
     }).join('');
     const empty = blocks.length ? '' : '<p class="pm-story-oracle-empty is-inline">还没有设定。可以先在剧情参谋里聊想法，再点「AI整理」；也可以从世界书导入。</p>';
-    const ops = `<div class="pm-plot-ops">${btn('setting-import', '从世界书导入')}${btn('block-new', '新分块')}${btn('setting-ai', vm.busy === 'setting' ? '整理中…' : 'AI整理', { cls: 'pm-plot-op is-ink', enabled: !vm.busy })}</div>`;
+    const canSync = blocks.length > 0 && vm.viewed.outline.volumes.some(volume => volume.stages.length);
+    const ops = `<div class="pm-plot-ops${canSync ? ' is-four' : ''}">${btn('setting-import', '从世界书导入')}${btn('block-new', '新分块')}${canSync ? btn('setting-sync', '按大纲校对', { enabled: !vm.busy }) : ''}${btn('setting-ai', vm.busy === 'setting' ? '整理中…' : 'AI整理', { cls: 'pm-plot-op is-ink', enabled: !vm.busy })}</div>`;
     return `${settingDraft(vm)}${settingFixes(vm)}${cards}${empty}${ops}`;
 }
 
@@ -310,6 +314,7 @@ export function renderPlotStage(vm) {
       <h2>${escapeHtml(stageLabel(stage.key))}</h2>
       <section class="pm-story-oracle-field"><div class="pm-story-oracle-section-head"><h3>时间范围</h3>${btn('stage-field', '编辑', { cls: 'pm-story-oracle-link', attrs: 'data-plot-field="时间范围"' })}</div><p class="pm-story-oracle-quote">${escapeHtml(stage.data?.时间范围 || '（未填）')}</p></section>
       <section class="pm-story-oracle-field"><div class="pm-story-oracle-section-head"><h3>AI指令</h3>${btn('stage-field', '编辑', { cls: 'pm-story-oracle-link', attrs: 'data-plot-field="AI指令"' })}</div><p class="pm-story-oracle-quote">${escapeHtml(stage.data?.AI指令 || '（未填）')}</p></section>
+      <section class="pm-story-oracle-field"><div class="pm-story-oracle-section-head"><h3>状态变化</h3>${btn('stage-field', '编辑', { cls: 'pm-story-oracle-link', attrs: `data-plot-field="${CHANGE_FIELD}"` })}</div><p class="pm-story-oracle-quote">${escapeHtml(changeLines(stage.data).join('\n') || '（未填）')}</p></section>
       <section class="pm-story-oracle-field"><div class="pm-story-oracle-section-head"><h3>节点</h3>${btn('node-add', '加一个', { cls: 'pm-story-oracle-link', attrs: `data-plot-field="${escapeAttr(meta.field)}" data-plot-kind="${kind}"` })}</div>${kinds}
         ${nodes ? `<ul class="pm-story-oracle-group pm-plot-rows">${nodes}</ul>` : `<p class="pm-story-oracle-empty is-inline">没有${meta.label}节点。</p>`}</section>
     </article>`;

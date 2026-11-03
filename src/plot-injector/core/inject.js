@@ -1,7 +1,8 @@
-import { filterStageData, flattenUnits, splitStageKey, splitVolumeKey, stageLabel, stageNodes, volumeLabel } from './outline.js';
+import { changeLines, filterStageData, flattenUnits, splitStageKey, splitVolumeKey, stageLabel, stageNodes, volumeLabel } from './outline.js';
 import { INFINITE_SLOT } from './infinite.js';
 import { buildInfiniteDetail, emptyInfinite } from './infinite-flow.js';
 import { SETTING_SLOT, offNodes, unitStates } from './progress.js';
+import { injectedSetting } from './setting.js';
 import { stringifyYaml } from './yaml.js';
 
 // 位置编号与酒馆 world_info_position 一致。
@@ -169,19 +170,29 @@ export function buildDetailText(unit, off, settings, { pace = 'normal', next = n
     return `<${tag} 卷="${vol}" 阶段="${unit.stage.key}">\n${note}\n${body}${carriedText(carried)}\n</${tag}>`;
 }
 
+// 已演完阶段的状态变化，接在设定后面注入。
+export function changesText(units, states) {
+    const lines = units.filter(unit => states[unit.id] === 'done')
+        .flatMap(unit => changeLines(unit.stage.data).map(text => `- ${text}（${stagePlace(unit)}）`));
+    return lines.length ? `已演完的剧情带来的变化（设定里对应的开局状态以这里为准）：\n${lines.join('\n')}` : '';
+}
+
 // 执行页与注入共用：返回本轮要注入的条目（含停用的，UI 需要显示），注入时只取 enabled。
 export function buildEntries(project, progress, settings) {
     const defaults = { ...DEFAULT_PARAMS, ...(project && project.defaults) };
     const entries = [];
     if (!project) return entries;
-    const settingText = String(project.setting && project.setting.text || '').trim();
+    const infinite = project.mode === 'infinite';
+    const units = infinite ? [] : flattenUnits(project.outline && project.outline.volumes);
+    const states = unitStates(units, progress);
+    const settingText = [injectedSetting(project.setting), changesText(units, states)].filter(Boolean).join('\n\n');
     if (settingText) {
         entries.push({
             slotId: SETTING_SLOT, kind: 'setting', title: '设定',
             content: settingText, ...pickParams(defaults.setting, progress.slots[SETTING_SLOT]),
         });
     }
-    if (project.mode === 'infinite') {
+    if (infinite) {
         const inf = progress.infinite || emptyInfinite();
         entries.push({
             slotId: INFINITE_SLOT, kind: 'detail', title: '无限流状态',
@@ -189,9 +200,7 @@ export function buildEntries(project, progress, settings) {
         });
         return entries;
     }
-    const units = flattenUnits(project.outline && project.outline.volumes);
     if (units.length) {
-        const states = unitStates(units, progress);
         const next = units.find(unit => states[unit.id] === 'next') || null;
         const carried = settings.carryOver === false ? [] : carriedNodes(units, states, progress);
         for (const unit of units) {

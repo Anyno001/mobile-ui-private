@@ -1,4 +1,4 @@
-import { outlineToText, stageLabel, stageToText, volumeLabel, volumesFromValue } from './outline.js';
+import { changeLines, flattenUnits, outlineToText, stageLabel, stageToText, volumeLabel, volumesFromValue } from './outline.js';
 import { parseYaml, yamlErrorLine } from './yaml.js';
 
 export const SAMPLE_STAGE = `剧情_卷一_示例:
@@ -19,6 +19,8 @@ export const SAMPLE_STAGE = `剧情_卷一_示例:
       - 类型: 传闻
         来源: 谁传出
         内容: 外界正在发生什么。
+    状态变化:
+      - 本阶段结束时谁知道了什么、谁对谁的看法或关系变了。
 `;
 
 const FOLD_KEEP = 16;
@@ -96,11 +98,27 @@ function formatSample(volumes) {
 
 const OUTLINE_RULES = [
     '只输出一个 ```yaml 代码块，不加说明。',
-    '顶层键是卷名，写作「剧情_卷X_标题」；卷下是阶段，写作「阶段N_标题」；阶段字段为 时间范围、AI指令、主线节点、支线事件、世界动态。',
+    '顶层键是卷名，写作「剧情_卷X_标题」；卷下是阶段，写作「阶段N_标题」；阶段字段为 时间范围、AI指令、主线节点、支线事件、世界动态、状态变化。',
     '节点字段：名称、地点、事件、偏转；支线事件多一个 触发；世界动态为 类型、来源、内容。',
     '每个阶段 2 到 4 个主线节点，事件写已经发生的事实，偏转写玩家改变选择后的调整。',
     '时间范围写清本阶段从什么时候到什么时候，用来判断何时切到下一段。',
+    '设定里的人物关系、认知和信息差是开局状态，会随剧情改变。状态变化逐条写本阶段结束时比之前变了什么，没有变化就省略。',
 ].join('\n');
+
+// 各阶段的状态变化按顺序列出，写后续大纲时接着这些变化往下写。
+function changesBlock(units, title) {
+    const lines = units.flatMap(unit => changeLines(unit.stage.data).map(text => `- ${stageLabel(unit.stage.key)}：${text}`));
+    return lines.length ? `【${title}】\n${lines.join('\n')}` : '';
+}
+
+function restText(units, from) {
+    const byVolume = new Map();
+    for (const unit of units.slice(from)) {
+        if (!byVolume.has(unit.volume)) byVolume.set(unit.volume, []);
+        byVolume.get(unit.volume).push(unit.stage);
+    }
+    return outlineToText([...byVolume.entries()].map(([volume, stages]) => ({ ...volume, stages })));
+}
 
 export function outlineMessages({ setting, talk, volumes, volumeNo, request, refs = [] }) {
     const known = (volumes || []).map(volume => `${volumeLabel(volume.key)}：${volume.stages.map(stage => stageLabel(stage.key)).join('、')}`);
@@ -110,25 +128,36 @@ export function outlineMessages({ setting, talk, volumes, volumeNo, request, ref
         talk ? `【讨论摘要】\n${talk}` : '',
         refBlock(refs),
         known.length ? `【已有的卷】\n${known.join('\n')}` : '',
+        changesBlock(flattenUnits(volumes), '已有大纲中的状态变化'),
         `只写第 ${volumeNo} 卷。${request || ''}`,
     ].filter(Boolean).join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }
 
 export function rewriteRestMessages({ setting, volumes, fromUnitIndex, units, recent, reason }) {
-    const rest = units.slice(fromUnitIndex);
-    const byVolume = new Map();
-    for (const unit of rest) {
-        if (!byVolume.has(unit.volume)) byVolume.set(unit.volume, []);
-        byVolume.get(unit.volume).push(unit.stage);
-    }
-    const restText = outlineToText([...byVolume.entries()].map(([volume, stages]) => ({ ...volume, stages })));
     const system = `剧情在执行中偏离了大纲。按已经发生的正文改写剩余阶段，保持卷名与阶段名格式。\n${OUTLINE_RULES}\n\n【格式样例】\n${formatSample(volumes)}`;
     const user = [
         setting ? `【设定】\n${setting}` : '',
-        `【需要改写的剩余阶段】\n${restText}`,
+        changesBlock(units.slice(0, fromUnitIndex), '已演完阶段的状态变化'),
+        `【需要改写的剩余阶段】\n${restText(units, fromUnitIndex)}`,
         reason ? `【偏转说明】\n${reason}` : '',
         `【最近正文】\n${recent}`,
+    ].filter(Boolean).join('\n\n');
+    return [{ role: 'system', content: system }, { role: 'user', content: user }];
+}
+
+// 大纲调整后按大纲校对设定：只改与大纲冲突、或把会变的关系与认知写死的句子。
+export function syncSettingMessages({ guide, setting, units, fromUnitIndex = 0, reason = '' }) {
+    const system = [
+        guide,
+        '剧情大纲已经调整。对照【剧情大纲】校对【已有世界观正文】：找出与大纲冲突的句子，以及把人物关系、认知、信息差、人物走向写成永远不变的句子，只改这些句子，改写成开局状态或留白；同一件事在几个分块里重复出现时，只留在最合适的一处；其余文字逐字保留，分块标题不变。',
+        '只回「世界观正文」「速查」两段。世界观正文输出改好后的完整全文；没有需要改的句子时原样输出。',
+    ].join('\n\n');
+    const user = [
+        `【已有世界观正文】\n${setting}`,
+        changesBlock(units.slice(0, fromUnitIndex), '已演完阶段的状态变化'),
+        `【剧情大纲】\n${restText(units, fromUnitIndex)}`,
+        reason ? `【调整原因】\n${reason}` : '',
     ].filter(Boolean).join('\n\n');
     return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }

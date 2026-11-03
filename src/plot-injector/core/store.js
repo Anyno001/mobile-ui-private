@@ -105,7 +105,7 @@ export function newProject(name, now = Date.now(), mode = 'normal') {
         id: makeId('p'),
         name: String(name || '').trim() || '新项目',
         createdAt: now,
-        setting: { text: '', history: [], check: '', fixes: [] },
+        setting: { text: '', history: [], check: '', fixes: [], mute: [] },
         outline: { volumes: [] },
         defaults: JSON.parse(JSON.stringify(DEFAULT_PARAMS)),
         genRefs: normalizeGenRefs(),
@@ -128,6 +128,7 @@ export function normalizeProject(value, id) {
             history: Array.isArray(setting.history) ? setting.history : [],
             check: String(setting.check || ''),
             fixes: Array.isArray(setting.fixes) ? setting.fixes : [],
+            mute: Array.isArray(setting.mute) ? setting.mute.map(String) : [],
         },
         outline: {
             volumes: volumes.filter(vol => vol && Array.isArray(vol.stages)).map(vol => ({

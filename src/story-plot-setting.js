@@ -1,7 +1,8 @@
 // 剧情页「设定」页签与设置页里剧情检测各项的动作。由 story-plot.js 传入共用的读写工具（ctx），这里不另存状态。
 import { BUILTIN_GUIDE } from './plot-injector/core/guide.js';
-import { rewriteBlockMessages, settingMessages } from './plot-injector/core/prompts.js';
-import { diffLines, joinBlocks, mergeBlocks, parseSettingReply, splitBlocks } from './plot-injector/core/setting.js';
+import { rewriteBlockMessages, settingMessages, syncSettingMessages } from './plot-injector/core/prompts.js';
+import { changedBlockKeys, diffLines, joinBlocks, mergeBlocks, parseSettingReply, splitBlocks } from './plot-injector/core/setting.js';
+import { flattenUnits } from './plot-injector/core/outline.js';
 import { openPlotDialog, pickMany, pickOption, promptText, readWorldBookEntries, showText } from './story-plot-io.js';
 import { escapeHtml as rawEscapeHtml } from './ui.js';
 
@@ -46,8 +47,40 @@ export function createPlotSettingActions(deps, ctx) {
         const draft = ctx.draft;
         if (!draft || draft.projectId !== viewed()?.id) { ctx.draft = null; rerender(); return; }
         const text = all ? draft.body : mergeBlocks(viewed().setting.text, draft.body, draft.keys);
-        commitSetting(text, { check: draft.check, fixes: draft.fixes });
+        commitSetting(text, { check: draft.check, ...(draft.sync ? {} : { fixes: draft.fixes }) });
         ctx.draft = null;
+        rerender();
+    }
+
+    // 对照当前及之后的大纲找出冲突或写死的句子。auto：改写后续阶段后直接采用改动的分块；否则进新草稿逐块挑选。
+    async function syncOutline({ from = 0, reason = '', auto = false } = {}) {
+        const current = viewed();
+        const text = current?.setting.text.trim();
+        if (!text) return;
+        const reply = await runAi('setting', 'outline', syncSettingMessages({ guide: guideText(), setting: text, units: flattenUnits(current.outline.volumes), fromUnitIndex: from, reason }));
+        if (!reply || viewed()?.id !== current.id) return;
+        const parsed = parseSettingReply(reply);
+        const keys = parsed.body ? changedBlockKeys(text, parsed.body) : [];
+        if (!keys.length) {
+            if (!auto) toast('info', '设定与大纲没有冲突，不需要修改。');
+            return;
+        }
+        const body = mergeBlocks(text, parsed.body, keys);
+        if (auto) {
+            const titles = new Map(splitBlocks(text).map(block => [block.key, block.title]));
+            commitSetting(body);
+            toast('success', `设定已按新大纲修改：${keys.map(key => titles.get(key) || key).join('、')}。可在历史版本里回退。`);
+        } else {
+            ctx.draft = { body, check: parsed.check, fixes: [], keys, open: true, sync: true, projectId: current.id };
+        }
+        rerender();
+    }
+
+    function toggleMute(key) {
+        const mute = new Set(viewed().setting.mute || []);
+        if (mute.has(key)) mute.delete(key);
+        else mute.add(key);
+        setSetting({ mute: [...mute] });
         rerender();
     }
 
@@ -184,5 +217,5 @@ export function createPlotSettingActions(deps, ctx) {
         return showText(deps, { title: '剧情注入器诊断', text: lines.join('\n') });
     }
 
-    return { aiSetting, chooseWorldBookRefs, applyDraft, editFix, editBlock, newBlock, editFullSetting, settingHistory, importSettingFromBooks, setNumber, setChoice, editGuide, diagnose };
+    return { aiSetting, chooseWorldBookRefs, applyDraft, syncOutline, toggleMute, editFix, editBlock, newBlock, editFullSetting, settingHistory, importSettingFromBooks, setNumber, setChoice, editGuide, diagnose };
 }

@@ -55,6 +55,7 @@
 .pm-plot-check svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
 /* 一行三个操作键 */
 .pm-plot-ops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-1-5);}
+.pm-plot-ops.is-four{grid-template-columns:repeat(2,minmax(0,1fr));}
 .pm-plot-op{min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-1);border:0;border-radius:var(--pm-radius-pill);background:var(--pm-color-fill);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);cursor:pointer;}
 .pm-plot-op.is-ink{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
 /* 设定分块与草稿 */

@@ -37,6 +37,20 @@ export function mergeBlocks(oldText, newText, keys) {
     return joinBlocks(out);
 }
 
+// 注入用的设定正文：去掉设为不注入的分块（只给写大纲、讨论当参考）。
+export function injectedSetting(setting) {
+    const text = String(setting && setting.text || '').trim();
+    const mute = new Set(setting && Array.isArray(setting.mute) ? setting.mute : []);
+    if (!mute.size) return text;
+    return joinBlocks(splitBlocks(text).filter(block => !mute.has(block.key)));
+}
+
+// 按大纲校对的结果只替换旧稿里已有、且文字有改动的分块；AI 漏写或新加的分块不动。
+export function changedBlockKeys(oldText, newText) {
+    const old = new Map(splitBlocks(oldText).map(block => [block.key, block.text]));
+    return splitBlocks(newText).filter(block => old.has(block.key) && old.get(block.key) !== block.text).map(block => block.key);
+}
+
 const SECTION = /^\s*(?:#{1,4}\s*|\d+\s*[.、．]\s*|\*\*)*\s*(世界观正文|补定|速查)\s*(?:\*\*)?\s*[:：]?\s*(?:\*\*)?\s*/;
 
 function stripFence(text) {

@@ -6,7 +6,19 @@ export const NODE_FIELDS = [
     { field: '支线事件', kind: 'side', prefix: 's', label: '支线' },
     { field: '世界动态', kind: 'world', prefix: 'w', label: '世界动态' },
 ];
-const STAGE_HINT_KEYS = ['时间范围', 'AI指令', '主线节点', '支线事件', '世界动态'];
+const STAGE_HINT_KEYS = ['时间范围', 'AI指令', '主线节点', '支线事件', '世界动态', '状态变化'];
+
+// 状态变化：本阶段结束时人物关系、认知、信息差比之前变了什么。阶段演完后累积起来接在设定后面注入，覆盖设定里的开局状态。
+export const CHANGE_FIELD = '状态变化';
+
+export function changeLines(data) {
+    const value = data && data[CHANGE_FIELD];
+    const list = Array.isArray(value) ? value : String(value || '').split('\n');
+    return list
+        .map(item => (item && typeof item === 'object' ? Object.values(item).join('：') : String(item || '')))
+        .map(text => text.replace(/^\s*(?:[-*•]|\d+[.、])\s*/, '').trim())
+        .filter(Boolean);
+}
 
 export function makeId(prefix = 'u') {
     return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
