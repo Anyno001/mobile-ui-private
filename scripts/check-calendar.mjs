@@ -41,7 +41,7 @@ import {
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthCells, calendarMonthKeys, DEFAULT_CALENDAR_GENERATION_RULE,
     calendarReferenceDate, calendarWeekKeys, calendarWindowDescription, createCalendarDate, createEmptyCalendarScope, createEmptyCalendarStore,
-    extractCalendarBaseDate, extractCalendarDate, firstCalendarBaseDate, extractCalendarDateTagContents, extractContextCalendarEvents,
+    extractCalendarBaseDate, extractCalendarDate, firstCalendarBaseDate, extractCalendarDateTagContents, extractContextCalendarEvents, extractCalendarStoryTime, parseStoryTime,
     normalizeCalendarDateTags, normalizeCalendarScope, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, parseCalendarInput,
     relativeCalendarLabel, replaceCalendarEventsInWindow, shiftCalendarMonth,
 } from '../src/calendar-model.js';
@@ -278,6 +278,11 @@ assert.equal(extractCalendarBaseDate('十月二十八日'), null, '今天基准�
 assert.equal(extractCalendarBaseDate('明天见面'), null, '今天基准不得接受相对日期');
 // 状态栏无年份写法：以故事日期年份补全，跨年取最近一年
 assert.equal(extractCalendarBaseDate('<date>3月5日 星期三 14:30</date>', ['date'], '2025-03-01'), '2025-03-05', '无年份状态栏日期须按当前故事日期补年');
+const timeBar = '<time_bar><date>2026年10月16日</date><time>20:32</time><place>澜湾公寓</place><quote>一点也不晚</quote></time_bar>';
+assert.equal(extractCalendarBaseDate(timeBar, ['time_bar']), '2026-10-16', '外层标签包裹内层标签时须整段读取');
+assert.equal(extractCalendarStoryTime(timeBar), '20:32', '默认另认 time 标签读剧情钟点');
+assert.equal(extractCalendarStoryTime(timeBar, ['time_bar']), '20:32');
+assert.deepEqual(['晚上八点半', '下午3点15分', '凌晨12点', '子时', '午时三刻', '快一点'].map(parseStoryTime), ['20:30', '15:15', '00:00', '00:00', '11:45', ''], '钟点口语与时辰');
 assert.equal(extractCalendarBaseDate('<date>十月二十八日</date>', ['date'], '3726-08-17'), '3726-10-28', '中文数字无年份须按故事年补全');
 assert.equal(extractCalendarBaseDate('<date>01-02</date>', ['date'], '2025-12-30'), '2026-01-02', '年末到年初须取最近一年');
 assert.equal(extractCalendarBaseDate('<date>12月30日</date>', ['date'], '2026-01-02'), '2025-12-30', '年初回看年末须取最近一年');

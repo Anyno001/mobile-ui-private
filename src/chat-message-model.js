@@ -114,6 +114,10 @@ export function ensureMessageEntry(entry, options = {}) {
         delete entry.storyDate;
         changed = true;
     }
+    if (entry.storyTime !== undefined && !(entry.storyDate && normalizeStoryTime(entry.storyTime))) {
+        delete entry.storyTime;
+        changed = true;
+    }
     if (entry.sentAt !== undefined && !normalizeSentAt(entry.sentAt)) {
         delete entry.sentAt;
         changed = true;
@@ -194,6 +198,17 @@ let floorMarkProvider = null;
 export function setFloorMarkProvider(provider) {
     floorMarkProvider = typeof provider === 'function' ? provider : null;
 }
+let storyClockProvider = null;
+/** 新消息记下发送时的剧情时间（日历从正文状态栏读到的日期与钟点）；由 main.js 接上日历。 */
+export function setStoryClockProvider(provider) {
+    storyClockProvider = typeof provider === 'function' ? provider : null;
+}
+export function currentStoryTime(storyDate) {
+    try {
+        const clock = storyClockProvider?.();
+        return clock && clock.date === storyDate ? normalizeStoryTime(clock.time) : '';
+    } catch (error) { return ''; }
+}
 function currentFloorMark() {
     try {
         const mark = floorMarkProvider?.();
@@ -202,9 +217,11 @@ function currentFloorMark() {
     } catch (error) { return {}; }
 }
 
-export function createMessageEntry({ role, content, directorNote, quote, descriptors, messageId, storyDate, sentAt } = {}) {
+export function createMessageEntry({ role, content, directorNote, quote, descriptors, messageId, storyDate, storyTime, sentAt } = {}) {
     const normalizedQuote = normalizeQuoteSnapshot(quote);
     const normalizedStoryDate = normalizeStoryDate(storyDate);
+    const normalizedStoryTime = normalizedStoryDate
+        ? normalizeStoryTime(storyTime) || (storyTime === undefined ? currentStoryTime(normalizedStoryDate) : '') : '';
     const bubbles = (Array.isArray(descriptors) ? descriptors : []).map(descriptor => ({
         bubbleId: uid('bubble'),
         text: String(typeof descriptor === 'object' ? descriptor?.text || '' : descriptor || ''),
@@ -218,6 +235,7 @@ export function createMessageEntry({ role, content, directorNote, quote, descrip
         sentAt: normalizeSentAt(sentAt) || Date.now(),
         ...currentFloorMark(),
         ...(normalizedStoryDate ? { storyDate: normalizedStoryDate } : {}),
+        ...(normalizedStoryTime ? { storyTime: normalizedStoryTime } : {}),
         ...(directorNote ? { directorNote } : {}),
         ...(normalizedQuote ? { quote: normalizedQuote } : {}),
     };
@@ -238,6 +256,11 @@ function storyDateParts(value) {
 /** 剧情日期统一为 YYYY-MM-DD；无效值返回空串。 */
 export function normalizeStoryDate(value) {
     return storyDateParts(value) ? String(value) : '';
+}
+
+/** 剧情钟点统一为 HH:MM；无效值返回空串。 */
+export function normalizeStoryTime(value) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? '')) ? String(value) : '';
 }
 
 function normalizeSentAt(value) {
@@ -264,16 +287,32 @@ export function formatStoryDateLabel(storyDate, today = '') {
     return `${sameYear ? '' : `${parts.year}年`}${parts.month}月${parts.day}日 ${weekday}`;
 }
 
-/** 发给 AI 的历史里的日期行。 */
-export function formatStoryDateHeading(storyDate) {
+/** 聊天界面时间标签（仿微信）：今天只写钟点，昨天/前天、一周内写星期，同年写月日，跨年写全；没有钟点时退回日期分隔条。 */
+export function formatStoryTimeLabel(storyDate, storyTime, today = '') {
+    const time = normalizeStoryTime(storyTime);
+    const parts = storyDateParts(storyDate);
+    if (!time || !parts) return formatStoryDateLabel(storyDate, today);
+    const diff = storyDayDiff(storyDate, today);
+    if (diff === 0) return time;
+    if (diff === 1) return `昨天 ${time}`;
+    if (diff === 2) return `前天 ${time}`;
+    if (diff > 2 && diff < 7) return `星期${WEEKDAYS[parts.date.getDay()]} ${time}`;
+    const todayParts = storyDateParts(today);
+    const sameYear = todayParts && todayParts.year === parts.year;
+    return `${sameYear ? '' : `${parts.year}年`}${parts.month}月${parts.day}日 ${time}`;
+}
+
+/** 发给 AI 的历史里的日期行；有剧情钟点时写在星期后面。 */
+export function formatStoryDateHeading(storyDate, storyTime = '') {
     const parts = storyDateParts(storyDate);
     if (!parts) return '';
-    return `—— ${parts.year}年${parts.month}月${parts.day}日 周${WEEKDAYS[parts.date.getDay()]} ——`;
+    const time = normalizeStoryTime(storyTime);
+    return `—— ${parts.year}年${parts.month}月${parts.day}日 周${WEEKDAYS[parts.date.getDay()]}${time ? ` ${time}` : ''} ——`;
 }
 
 /** 当前这一轮的日期行；与上次聊天隔了几天时一并写明。 */
-export function formatCurrentStoryDateHeading(currentStoryDate, previousStoryDate = '') {
-    const heading = formatStoryDateHeading(currentStoryDate);
+export function formatCurrentStoryDateHeading(currentStoryDate, previousStoryDate = '', currentStoryTime = '') {
+    const heading = formatStoryDateHeading(currentStoryDate, currentStoryTime);
     if (!heading) return '';
     const diff = storyDayDiff(previousStoryDate, currentStoryDate);
     return diff > 0 ? `${heading}（距上次聊天已过 ${diff} 天）` : heading;

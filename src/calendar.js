@@ -2,7 +2,7 @@ import { generationErrorMessage } from './ai.js';
 import {
     buildCalendarPrompts, calendarDateFromParts, calendarDateRangeKeys, calendarGenerationCopy, calendarMonthKeys,
     calendarReferenceDate, calendarScopeFor, calendarWeekKeys, calendarWindowDescription, contextPayload, createCalendarDate, deleteCalendarEvent,
-    extractCalendarBaseDate, firstCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents, replaceCalendarEventsInWindow,
+    extractCalendarBaseDate, extractCalendarStoryTime, firstCalendarBaseDate, findCalendarEvent, formatCalendarDate, mergeCalendarEvents, replaceCalendarEventsInWindow,
     normalizeCalendarDateTags, normalizeCalendarStore, parseCalendarAiResponse, parseCalendarDate, shiftCalendarMonth,
     upsertCalendarEvent,
 } from './calendar-model.js';
@@ -211,31 +211,27 @@ export function installCalendar(state, deps) {
             if (assistantOnly && context.latestChatIsUser) return false;
             const currentScope = scope(storageId), hint = currentScope.baseDate || currentScope.storyInitialDate || '';
             if (currentScope.baseDateManual && silent) return false; // 手动设定的今日优先，仅「保存并识别」可覆盖
-            const baseDate = extractCalendarBaseDate(context.rawLatestChatText || context.latestChatText, currentScope.dateTags, hint) // 未设定故事日期时向前回溯
+            const latestText = context.rawLatestChatText || context.latestChatText, oldTime = currentScope.baseTime || '';
+            const baseDate = extractCalendarBaseDate(latestText, currentScope.dateTags, hint) // 未设定故事日期时向前回溯
                 || (currentScope.baseDate ? null : firstCalendarBaseDate(context.recentAssistantRawTexts, currentScope.dateTags, hint));
-            if (!baseDate) {
-                if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。');
-                return false;
-            }
-            if (currentScope.baseDate === baseDate) {
-                if (!silent) status(storageId, `今天日期已经是 ${baseDate}。`);
-                return true;
-            }
+            // 剧情钟点只认最后一条正文；没写时间时同一天沿用上次，换日则清空。
+            const nextDate = baseDate || currentScope.baseDate || '', dateChanged = currentScope.baseDate !== nextDate;
+            const baseTime = extractCalendarStoryTime(latestText, currentScope.dateTags) || (dateChanged ? '' : oldTime);
+            if (!baseDate && !(nextDate && baseTime !== oldTime)) { if (!silent) status(storageId, '最后一条正文中没有带年份的明确日期，今天日期未调整。'); return false; }
+            if (!dateChanged && oldTime === baseTime) { if (!silent) status(storageId, `今天日期已经是 ${nextDate}。`); return true; }
             if (!tasks.active(task)) return false;
             const committed = await commitScope(storageId, current => {
-                const next = { ...current, baseDate, lastAdjustedAt: Date.now() }; delete next.baseDateManual;
-                const event = storyWeatherEventForScope(storageId, next, baseDate);
+                const next = { ...current, baseDate: nextDate, baseTime, lastAdjustedAt: Date.now() }; delete next.baseDateManual;
+                const event = dateChanged ? storyWeatherEventForScope(storageId, next, nextDate) : null;
                 if (event) next.weatherEvent = event;
                 return next;
             }, task);
-            if (!committed) return false;
-            if (!tasks.active(task)) return false;
-            const parsed = parseCalendarDate(baseDate), currentView = viewFor(storageId);
-            runtime.viewByStorage.set(storageId, {
-                ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
-                selectedDate: baseDate, detailEditing: false, openEntryMenu: '',
-            });
-            if (!silent) status(storageId, `已从最后一条正文将今天调整为 ${baseDate}。`);
+            if (!committed || !tasks.active(task)) return false;
+            if (!dateChanged) { rerender(storageId); return true; }
+            const parsed = parseCalendarDate(nextDate), currentView = viewFor(storageId);
+            runtime.viewByStorage.set(storageId, { ...currentView, viewYear: parsed.getFullYear(), viewMonth: parsed.getMonth() + 1,
+                selectedDate: nextDate, detailEditing: false, openEntryMenu: '' });
+            if (!silent) status(storageId, `已从最后一条正文将今天调整为 ${nextDate}。`);
             rerender(storageId);
             return true;
         } finally {
@@ -361,7 +357,7 @@ export function installCalendar(state, deps) {
         const parsed = directDate || parseCalendarDate(extractedDate);
         if (!parsed) throw new Error('当前故事日期无效，请输入YYYY-MM-DD、YYYY/MM/DD或“YYYY年M月D日”');
         const normalizedDate = formatCalendarDate(parsed);
-        await commitScope(storageId, current => ({ ...current, baseDate: normalizedDate, baseDateManual: true }), null, { refreshInjection: false });
+        await commitScope(storageId, ({ baseTime, ...current }) => ({ ...current, baseDate: normalizedDate, baseDateManual: true }), null, { refreshInjection: false });
         await ensureStoryWeatherEvent(storageId, { refreshInjection: false });
         await deps.applyBidirectionalInjection?.();
         const current = viewFor(storageId);
@@ -794,6 +790,7 @@ export function installCalendar(state, deps) {
         },
         renderCalendar: render,
         getStoryToday: (storageId = getStorageId()) => formatCalendarDate(calendarReferenceDate(scope(storageId))), // 日历「今天」，未设置时为现实日期
+        getStoryTime: (storageId = getStorageId()) => scope(storageId).baseTime || '', // 正文状态栏里的剧情钟点 HH:MM，未识别为空
         getPhoneOutfitPrompt: ({ storageId = getStorageId(), names = [], userName = '' } = {}) => renderPhoneOutfitPrompt({ store: runtime.outfitStore, storageId, enabled: scope(storageId).injectionOutfitEnabled, start: calendarReferenceDate(scope(storageId)), names, userName }),
     });
 }

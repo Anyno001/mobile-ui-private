@@ -216,7 +216,11 @@ export function normalizeCalendarScope(value) {
     const weatherEvent = normalizeStoryWeatherEvent(source.weatherEvent);
     if (weatherEvent) normalized.weatherEvent = weatherEvent;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
-    if (parseCalendarDate(source.baseDate)) { normalized.baseDate = source.baseDate; if (source.baseDateManual === true) normalized.baseDateManual = true; }
+    if (parseCalendarDate(source.baseDate)) {
+        normalized.baseDate = source.baseDate;
+        if (source.baseDateManual === true) normalized.baseDateManual = true;
+        if (normalizeStoryTime(source.baseTime)) normalized.baseTime = source.baseTime;
+    }
     return normalized;
 }
 
@@ -357,14 +361,72 @@ export function normalizeCalendarDateTags(value) {
     return tags.length ? tags : [...DEFAULT_CALENDAR_DATE_TAGS];
 }
 
-export function extractCalendarDateTagContents(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
-    const allowed = new Set(normalizeCalendarDateTags(dateTags));
-    const result = [];
-    for (const match of String(text ?? '').matchAll(taggedDatePattern)) {
-        const opening = match[1].toLowerCase(), closing = match[3].toLowerCase();
-        if (opening === closing && allowed.has(opening)) result.push(match[2].trim());
+const calendarTagToken = /<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:_-]{0,31})\s*>/g;
+
+// 标签可层层包裹（如 <time_bar><date>…</date><time>…</time></time_bar>）：外层内容去掉内层标签后整段返回；按开标签先后排列。
+function tagContents(text, allowed) {
+    const source = String(text ?? ''), stack = [], found = [];
+    for (const match of source.matchAll(calendarTagToken)) {
+        const name = match[2].toLowerCase();
+        if (!match[1]) { stack.push({ name, start: match.index + match[0].length, open: match.index }); continue; }
+        const at = stack.map(item => item.name).lastIndexOf(name);
+        if (at < 0) continue;
+        const [opened] = stack.splice(at);
+        if (!allowed.has(name)) continue;
+        const content = source.slice(opened.start, match.index).replace(calendarTagToken, ' ').replace(/\s+/g, ' ').trim();
+        if (content && content.length <= 2000) found.push({ open: opened.open, content });
     }
-    return result;
+    return found.sort((left, right) => left.open - right.open).map(item => item.content);
+}
+
+export function extractCalendarDateTagContents(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    return tagContents(text, new Set(normalizeCalendarDateTags(dateTags)));
+}
+
+export function normalizeStoryTime(value) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? '')) ? String(value) : '';
+}
+const clockText = (hour, minute) => hour >= 0 && hour < 24 && minute >= 0 && minute < 60
+    ? `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` : '';
+const LATE_PERIODS = /下午|午后|傍晚|黄昏|晚上|晚间|夜里|夜晚|夜间/;
+const MIDNIGHT_PERIODS = /凌晨|深夜|半夜|午夜/;
+const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
+
+/** 一段文字里的剧情钟点：20:32、晚上八点半、下午3点15分、子时/午时三刻；返回 HH:MM，认不出返回空串。 */
+export function parseStoryTime(text) {
+    const source = String(text ?? '');
+    const digital = source.match(/(?:^|[^\d])(\d{1,2})\s*[:：]\s*(\d{2})(?!\d)/);
+    if (digital) return clockText(Number(digital[1]), Number(digital[2]));
+    const spokenPattern = new RegExp(`(凌晨|清晨|早上|早晨|上午|中午|正午|午后|下午|傍晚|黄昏|晚上|晚间|夜里|夜晚|夜间|深夜|半夜|午夜)?\\s*(${dateNumberToken})\\s*[点點](?:\\s*(半|一刻|三刻|(${dateNumberToken})\\s*分?))?`, 'g');
+    for (const spoken of source.matchAll(spokenPattern)) {
+        const period = spoken[1] || '', tail = spoken[3] || '';
+        if (!period && !tail && !/^\d+$/.test(spoken[2])) continue; // 「快一点」不算钟点
+        let hour = parseChineseNumber(spoken[2]);
+        if (hour === null || hour > 24) continue;
+        if (LATE_PERIODS.test(period) && hour < 12) hour += 12;
+        else if (/中午|正午/.test(period) && hour < 11) hour += 12;
+        else if (MIDNIGHT_PERIODS.test(period) && hour === 12) hour = 0;
+        if (hour === 24) hour = 0;
+        const minute = tail === '半' ? 30 : tail === '一刻' ? 15 : tail === '三刻' ? 45 : spoken[4] ? parseChineseNumber(spoken[4]) : 0;
+        const time = minute === null ? '' : clockText(hour, minute);
+        if (time) return time;
+    }
+    const ancient = source.match(/([子丑寅卯辰巳午未申酉戌亥])\s*时\s*([初正])?\s*(?:([一二三四])刻)?/);
+    if (!ancient) return '';
+    const start = (SHICHEN.indexOf(ancient[1]) * 2 + 23) % 24; // 时辰「初」的钟点；只写「X时」按「正」，写了刻（午时三刻）从「初」数
+    const quarters = ancient[3] ? chineseDigits[ancient[3]] : 0;
+    const zheng = ancient[2] ? ancient[2] === '正' : !quarters;
+    return clockText((start + (zheng ? 1 : 0)) % 24, quarters * 15 % 60);
+}
+
+/** 最后一条正文里的剧情时间；标签在日期标签之外另认 <time>。 */
+export function extractCalendarStoryTime(text, dateTags = DEFAULT_CALENDAR_DATE_TAGS) {
+    const tags = new Set([...normalizeCalendarDateTags(dateTags), 'time']);
+    for (const content of tagContents(text, tags).reverse()) {
+        const time = parseStoryTime(content);
+        if (time) return time;
+    }
+    return '';
 }
 
 function parseChineseNumber(value) {

@@ -53,7 +53,7 @@ export function installPhoneChat(state, deps) {
         const { cardDesc, cardPersonality, cardScenario, cardFirstMes, cardMesExample, mainChatText, worldBookText, userName, userDesc } = ctxData;
 
         const smsHistoryText = buildHistoryText(
-            targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona, false, request.storyDate,
+            targetHistory, CONTEXT_LIMIT, userName, isGroup ? null : currentPersona, false, request.storyDate, request.userHistoryEntry?.storyTime,
         );
         const currentQuoteText = formatQuoteContext(request.userHistoryEntry?.quote);
         const preferencePrompt = buildChatPreferencePrompt({

@@ -2,7 +2,7 @@ import { createEmojiRenderBudget } from './emoji-media.js';
 import { createBubbles } from './messaging.js';
 import { bindPressGesture } from './press-gesture.js';
 import { escapeHtml } from './ui.js';
-import { formatStoryDateLabel, normalizeStoryDate } from './chat-message-model.js';
+import { formatStoryTimeLabel, normalizeStoryDate, normalizeStoryTime } from './chat-message-model.js';
 
 export function bindBubbleQuoteGesture(root, { state, quote, text, senderName, metadata, gestureRuntime = {} }) {
     if (metadata?.pendingId !== undefined || !metadata?.messageId || !metadata?.bubbleId) return null;
@@ -114,16 +114,20 @@ export function createPhoneMessageRenderer({ state, quote, getStoryToday = () =>
         root.appendChild(action);
     }
 
-    /** 消息的剧情日期与列表里最后一条分隔条不同时，先插一条日期分隔。 */
+    /** 消息的剧情日期或钟点与列表里最后一条分隔条不同时，先插一条时间分隔（仿微信）；没有钟点的消息只按日期分。 */
     function ensureDateDivider(list, metadata) {
-        const storyDate = normalizeStoryDate(historyEntryFor(state, metadata)?.storyDate);
+        const entry = historyEntryFor(state, metadata);
+        const storyDate = normalizeStoryDate(entry?.storyDate);
         if (!storyDate) return;
+        const storyTime = normalizeStoryTime(entry?.storyTime);
         const dividers = list.getElementsByClassName('pm-date-divider');
-        if (dividers[dividers.length - 1]?.dataset.storyDate === storyDate) return;
+        const last = dividers[dividers.length - 1]?.dataset;
+        if (last?.storyDate === storyDate && (!storyTime || last.storyTime === storyTime)) return;
         const node = document.createElement('div');
         node.className = 'pm-note pm-date-divider';
         node.dataset.storyDate = storyDate;
-        node.textContent = formatStoryDateLabel(storyDate, getStoryToday());
+        if (storyTime) node.dataset.storyTime = storyTime;
+        node.textContent = formatStoryTimeLabel(storyDate, storyTime, getStoryToday());
         list.appendChild(node);
     }
 

@@ -4,6 +4,7 @@
 import { createMessageEntry, describeMessageEntry } from './chat-message-model.js';
 import { DEFAULT_CHAT_FLOORS, MAX_CHAT_FLOORS, hashText, normalizeChatFloors, parseIgsKey } from './igs-feed-core.js';
 import { messageFingerprint } from './phone-floor-rollback.js';
+import { parseStoryTime } from './calendar-model.js';
 
 export { DEFAULT_CHAT_FLOORS, MAX_CHAT_FLOORS, normalizeChatFloors };
 
@@ -255,13 +256,13 @@ function missingMembers(meta, senders) {
     return missing;
 }
 
-// 块里还没导入过的消息：[{ key, role, sender, content, storyDate }]。序号 = 块序号 × 1000 + 消息序号，排序与去重共用；
+// 块里还没导入过的消息：[{ key, role, sender, content, storyDate, storyTime }]。序号 = 块序号 × 1000 + 消息序号，排序与去重共用；
 // 签名是存进记录的 content 的哈希，删楼时据此判断用户有没有改过。群聊里对方的消息写成「发送者：内容」。
 function freshEntries(block, info, existing, selfNames, isGroup) {
     const items = [];
-    let storyDate = '';
+    let storyDate = '', storyTime = '';
     block.messages.forEach((message, index) => {
-        if (message.kind === 'time') { storyDate = storyDateOf(message.text) || storyDate; return; }
+        if (message.kind === 'time') { storyDate = storyDateOf(message.text) || storyDate; storyTime = parseStoryTime(message.text); return; }
         if (message.kind !== 'msg' || message.system) return;
         const text = chatMessageText(message);
         if (!text) return;
@@ -274,7 +275,7 @@ function freshEntries(block, info, existing, selfNames, isGroup) {
         const key = `igs:${info.hash}:${offset}:${signature}`;
         // 来源楼正文被改写后哈希变了：同一楼、同一位置、同样内容的消息已导入过，不再重复导入。
         if (existing.has(key) || (info.anchor && existing.has(anchorKeyOf(info.anchor, offset, signature)))) return;
-        items.push({ key, role: self ? 'user' : 'assistant', sender, content, storyDate });
+        items.push({ key, role: self ? 'user' : 'assistant', sender, content, storyDate, storyTime });
     });
     return items;
 }
@@ -283,7 +284,7 @@ function freshEntries(block, info, existing, selfNames, isGroup) {
 function buildEntry(item, info, isGroup, members) {
     const probe = { role: item.role, content: item.content };
     const descriptors = describeMessageEntry(probe, { isGroup, groupMembers: members });
-    const entry = createMessageEntry({ role: item.role, content: item.content, descriptors, ...(item.storyDate ? { storyDate: item.storyDate } : {}) });
+    const entry = createMessageEntry({ role: item.role, content: item.content, descriptors, ...(item.storyDate ? { storyDate: item.storyDate, storyTime: item.storyTime || '' } : {}) });
     entry.floor = info.floor + 1;
     entry.floorAnchor = info.anchor;
     entry.source = { type: 'igs', floor: info.floor, key: item.key, ...(info.anchor ? { anchor: info.anchor } : {}) };
