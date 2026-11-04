@@ -2,7 +2,7 @@ import { createWorldBookEntryKey, getCurrentChatWorldBooks, getTavernDbColumn, n
 import { loadWorldBookConfig, saveWorldBookConfig } from './storage.js';
 import { renderSettingsModal } from './settings-templates.js';
 import { escapeAttr, escapeHtml } from './ui.js';
-import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, EYE_ICON_SVG, FEED_ICON_SVG, OUTFIT_ICON_SVG } from './icons.js';
+import { BOOK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, COMMUNITY_ICON_SVG, BOOKMARK_ICON_SVG, FEED_ICON_SVG, OUTFIT_ICON_SVG } from './icons.js';
 
 const text = value => typeof value === 'string' ? value : '';
 const HIDDEN_ENTRY_TITLE = /(?:^|-)包裹-(?:上|下)$/;
@@ -80,7 +80,7 @@ export async function loadWorldBookDirectory(context, { signal } = {}) {
 
 function eyeToggle(checked, dataset, label, disabled = false, onclick = '') {
     const handler = onclick || "this.classList.toggle('is-checked');this.setAttribute('aria-pressed',String(this.classList.contains('is-checked')))";
-    return `<button type="button" class="pm-worldbook-eye ${checked ? 'is-checked' : ''}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset}${disabled ? ' disabled' : ''} onclick="${handler}" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${EYE_ICON_SVG}</button>`;
+    return `<button type="button" class="pm-worldbook-eye ${checked ? 'is-checked' : ''}" aria-pressed="${checked}" aria-label="${escapeAttr(label)}" title="${escapeAttr(label)}" ${dataset}${disabled ? ' disabled' : ''} onclick="${handler}" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();this.click()}">${BOOKMARK_ICON_SVG}</button>`;
 }
 
 function visibleDatabaseColumns(books) {

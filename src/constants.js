@@ -35,8 +35,8 @@ export const EXTENSION_PROMPT_POSITIONS = Object.freeze({
     BEFORE_PROMPT: 2,
 });
 export const DEFAULT_GROUP_INJECTION = Object.freeze({
-    position: EXTENSION_PROMPT_POSITIONS.IN_PROMPT,
-    depth: 0,
+    position: EXTENSION_PROMPT_POSITIONS.IN_CHAT,
+    depth: 1,
     historyLimit: BIDIRECTIONAL_LIMIT,
 });
 export const PM_IDB_NAME = 'PhoneModeDB';

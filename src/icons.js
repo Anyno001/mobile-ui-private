@@ -20,6 +20,7 @@ export const CHARACTER_ICON_SVG = icon('<circle cx="9" cy="8" r="3"/><path d="M3
 export const SETTINGS_ICON_SVG = icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>');
 export const INJECTION_ICON_SVG = icon('<path d="M8 7l4-4 4 4M12 3v8M16 17l-4 4-4-4M12 21v-8"/><path d="M5 12h14"/>');
 export const EYE_ICON_SVG = icon('<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5z"/><circle cx="12" cy="12" r="2.5"/>');
+export const BOOKMARK_ICON_SVG = icon('<path class="pm-icon-bookmark-body" d="M7 4.5h10a1 1 0 0 1 1 1V20l-6-4-6 4V5.5a1 1 0 0 1 1-1z"/>');
 export const CHECK_ICON_SVG = icon('<path d="M5 12l4 4L19 6"/>');
 export const COMMUNITY_ICON_SVG = icon('<path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M8 9h.01M12 9h.01M16 9h.01"/>');
 export const FEED_ICON_SVG = icon('<path d="M5 5h14v14H5z"/><path d="M8 9h8M8 12h8M8 15h5"/>');
@@ -103,8 +104,8 @@ export const STORE_ICON_SVG = icon('<path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a
 export const MINUS_ICON_SVG = icon('<path d="M5 12h14"/>');
 // 金手指：桌面图标（竖起的食指加一点闪光，纯线条不填色）。
 export const ORIGIN_APP_ICON_SVG = icon('<path d="M10 12.5V5a1.5 1.5 0 0 1 3 0v6"/><path d="M13 10.5a1.5 1.5 0 0 1 3 0V12"/><path d="M16 11.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.2a5 5 0 0 1-3.9-1.9l-2.6-3.5a1.4 1.4 0 0 1 2.1-1.9L10 16"/><path d="M5 3.5v3M3.5 5h3"/>');
-// 格林推演：桌面图标（地球仪，纯线条）与未检测到插件时的插头图标。
-export const GREENLIN_APP_ICON_SVG = icon('<circle cx="12" cy="10" r="6"/><path d="M6 10h12M12 4c2 2 2 10 0 12M12 4c-2 2-2 10 0 12"/><path d="M18.5 15.5A8.5 8.5 0 0 1 6 17M12 18.5V21M9 21h6"/>');
+// 格林推演：桌面图标（带环小行星加一颗小星，纯线条）与未检测到插件时的插头图标。
+export const GREENLIN_APP_ICON_SVG = icon('<circle cx="12" cy="12" r="7"/><path d="M18.8 13.6c2.3 2.1 3.5 4 3.1 4.9-.7 1.5-5.8-.3-11.3-3.8S1.3 7.1 2.1 5.6c.5-.9 2.9-.4 5.8.8"/><path d="M19.5 2.5v3M18 4h3"/>');
 // 格林推演装饰图标：世界事件分类（公文包、楼宇、气泡、电话、柱状图、默认的圆点环）与事实（勾选圆、锁形圆）。
 export const GL_WORK_ICON_SVG = icon('<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12h18"/>');
 export const GL_CITY_ICON_SVG = icon('<path d="M4 20V9l5-3v14M9 20V4l7 3v13M16 20v-8l4 2v6M3 20h18"/>');

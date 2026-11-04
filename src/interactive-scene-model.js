@@ -1000,6 +1000,33 @@ export function deleteSceneComment(scene, postId, commentId) {
     scene.updatedAt = Date.now();
 }
 
+// 清空社区贴文：帖子连同评论一起删除，社区本身与风格设定保留。批量清空不进删楼回退，旧版本记录一并作废。
+export function clearScenePosts(scene) {
+    if (!scene || !Array.isArray(scene.posts)) throw new Error('互动场景不存在');
+    const removed = scene.posts.length;
+    scene.posts = [];
+    delete scene.floorRollback;
+    scene.updatedAt = Date.now();
+    return removed;
+}
+
+// 导入共享模板时带上原社区的贴文：发帖人按同一身份在目标聊天重建；楼层标记与正文来源属于原聊天，不带过来。
+export function copyScenePostsAcrossScopes(sourceScope, targetScope, targetScopeId, posts) {
+    const remap = item => {
+        const actor = sourceScope?.actors?.[item.authorId];
+        const seed = actor
+            ? { type: actor.type, displayName: actor.displayName, bindingKey: actor.bindingKey, profile: actor.profile, createdAt: actor.createdAt }
+            : { type: 'legacy', displayName: item.authorNameSnapshot, bindingKey: `legacy:${canonicalName(item.authorNameSnapshot) || 'anonymous'}` };
+        const { floor: _floor, floorAnchor: _anchor, source: _source, ...rest } = structuredClone(item);
+        return { ...rest, authorId: ensureInteractiveActor(targetScope, targetScopeId, seed).actorId };
+    };
+    return list(posts).map(post => {
+        const copy = remap(post);
+        copy.comments = list(post.comments).map(remap);
+        return copy;
+    });
+}
+
 // likerName：朋友圈点赞时把用户名写进点赞名单（取消赞时移除）；其余平台不传。
 export function toggleScenePostLike(scene, postId, likerName = '') {
     const post = scene?.posts?.find(item => item.id === postId);

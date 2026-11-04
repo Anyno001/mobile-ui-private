@@ -102,7 +102,7 @@ import { getAutoPokeConfig } from './auto-poke-config.js';
 import { defaultGroupColor, groupDotColor, groupDotSvg } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
 import {
-    BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, EYE_ICON_SVG,
+    BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, BOOKMARK_ICON_SVG,
     SPARKLES_ICON_SVG, UNLINK_ICON_SVG,
 } from './icons.js';
 import { clearPendingMessages } from './pending-messages.js';
@@ -238,7 +238,7 @@ export function installPhoneDirectory(state, deps) {
               <button type="button" class="pm-contact-switcher-main" data-contact-action="switch" data-key="${escapeAttr(key)}" ${current ? 'aria-current="true"' : ''}>
                 <span>${escapeHtml(label)}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
               </button>
-              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${EYE_ICON_SVG}</button>
+              <button type="button" class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? 'is-active' : ''}" data-contact-action="inject" data-key="${escapeAttr(key)}" data-group="${isGroup}" data-label="${escapeAttr(label)}" aria-pressed="${enabled}" aria-label="${enabled ? '关闭' : '开启'} ${escapeAttr(label)} 的正文注入" title="${enabled ? '关闭正文注入' : '开启正文注入'}">${BOOKMARK_ICON_SVG}</button>
               <button type="button" class="pm-contact-switcher-icon pm-entity-delete" data-contact-action="delete" data-key="${escapeAttr(key)}" data-group="${isGroup}" aria-label="永久删除${isGroup ? '群聊' : '联系人'} ${escapeAttr(label)}" title="永久删除${isGroup ? '群聊' : '联系人'}">${UNLINK_ICON_SVG}</button>
             </div>`;
         };

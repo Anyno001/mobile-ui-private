@@ -6,7 +6,7 @@ import { DESKTOP_APPS, visibleDesktopApps } from './desktop-layout.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, COMMUNITY_ICON_SVG,
     BOOK_ICON_SVG, CONTACTS_ICON_SVG, HOME_ICON_SVG, LIVE_APP_ICON_SVG, MORE_ICON_SVG, GREENLIN_APP_ICON_SVG, ORIGIN_APP_ICON_SVG, SHOP_APP_ICON_SVG,
-    COMMUNITY_TEMPLATE_ICON_SVG, EYE_ICON_SVG, INJECTION_ICON_SVG, PHOTO_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG,
+    COMMUNITY_TEMPLATE_ICON_SVG, BOOKMARK_ICON_SVG, INJECTION_ICON_SVG, PHOTO_ICON_SVG, POKE_ICON_SVG, SEND_ICON_SVG, SETTINGS_ICON_SVG, SPARKLES_ICON_SVG, TRASH_ICON_SVG, TREND_ICON_SVG, REFRESH_ICON_SVG,
 } from './icons.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 import { renderConfessFeed } from './community-views/view-confess.js';
@@ -185,7 +185,7 @@ function renderContextInjectionSettings(scene, state) {
         ? scene.posts.filter(post => post.source?.type !== 'igs').map(post => post.id) : state.communitySelection?.postIds || []);
     const posts = scene.posts.map(post => `<article class="pm-scene-injection-post">
         <span>${post.source?.type === 'igs' ? '<small class="pm-scene-injection-source">来自正文</small>' : ''}${escapeHtml(post.content || '无正文帖子')}</span>
-        <button type="button" class="pm-scene-injection-post-toggle ${selectedPostIds.has(post.id) ? 'is-selected' : ''}" data-action="context-toggle-post" data-post-id="${escapeAttr(post.id)}" aria-pressed="${selectedPostIds.has(post.id)}" aria-label="${selectedPostIds.has(post.id) ? '取消注入' : '注入'}此博文" title="${selectedPostIds.has(post.id) ? '取消注入' : '注入此博文'}">${EYE_ICON_SVG}</button>
+        <button type="button" class="pm-scene-injection-post-toggle ${selectedPostIds.has(post.id) ? 'is-selected' : ''}" data-action="context-toggle-post" data-post-id="${escapeAttr(post.id)}" aria-pressed="${selectedPostIds.has(post.id)}" aria-label="${selectedPostIds.has(post.id) ? '取消注入' : '注入'}此博文" title="${selectedPostIds.has(post.id) ? '取消注入' : '注入此博文'}">${BOOKMARK_ICON_SVG}</button>
     </article>`).join('') || '<div class="pm-scene-empty"><span>当前社区还没有帖子。</span></div>';
     return `<div class="pm-scene-injection-settings">
         <div class="pm-scene-injection-heading"><h2>正文注入</h2></div>
@@ -204,6 +204,7 @@ function renderSceneMenu(scene, uiScope, autoActive) {
             <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${BOOK_ICON_SVG}<span>风格提示词</span></button>
             <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>上下文注入</span></button>
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? '取消固定' : '固定社区'}</span></button>
+            <button type="button" role="menuitem" class="pm-scene-danger" data-action="clear-scene-posts">${REFRESH_ICON_SVG}<span>清空帖子</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">${TRASH_ICON_SVG}<span>删除社区</span></button>
             <button type="button" role="menuitem" data-action="exit">${CLOSE_ICON_SVG}<span>退出手机</span></button>
         </div>

@@ -1489,26 +1489,26 @@ assert.deepEqual(normalizeGroupInjection({ position: -1, depth: 0, historyLimit:
     historyLimit: 1,
 });
 assert.deepEqual(normalizeGroupInjection({ position: 3, depth: -4, historyLimit: 500 }), {
-    position: 0,
+    position: 1,
     depth: 0,
     historyLimit: 100,
 });
 assert.deepEqual(normalizeGroupInjection({ position: 1, depth: '4px', historyLimit: '2.9' }), {
     position: 1,
-    depth: 0,
+    depth: 1,
     historyLimit: 2,
 });
 assert.deepEqual(normalizeInjectionConfig({ position: -1, depth: '7', historyLimit: '9' }), {
-    phone: { position: 0, depth: 7, historyLimit: 9 },
-    community: { position: 0, depth: 7 },
-    calendar: { position: 0, depth: 0 },
-    todayTrend: { position: 0, depth: 0 },
+    phone: { position: 1, depth: 7, historyLimit: 9 },
+    community: { position: 1, depth: 7 },
+    calendar: { position: 1, depth: 1 },
+    todayTrend: { position: 1, depth: 1 },
 }, '统一注入规则不得把关闭位置混入全局配置');
 assert.deepEqual(normalizeInjectionConfig({ position: 2, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 200 }), {
     phone: { position: 2, depth: MAX_INJECTION_DEPTH, historyLimit: 100 },
     community: { position: 2, depth: MAX_INJECTION_DEPTH },
-    calendar: { position: 0, depth: 0 },
-    todayTrend: { position: 0, depth: 0 },
+    calendar: { position: 1, depth: 1 },
+    todayTrend: { position: 1, depth: 1 },
 });
 assert.deepEqual(normalizeInjectionConfig({
     phone: { position: 1, depth: 2, historyLimit: 8 },
@@ -1534,7 +1534,7 @@ assert.equal(group.randomNpcEnabled, true);
 assert.equal(group.groupNature.length, 200);
 assert.match(group.groupNature, /^气氛很好的同学群/);
 assert.deepEqual(group.injection, { position: 2, depth: 4, historyLimit: 30 });
-assert.deepEqual(normalizeGroupMeta({}), { name: '', members: [], extras: [], memberColors: {}, randomNpcEnabled: false, groupNature: '', randomNpcPrompt: '', injection: { position: 0, depth: 0, historyLimit: 20 } });
+assert.deepEqual(normalizeGroupMeta({}), { name: '', members: [], extras: [], memberColors: {}, randomNpcEnabled: false, groupNature: '', randomNpcPrompt: '', injection: { position: 1, depth: 1, historyLimit: 20 } });
 
 const caseFoldedGroup = normalizeGroupMeta({
     name: 'Case',
@@ -1761,19 +1761,19 @@ for (const { store, key, property, save, persisted, candidate } of activeScopeFa
 localValues.set('ST_SMS_INJECTION_CONFIG', JSON.stringify({ position: 2, depth: 7, historyLimit: 12 }));
 assert.deepEqual(loadInjectionConfig(), {
     phone: { position: 2, depth: 7, historyLimit: 12 },
-    community: { position: 2, depth: 7 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
+    community: { position: 2, depth: 7 }, calendar: { position: 1, depth: 1 }, todayTrend: { position: 1, depth: 1 },
 });
 window.__pmInjectionConfig = { position: -1, depth: MAX_INJECTION_DEPTH + 1, historyLimit: 0 };
 assert.equal(saveInjectionConfig(), true);
 assert.deepEqual(window.__pmInjectionConfig, {
-    phone: { position: 0, depth: MAX_INJECTION_DEPTH, historyLimit: 1 },
-    community: { position: 0, depth: MAX_INJECTION_DEPTH }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
+    phone: { position: 1, depth: MAX_INJECTION_DEPTH, historyLimit: 1 },
+    community: { position: 1, depth: MAX_INJECTION_DEPTH }, calendar: { position: 1, depth: 1 }, todayTrend: { position: 1, depth: 1 },
 });
 assert.deepEqual(JSON.parse(localValues.get('ST_SMS_INJECTION_CONFIG')), window.__pmInjectionConfig);
 localValues.set('ST_SMS_INJECTION_CONFIG', '{broken');
 assert.deepEqual(loadInjectionConfig(), {
-    phone: { position: 0, depth: 0, historyLimit: 20 },
-    community: { position: 0, depth: 0 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
+    phone: { position: 1, depth: 1, historyLimit: 20 },
+    community: { position: 1, depth: 1 }, calendar: { position: 1, depth: 1 }, todayTrend: { position: 1, depth: 1 },
 },
     '统一注入规则损坏时必须回退安全默认值');
 window.__pmInjectionConfig = { position: 1, depth: 3, historyLimit: 8 };
@@ -1781,7 +1781,7 @@ localStorageControl.failSet.add('ST_SMS_INJECTION_CONFIG');
 assert.equal(saveInjectionConfig(), false, '统一注入规则持久化失败必须显式返回 false');
 assert.deepEqual(window.__pmInjectionConfig, {
     phone: { position: 1, depth: 3, historyLimit: 8 },
-    community: { position: 1, depth: 3 }, calendar: { position: 0, depth: 0 }, todayTrend: { position: 0, depth: 0 },
+    community: { position: 1, depth: 3 }, calendar: { position: 1, depth: 1 }, todayTrend: { position: 1, depth: 1 },
 });
 
 localValues.set('ST_SMS_WORLD_BOOK_CONFIG_V1', JSON.stringify({
@@ -5674,8 +5674,8 @@ assert.deepEqual(parseBackupData({ schemaVersion: 7, injectionConfig: { position
 assert.deepEqual(parseBackupData({ schemaVersion: 8, injectionConfig: { position: 2, depth: 9, historyLimit: 3 } }, currentBackup).injectionConfig,
     { phone: { position: 2, depth: 9, historyLimit: 3 }, community: { position: 2, depth: 9 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 } });
 assert.deepEqual(parseBackupData({ schemaVersion: 8 }, currentBackup).injectionConfig, {
-    phone: { position: 0, depth: 0, historyLimit: 20 },
-    community: { position: 0, depth: 0 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 },
+    phone: { position: 1, depth: 1, historyLimit: 20 },
+    community: { position: 1, depth: 1 }, calendar: { position: 1, depth: 4 }, todayTrend: { position: 1, depth: 4 },
 }, 'schema 8 缺少统一注入规则时必须保留现有日历放置规则');
 assert.throws(() => parseBackupData({ schemaVersion: 8, injectionConfig: [] }, currentBackup), /injectionConfig 必须是对象/);
 assert.deepEqual(parseBackupData({ schemaVersion: 9, injectionConfig: {

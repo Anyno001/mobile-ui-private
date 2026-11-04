@@ -4376,9 +4376,9 @@ for (const forbidden of ['୨ৎ', "M12 21c-4-2-8-7-8-12"]) {
   }
 }
 requireText('phone-directory.js injection button', directoryCode, 'class="pm-contact-switcher-icon pm-contact-switcher-injection ${enabled ? \'is-active\' : \'\'}"');
-requireText('phone-directory.js injection button', directoryCode, '${EYE_ICON_SVG}</button>');
-if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{EYE_ICON_SVG\}/g) || []).length !== 1) {
-  failures.push('phone-directory.js injection button: must render exactly one shared eye SVG');
+requireText('phone-directory.js injection button', directoryCode, '${BOOKMARK_ICON_SVG}</button>');
+if ((directoryCode.match(/pm-contact-switcher-injection[\s\S]*?\$\{BOOKMARK_ICON_SVG\}/g) || []).length !== 1) {
+  failures.push('phone-directory.js injection button: must render exactly one shared bookmark SVG');
 }
 if (!/pm-contact-switcher-current[\s\S]*?pm-contact-switcher-main[\s\S]*?pm-contact-switcher-injection[\s\S]*?pm-entity-delete/.test(directoryCode)) {
   failures.push('phone-directory.js: current-conversation checkmark must stay before the name and action buttons');
@@ -5086,7 +5086,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.18.1') failures.push('version: expected release version 1.18.1');
+if (packageJson.version !== '1.19.0') failures.push('version: expected release version 1.19.0');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

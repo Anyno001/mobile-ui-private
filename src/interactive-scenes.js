@@ -2,7 +2,7 @@ import { bindDesktopArrange } from './desktop-layout.js';
 import { generationErrorMessage } from './ai.js';
 import { buildCommunityRequest, COMMUNITY_PLATFORM_PROMPTS, parseCommunityResponse } from './interactive-scene-ai.js';
 import {
-    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, deleteSceneWork, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
+    INTERACTIVE_LIMITS, addSceneComment, appendScenePosts, copyScenePostsAcrossScopes, createEmptyInteractiveScope, deleteSceneComment, deleteScenePost, deleteSceneWork, enforceInteractiveSceneLimit, ensureInteractiveActor, findQuoteTargetId, normalizeScene,
     createDefaultPhoneUiScope, createSceneFromCommunityTemplate, dismissCommunityTemplate, incrementScenePostShare, normalizePhoneUiState, patchPhoneUiScope, pinnedSceneIdsOf, publishCommunityTemplate, removeCommunityTemplatesForSourceScene, resolveInteractiveAuthor, setSceneHot, setSceneTonight, toggleScenePin, toggleScenePostLike, unpublishCommunityTemplate, updateSceneComment, updateScenePost,
 } from './interactive-scene-model.js';
 import { COMMUNITY_PLATFORMS } from './interactive-scene-constants.js';
@@ -21,7 +21,7 @@ import { COMMUNITY_PLATFORM_ACCENTS, platformOf } from './community-views/view-s
 import { createRespondFlow } from './interactive-scene-respond-flow.js';
 import { placePostInWindow } from './interactive-scene-respond.js';
 import { createCommitWithPhoneUi } from './interactive-scene-phone-transaction.js';
-import { createCommunityTemplateImportAction } from './interactive-scene-template-import.js'; import { igsRefreshers, installIgsFeedSync } from './igs-feed-sync.js';
+import { askKeepPostsDialog, createCommunityTemplateImportAction } from './interactive-scene-template-import.js'; import { igsRefreshers, installIgsFeedSync } from './igs-feed-sync.js'; import { createClearPostsActions } from './interactive-scene-clear-posts.js';
 import { renderCommunityLauncher as renderCommunityLauncherView, renderCommunityWorkspace as renderCommunityWorkspaceView, renderPhoneDesktop } from './interactive-scene-views.js';
 import { createWorkspaceRenderer } from './community-workspace-render.js';
 import { createInteractiveCommitQueue, createInteractiveOperationGuard, createInteractiveStoreLoader, migrateInteractiveStore, now, parseCommunityPostInput, uid } from './interactive-scenes-utils.js';
@@ -267,7 +267,7 @@ export function installInteractiveScenes(_state, deps) {
         showPhonePage('community');
     }
     async function importCommunityTemplate(templateId) {
-        return createCommunityTemplateImportAction({ getStorageId, loadStore, getInteractiveStore: () => runtime.store, getPhoneUiState: () => getPhoneUiState(runtime.store), getScope: scopeId => getScope(runtime.store, scopeId), phoneScope: scopeId => phoneScope(scopeId, runtime.store), commitWithPhoneUi, patchPhoneUiScope, refreshDesktop, openScene, createSceneFromCommunityTemplate, createSceneId: () => uid('scene'), sceneLimit: INTERACTIVE_LIMITS.scenes })(templateId);
+        return createCommunityTemplateImportAction({ getStorageId, loadStore, getInteractiveStore: () => runtime.store, getPhoneUiState: () => getPhoneUiState(runtime.store), getScope: scopeId => getScope(runtime.store, scopeId), phoneScope: scopeId => phoneScope(scopeId, runtime.store), commitWithPhoneUi, patchPhoneUiScope, refreshDesktop, openScene, createSceneFromCommunityTemplate, createSceneId: () => uid('scene'), sceneLimit: INTERACTIVE_LIMITS.scenes, reconcileForeign: storageId => deps.reconcileForeignCommunityFile?.(storageId), copyPosts: copyScenePostsAcrossScopes, askKeepPosts: askKeepPostsDialog(deps) })(templateId);
     }
     function appendPosts(scopeId, scope, scene, items, options = {}) {
         const seeds = actorSeeds(scopeId);
@@ -477,7 +477,7 @@ export function installInteractiveScenes(_state, deps) {
             return;
         }
         if (handleSceneAccentAction(action, app, button)) return;
-        if (action === 'create-scene') { await createScene(app); return; }
+        if (action === 'create-scene') { await createScene(app); return; } if (action === 'clear-scene-posts') { await clearPosts.clearCurrent(); return; }
         if (action === 'open-scene') {
             await openScene(button.dataset.sceneId, 'feed');
             return;
@@ -678,7 +678,7 @@ export function installInteractiveScenes(_state, deps) {
     const bindPhonePageUi = phoneWindow => {
         bindDesktopArrange(phoneWindow?.querySelector?.('.pm-desktop-page'), { onCommit: () => refreshDesktop() });
         return bindPhonePageActions(phoneWindow, handleAction, reportPhoneUiError);
-    };
+    }; const clearPosts = createClearPostsActions({ runtime, getStorageId, loadStore, getScope, current, commit, invalidate, resetView, refreshDesktop, rerender, setStatus }); window.__pmClearAllCommunityPosts = clearPosts.clearAllInChat;
     window.__pmOpenForumMode = async () => {
         invalidate();
         const scopeId = getStorageId();

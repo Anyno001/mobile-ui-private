@@ -1,7 +1,7 @@
 // 剧情助手里的「剧情」页（剧情注入器的项目、进度、设定、大纲）与首页项目卡的模板：只按视图模型输出 HTML。
 // 数据与动作在 story-plot.js；按钮统一用 data-plot-action，「⋯」菜单沿用剧情助手的 toggle-more。
 import {
-    BACK_ICON_SVG, BOOK_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, EDIT_ICON_SVG, EYE_ICON_SVG, FLAG_ICON_SVG, MORE_ICON_SVG, PLUS_ICON_SVG,
+    BACK_ICON_SVG, BOOK_ICON_SVG, CHAT_ICON_SVG, CHECK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, EDIT_ICON_SVG, BOOKMARK_ICON_SVG, FLAG_ICON_SVG, MORE_ICON_SVG, PLUS_ICON_SVG,
     ROUTE_ICON_SVG, SEARCH_ICON_SVG, TRASH_ICON_SVG, DOWNLOAD_ICON_SVG, REFRESH_ICON_SVG, FORWARD_ICON_SVG,
 } from './icons.js';
 import { escapeAttr as rawEscapeAttr, escapeHtml as rawEscapeHtml } from './ui.js';
@@ -202,7 +202,7 @@ function settingBody(vm) {
         const muted = mute.has(block.key);
         const menu = renderMore(`block:${block.key}`, [
             menuItem('block-edit', EDIT_ICON_SVG, '编辑', { attrs: `data-plot-key="${escapeAttr(block.key)}"` }),
-            menuItem('block-mute', EYE_ICON_SVG, muted ? '恢复注入' : '不注入正文', { attrs: `data-plot-key="${escapeAttr(block.key)}"` }),
+            menuItem('block-mute', BOOKMARK_ICON_SVG, muted ? '恢复注入' : '不注入正文', { attrs: `data-plot-key="${escapeAttr(block.key)}"` }),
             menuItem('block-del', TRASH_ICON_SVG, '删除', { attrs: `data-plot-key="${escapeAttr(block.key)}"`, danger: true }),
         ], vm.openMenuId);
         return `<section class="pm-plot-block"><div class="pm-plot-block-head"><button type="button" class="pm-plot-block-title" data-plot-action="block-edit" data-plot-key="${escapeAttr(block.key)}">${escapeHtml(title)}</button><small>${muted ? '不注入 · ' : ''}约 ${block.text.length} 字</small>${menu}</div><p>${escapeHtml(block.text.replace(/^.*[:：]\s*\n/, ''))}</p></section>`;

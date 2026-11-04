@@ -324,6 +324,7 @@ export function renderBackupSettings({ rollbackFloors = DEFAULT_ROLLBACK_FLOORS 
       <div class="pm-settings-section">
         <div class="pm-cfg-label">清理数据</div>
         <div class="pm-cfg-tip">只清除本插件的数据，建议先导出备份。</div>
+        <button type="button" class="pm-action-button is-danger-text is-full" onclick="window.__pmClearAllCommunityPosts?.()">清空本聊天全部社区帖子</button>
         <button type="button" class="pm-action-button is-danger-text is-full" onclick="window.__pmClearAllData()">清理全部天音小笺数据</button>
       </div>
       <div class="pm-settings-tail"></div>

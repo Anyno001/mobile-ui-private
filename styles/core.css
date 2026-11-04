@@ -127,6 +127,7 @@
 .pm-worldbook-matrix .pm-worldbook-eye{box-sizing:border-box;width:100%;min-width:0;}
 .pm-worldbook-eye svg{width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);}
 .pm-worldbook-eye.is-checked{color:var(--pm-color-success);}
+.pm-worldbook-eye.is-checked .pm-icon-bookmark-body,.pm-contact-switcher-injection.is-active .pm-icon-bookmark-body,.pm-scene-injection-post-toggle.is-selected .pm-icon-bookmark-body{fill:currentColor;}
 .pm-worldbook-eye:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:1px;}
 .pm-worldbook-range{box-sizing:border-box;max-width:100%;padding:var(--pm-space-4) var(--pm-space-3) var(--pm-space-3);display:flex;flex-direction:column;gap:var(--pm-space-4);overflow-x:hidden;}
 .pm-worldbook-range .pm-cfg-label{display:flex;flex-direction:column;gap:var(--pm-space-1-5);margin:var(--pm-space-0);min-width:0;}
