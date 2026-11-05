@@ -2,7 +2,7 @@
 // 来源：vicliaaa/origin-sillytavern v1.5 的 buildInjection / onPromptReady（作者已授权移植）。提示词原文逐字照搬，作者调过服从率。
 // 与原插件的唯一差别：到期判定与成就检查已在回放里做完，这里只读；pendingUse / pendingEvent 由账本按「本轮输入」算出后传入。
 import { allowNewTask, tRemain } from './origin-apply.js';
-import { personaOf } from './origin-state.js';
+import { personaOf, statUnitHint } from './origin-state.js';
 
 // view：{ st(回放状态), world, direction, pendingUse[], pendingEvent[] }；turn：提示词生成时已有的 AI 楼数。
 export function buildInjection(view, s, turn) {
@@ -61,6 +61,7 @@ export function buildInjection(view, s, turn) {
     if (_autoEcon) out += '· ' + (_host || '宿主') + '手里有系统就要用起来：积分充裕时，主动在合适时机花积分买道具（尤其能助攻当前任务的）、抽奖、或用背包里的道具，别一直攒着不花——金手指就是拿来用的。大约每 3-5 回合至少体现一次他在动用系统（买／抽／用其一），但要有动机、结合剧情，别每回合乱刷。积分不够就不买。要做时在数据块报告：买|商品名 ／ 抽奖 ／ 用道具|名称。\n';
     out += '5. 若' + (_host || '宿主(user)') + '在正文里直接对系统说话或提问（如『系统，…』），系统要用上面的说话风格回应；可以解释任务、给提示、调侃、回应请求或商量；但不得替其做决定，任何积分/属性/任务的实际变动仍必须走下面的数据块。\n';
     out += '6. 奖励是对宿主有利的（加积分/加属性/加好感/给道具/给技能/开权限等，技能奖励写成 技能：名称、权限写成 权限：名称）；失败惩罚才是不利的。禁止把不利内容写进奖励栏。\n';
+    out += statUnitHint(s) + '\n';
     out += '7. 失败惩罚可以是扣积分、掉属性、失去道具、触发不利事件、或限时未达成的后果等，按剧情自由选，不必总是扣好感，也允许有的任务没有惩罚。\n';
     if (s.rewardPref) out += '8. 奖励偏好：' + s.rewardPref + '。\n';
     if (s.penaltyPref) out += '9. 惩罚偏好：' + s.penaltyPref + '。\n';

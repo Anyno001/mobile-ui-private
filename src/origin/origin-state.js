@@ -1,9 +1,10 @@
 // Origin 系统核心 · 常量、默认值与状态工具。
 // 来源：vicliaaa/origin-sillytavern v1.5（作者已授权移植）；IGS 与天音共用，两份逐字相同。不碰 DOM、不碰酒馆全局。
-export const ORIGIN_CORE_VER = 'v1.5-core.1';
+export const ORIGIN_CORE_VER = 'v1.5-core.2';
 export const ORIGIN_META_KEY = 'origin_v2';
 export const ORIGIN_LEGACY_KEY = 'origin';
-export const ORIGIN_SAVE_VERSION = 1;
+// 2：加入楼层保留的底稿（base）。旧核心读到 2 会拒收而不是丢掉底稿。
+export const ORIGIN_SAVE_VERSION = 2;
 
 export const DEFAULT_GACHA = [
     { name: '普通物资', tier: 'N', weight: 50, desc: '一点日常用度', effect: '积分+50' },
@@ -27,11 +28,30 @@ export const PERSONA = {
     '温和': '温和耐心，像个可靠的向导。',
 };
 // 与原插件同名同义；界面类字段（主色、日夜、悬浮球位置）不在核心里。总开关默认关。
+// 属性奖励的单位换算：随身系统存档里的属性加成一律存 IGS 内部百分制。
+// AI 按当前体系写整数：CoC 写百分制（1:1），D&D 写属性点（1 点 = 百分制 5 点，与 rulesets/dnd5e.js 的 scoreOf 互逆）。
+// 只有六维（含旧名与别名）按体系换算，IGS 没有的自创属性名与技能一律 1:1。
+const RULESET_SCALE = Object.freeze({ dnd5e: 5 });
+export const scaleOfRuleset = (id) => RULESET_SCALE[id] || 1;
+const ATTRIBUTE_NAMES = new Set(['力量', '敏捷', '体质', '智力', '感知', '魅力', '健康', '体力', '身体', '力气', '体能', '灵巧', '身手', '速度', '理智', '智慧', '冷静', '意志', '观察', '洞察', '外貌', '魅惑力']);
+export const isAttributeName = (name) => ATTRIBUTE_NAMES.has(String(name ?? '').trim());
+// 奖励数值 → 内部百分制（scale 为当时体系的倍数）。
+export const statToPercent = (name, n, scale) => (isAttributeName(name) ? n * (scale || 1) : n);
+// 内部百分制 → 当前体系单位（D&D 保留一位小数，旧档里不是 5 的倍数的值也能看到）。
+export const statFromPercent = (name, v, scale) => (isAttributeName(name) && scale > 1 ? Math.round((v / scale) * 10) / 10 : v);
+// 给 AI 的一句话：当前体系、属性奖励的单位和常见幅度。体系没给时按 CoC。
+export function statUnitHint(s) {
+    if (s && s.ruleId === 'dnd5e') return '（属性奖励按当前体系 D&D 第五版写：六维属性写属性点整数，常见 +1、+2，1 点相当于百分制 5 点；系统里没有的自创属性名不论体系都按 1:1 写，不要换算。）';
+    return '（属性奖励按当前体系 CoC 第七版写：六维属性写百分制整数，常见 +5、+10；系统里没有的自创属性名不论体系都按 1:1 写。）';
+}
+
 export const SETTING_DEFAULTS = {
     enabled: false, judgeMode: 'A', freq: 3, blockWhenUnfinished: true, taskSource: 'auto', fourthWall: 0,
     sysName: 'Origin', personality: '冷澈', personaText: '', rewardPref: '', penaltyPref: '', bindTo: '宿主',
     autoEcon: false, budget: 1400, drawCost: 300, limitMin: 0, limitMax: 0, punishEvent: true, achieveOn: true,
     shopRefresh: 0, gachaRefresh: 0, chatToStory: true, rpChat: 'auto',
+    // 逐楼存档只留最近几个 AI 楼（原插件 keepAll 关闭时留 15 楼）；0 = 全部保留。
+    keepFloors: 30,
 };
 export const MOD_KEYS = ['stat', 'bag', 'shop', 'gacha', 'ach', 'chat'];
 // 会被结算原地改写的列表字段；写时浅拷要逐条拷。
@@ -42,11 +62,13 @@ const filledCache = new WeakMap();
 export function fillSettings(s) {
     if (!s || typeof s !== 'object') return { ...SETTING_DEFAULTS, mods: defaultMods() };
     const hit = filledCache.get(s);
-    if (hit && hit.src === JSON.stringify(s)) return hit.out;
+    // 冻结的入参不会变，按引用命中即可；没冻结的宿主可能原地改过，再比一次内容。
+    const frozen = Object.isFrozen(s);
+    if (hit && (frozen || hit.src === JSON.stringify(s))) return hit.out;
     const out = { ...SETTING_DEFAULTS, ...s };
     for (const k of Object.keys(SETTING_DEFAULTS)) if (out[k] === undefined) out[k] = SETTING_DEFAULTS[k];
     out.mods = { ...defaultMods(), ...(s.mods && typeof s.mods === 'object' ? s.mods : {}) };
-    filledCache.set(s, { src: JSON.stringify(s), out });
+    filledCache.set(s, { src: frozen ? '' : JSON.stringify(s), out });
     return out;
 }
 function defaultMods() {

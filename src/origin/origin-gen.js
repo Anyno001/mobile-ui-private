@@ -2,7 +2,7 @@
 // 来源：vicliaaa/origin-sillytavern v1.5 的 genTask / genShop / genGacha / sysChat / genRpChat（作者已授权移植），提示词原文照搬。
 // 核心只拼提示词，真正的请求由宿主 generate(kind, prompt) 发出。原料（角色描述、最近剧情）由引擎从酒馆上下文取好后传入。
 import { tRemain } from './origin-apply.js';
-import { hostOf, personaOf } from './origin-state.js';
+import { hostOf, personaOf, statUnitHint } from './origin-state.js';
 
 export function stripHtml(t) {
     return String(t || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -20,7 +20,7 @@ export function taskPrompt(m) {
     if (cd) parts.push('【角色设定】' + cd);
     parts.push('【最近剧情】\n' + (recent || '（暂无，请出一个开场任务）'));
     return '【系统任务生成】你是这个世界的系统，要贴着上面的世界观与角色，为宿主(user)生成 1 个新任务，' + dir + rewardPref + limHint + '\n'
-        + '奖励必须是对宿主有利的（加积分/加属性/加好感/给道具）；失败惩罚是不利的，可以是扣积分/掉属性/失去道具/触发不利事件，按剧情选，不必总扣好感，也可留空。' + penPref + '\n'
+        + '奖励必须是对宿主有利的（加积分/加属性/加好感/给道具）' + statUnitHint(s) + '；失败惩罚是不利的，可以是扣积分/掉属性/失去道具/触发不利事件，按剧情选，不必总扣好感，也可留空。' + penPref + '\n'
         + '只输出一行，严格用这个格式，不要任何多余文字、不要解释、不要思维链：\n新任务|类型:主线或支线或日常|标题:…|描述:…|条件:…|奖励:…|惩罚:…|时限:数字\n每个字段用「标签:值」写清楚，缺的整段不写。\n\n' + parts.join('\n');
 }
 

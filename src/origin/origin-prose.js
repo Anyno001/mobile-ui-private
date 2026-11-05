@@ -1,7 +1,7 @@
 // Origin 系统核心 · 正文兜底解析。
 // 来源：vicliaaa/origin-sillytavern v1.5 的 syncPointsFromProse / syncBagFromProse / syncSkillsFromProse / 奖励流水 / 阶段任务（作者已授权移植）。
 // 分两步：extractProseFacts 只看文本、与状态无关，结果随楼存进账本；applyProseFacts 把事实叠到状态上。
-import { addItem, addPerk, addRewardLog, addSkill, applyOps, completeTask, note, pushLog } from './origin-apply.js';
+import { addItem, addPerk, addRewardLog, addSkill, applyOps, completeTask, note, pushLog, totalPoints } from './origin-apply.js';
 import { hostOf } from './origin-state.js';
 
 function okTitle(t) {
@@ -128,7 +128,7 @@ function syncPoints(st, f, prevPoints, cx) {
     if (f.bal != null) {
         // 和注入给它的旧值一样、且数据块里已经报了变动 → 只是抄了旧值，不算数
         if (prevPoints != null && f.bal === prevPoints && f.hp) return;
-        if (f.bal !== st.points) { st.points = f.bal; pushLog(st, '积分同步为 ' + f.bal + '（按正文余额）', '·', cx); }
+        if (f.bal !== totalPoints(st, cx)) { st.points = f.bal - (Number(cx.extra) || 0); pushLog(st, '积分同步为 ' + f.bal + '（按正文余额）', '·', cx); }
         return;
     }
     if (f.hp) return;
@@ -139,7 +139,7 @@ function syncPoints(st, f, prevPoints, cx) {
         st.points += v;
         ch = true;
     }
-    if (ch) pushLog(st, '积分按正文补记，现为 ' + st.points, '·', cx);
+    if (ch) pushLog(st, '积分按正文补记，现为 ' + totalPoints(st, cx), '·', cx);
 }
 
 const PERK_IN_REWARD = /([^「」『』【】\n，,。；;：:、]{2,24}?(?:权限|特权|资格|功能|称号|头衔))(?:已)?(?:开启|解锁|激活)?/g;
@@ -175,7 +175,7 @@ function syncTasks(st, f, cx) {
 // 一个 AI 楼的完整结算：数据块操作 → 正文积分 → 奖励流水/权限 → 背包/技能 → 阶段任务。暂停中整楼不结算。
 export function applyFloor(st, { ops = [], facts = {} }, cx) {
     if (st.paused) return;
-    const prevPoints = st.points;
+    const prevPoints = totalPoints(st, cx);
     if (ops.length) applyOps(st, ops, cx, { proseTitle: facts.title || '' });
     syncPoints(st, facts, prevPoints, cx);
     syncRewards(st, facts, cx);

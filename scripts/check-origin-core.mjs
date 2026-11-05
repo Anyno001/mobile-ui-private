@@ -5,16 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 // 金手指核心（src/origin/）逐字拷自 IGS app/src/scene/origin/，只在 IGS 改。这里比对哈希：不一致就失败。
 // IGS 那边改了核心后：把 8 个文件重新拷过来，用本脚本打印的实际哈希更新下表（node scripts/check-origin-core.mjs --print）。
-// 当前对应 IGS 版本：v0.37.58 前的工作区副本（推送后若有改动需重拷）。
+// 当前对应 IGS 版本：v0.39.33（dd75c529）。
 const EXPECTED = Object.freeze({
-    'origin-apply.js': '3532a773f1bfa718927961d88bf1a40a48535a0684a4cc1ec25313dbe0f0d7a3',
-    'origin-engine.js': '58eed4342c796d7f7ee95c6bf2efb9c3aa18843c92147d2fb953cf0ec7e0dd49',
-    'origin-gen.js': 'efa34cdb7f5c756580ed6805676529a44ddc8fc5e9da716e57360514b3fc5bed',
-    'origin-inject.js': '050a171f7f349ba8b0989c483dbd2c427c2fa0ba5ad4aad26fbd48ccdf918b29',
-    'origin-ledger.js': 'a0db2f6333bf1d166988de2248793a19281d0d9d2473352ebc1f4832f4faafa6',
+    'origin-apply.js': '9488a0706cbdf4dde8f46d0e50aba3233764ea155ea4e9f3a6dfec5dadc770d9',
+    'origin-engine.js': 'd3e76580582158c2e6154e7cd632b4c5addd70677b900374c52d3139f4e5bbf2',
+    'origin-gen.js': '40c4f0c9e7465bcf60ccaaf3f56a796471921594c9fee1260db622b866b0ed7b',
+    'origin-inject.js': 'd1899a15b8b26ff04318b3209ee33dfb79275dc16ef1c6acf8816a9995f1ae07',
+    'origin-ledger.js': '5a2de190b788c45ddb2a77b4ec97388f03d4787be2ab29eed5485e50e5fd7176',
     'origin-parse.js': '2adb311cbc499cfd954bce7c08d3d13709b3cff6a2912acb679d9b7ee20fdd61',
-    'origin-prose.js': 'fabc61d69b35f0f64d28cfddd6a90a3d4a414705cba415ba3f3d8b8734788bed',
-    'origin-state.js': 'ba7ff011bcb18c706f16c80079072ec9eb1dd2d89f79483c240f53ab81af769e',
+    'origin-prose.js': '73ef235f46eab9501928ac8f40dd3233f650745dc23c36f40b5ccb8d1f9764b2',
+    'origin-state.js': '8d5998c3324bba09c3f0320e5bb18656c3542de3b5f561bc94c311cc8a74d536',
 });
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'origin');
