@@ -43,9 +43,13 @@ export const visibleOriginSubpages = settings => ORIGIN_SUBPAGES.filter(page => 
 const isOwned = task => Boolean(task.owner && task.owner !== '宿主');
 const chatLabel = settings => (originBoundRole(settings) ? '私聊' : '对话');
 
+// 积分合计里战斗那份（IGS 同开时核心给 rawPoints，合计减去它即战斗份；没有就是 0）。
+const combatPoints = state => (state && state.rawPoints != null ? num(state.points) - num(state.rawPoints) : 0);
+
 // ---- 顶栏 ----
 function homeHeader(state, settings, ui) {
-    const sub = state ? `积分 ${num(state.points)} · Lv.${num(state.level, 1)}` : appSloganOf('origin');
+    const x = combatPoints(state);
+    const sub = state ? `积分 ${num(state.points)}${x ? `（含战斗 ${x}）` : ''} · Lv.${num(state.level, 1)}` : appSloganOf('origin');
     const menu = ui.menuOpen ? renderMenu(state, settings) : '';
     return `<header class="pm-origin-header"><div class="pm-origin-header-text"><h2>${esc(settings.sysName || appNameOf('origin'))}</h2><small>${esc(sub)}</small></div>
 <div class="pm-origin-more-wrap">${state ? iconButton('menu', '更多', MORE_ICON_SVG, `aria-haspopup="menu" aria-expanded="${ui.menuOpen === true}"`) : ''}${menu}</div>${iconButton('desktop', '返回桌面', HOME_ICON_SVG)}</header>`;
@@ -170,7 +174,7 @@ function gachaPage(state, settings, ui) {
     })).join('');
     const busy = ui.busy === 'gacha';
     const cost = num(settings.drawCost);
-    return `<div class="pm-origin-draw-zone"><button type="button" class="pm-origin-primary" ${act('gacha-draw')}${pool.length ? '' : ' disabled'}>抽一次 · ${cost}积分</button><small>当前积分 ${num(state.points)}</small></div>${drawCard(ui.lastDraw)}
+    return `<div class="pm-origin-draw-zone"><button type="button" class="pm-origin-primary" ${act('gacha-draw')}${pool.length ? '' : ' disabled'}>抽一次 · ${cost}积分</button><small>当前积分 ${num(state.points)}${combatPoints(state) ? ` · 含战斗 ${combatPoints(state)}` : ''}</small></div>${drawCard(ui.lastDraw)}
 ${groupHead(filter === 'all' ? '奖池' : `${filter}奖品`, shown.length, tiers.length > 1 ? dropdown('gacha', options, filter, ui.dropdown === 'gacha') : '')}
 <div class="pm-origin-list">${rows || empty(pool.length ? `暂无${filter}奖品` : '奖池为空')}</div>${tail('', link('gacha-gen', busy ? '正在重出…' : '重出奖池'), link('gacha-add', '添加奖品'))}`;
 }
