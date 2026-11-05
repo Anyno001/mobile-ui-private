@@ -21,7 +21,7 @@ export function taskPrompt(m) {
     parts.push('【最近剧情】\n' + (recent || '（暂无，请出一个开场任务）'));
     return '【系统任务生成】你是这个世界的系统，要贴着上面的世界观与角色，为宿主(user)生成 1 个新任务，' + dir + rewardPref + limHint + '\n'
         + '奖励必须是对宿主有利的（加积分/加属性/加好感/给道具）' + statUnitHint(s) + '；失败惩罚是不利的，可以是扣积分/掉属性/失去道具/触发不利事件，按剧情选，不必总扣好感，也可留空。' + penPref + '\n'
-        + '只输出一行，严格用这个格式，不要任何多余文字、不要解释、不要思维链：\n新任务|类型:主线或支线或日常|标题:…|描述:…|条件:…|奖励:…|惩罚:…|时限:数字\n每个字段用「标签:值」写清楚，缺的整段不写。\n\n' + parts.join('\n');
+        + '只输出一行，严格用这个格式，不要任何多余文字、不要解释、不要思维链：\n新任务|类型:主线或支线或日常|标题:…|描述:…|条件:…|奖励:…|惩罚:…' + (s.limitMax > 0 ? '|时限:数字' : '') + '\n每个字段用「标签:值」写清楚，缺的整段不写。\n\n' + parts.join('\n');
 }
 
 export function shopPrompt(m) {
@@ -46,7 +46,8 @@ export function sysChatPrompt(m) {
     if (st.skills && st.skills.length) sys += '已掌握技能：' + st.skills.map((k) => k.name + (k.desc ? '（' + k.desc + '）' : '')).join('；') + '。\n';
     if (s.mods.shop && st.shop.length) sys += '商城：' + st.shop.slice(0, 8).map((x) => x.name + '(' + x.price + ')').join('／') + '。\n';
     if (recent) sys += '最近剧情节选：\n' + recent + '\n';
-    sys += '要求：只以系统身份回应，1-3 句、不超过 120 字，不写旁白不写动作，用上面的风格。可以答应、拒绝、讨价还价，但要有系统的原则。\n如果你决定改动（改任务进度或时限、发新任务、加减积分、给道具），在回复末尾另起一行附数据块，格式：\n<origin>\n进度|任务id|百分比|依据\n完成|任务id\n时限|任务id|新的剩余回合数\n新任务|类型:主线或支线或日常|标题:…|描述:…|条件:…|奖励:…|惩罚:…|时限:N\n积分|+N或-N|理由\n获得|物品名|数量\n</origin>\n不改动就不要附数据块。';
+    const lim = s.limitMax > 0;
+    sys += '要求：只以系统身份回应，1-3 句、不超过 120 字，不写旁白不写动作，用上面的风格。可以答应、拒绝、讨价还价，但要有系统的原则。\n如果你决定改动（改任务进度' + (lim ? '或时限' : '') + '、发新任务、加减积分、给道具），在回复末尾另起一行附数据块，格式：\n<origin>\n进度|任务id|百分比|依据\n完成|任务id\n' + (lim ? '时限|任务id|新的剩余回合数\n' : '') + '新任务|类型:主线或支线或日常|标题:…|描述:…|条件:…|奖励:…|惩罚:…' + (lim ? '|时限:N' : '') + '\n积分|+N或-N|理由\n获得|物品名|数量\n</origin>\n不改动就不要附数据块。';
     const msgs = st.chat.filter((c) => c.who === 'me' || c.who === 'sys').slice(-12).map((c) => ({ role: c.who === 'me' ? 'user' : 'assistant', content: c.text }));
     return { system: sys, msgs };
 }

@@ -225,7 +225,7 @@ function opNewTask(st, op, cx, ext) {
     const title = op.title || ext.proseTitle || '';
     if (!title) return false;
     const host = hostOf(cx.s);
-    const t = newTaskOf(st, cx, { type: op.ty, owner: ((op.owner || host || '宿主').trim() || '宿主'), title, desc: op.desc, cond: op.cond, reward: op.reward, penalty: op.penalty, limit: op.limit });
+    const t = newTaskOf(st, cx, { type: op.ty, owner: ((op.owner || host || '宿主').trim() || '宿主'), title, desc: op.desc, cond: op.cond, reward: op.reward, penalty: op.penalty, limit: cx.s.limitMax > 0 ? op.limit : 0 });
     st.tasks.push(t);
     st.lastTaskTurn = cx.turn;
     pushLog(st, '新任务[' + t.type + ']「' + t.title + '」', '·', cx);
@@ -300,7 +300,7 @@ export function applyOps(st, ops, cx, ext = {}) {
             case 'skill': hit(addSkill(st, op.name, op.desc, cx)); break;
             case 'limit': {
                 const t = findTask(st, op.ref);
-                if (t && t.status === 'active' && op.n > 0) { t.limit = op.n; t.startTurn = cx.turn; pushLog(st, t.title + '：时限改为 ' + op.n + ' 回合', '·', cx); changed += 1; }
+                if (t && t.status === 'active' && op.n > 0 && cx.s.limitMax > 0) { t.limit = op.n; t.startTurn = cx.turn; pushLog(st, t.title + '：时限改为 ' + op.n + ' 回合', '·', cx); changed += 1; }
                 break;
             }
             case 'achieve': hit(unlockAch(st, op.key, op.name, op.desc, 100, cx)); break;

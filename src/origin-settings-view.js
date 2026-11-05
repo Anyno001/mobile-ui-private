@@ -54,7 +54,7 @@ export function renderOriginSettings(s, chat = {}) {
         switchRow('未完成时不派新任务', '还有主线或支线在进行时暂停派发', 'blockWhenUnfinished', s.blockWhenUnfinished),
         pickRow('任务来源', 'taskSource', [['auto', '随剧情自动'], ['manual', '只手动添加']], s.taskSource === 'manual' ? 'manual' : 'auto'),
         numberRow('时限下限', '0为不限', 'limitMin', s.limitMin, [0, 99]),
-        numberRow('时限上限', '0为不限；大于0时任务时限在上下限之间浮动', 'limitMax', s.limitMax, [0, 99]),
+        numberRow('时限上限', '0为任务不设时限；大于0时任务时限在上下限之间浮动', 'limitMax', s.limitMax, [0, 99]),
         switchRow('失败带来后果', '任务失败或超时，剧情出现相称的不利后果', 'punishEvent', s.punishEvent),
         textRow('奖励倾向', '', 'rewardPref', s.rewardPref, { placeholder: '可留空，例如：多给道具' }),
         textRow('惩罚倾向', '', 'penaltyPref', s.penaltyPref, { placeholder: '可留空' }),
