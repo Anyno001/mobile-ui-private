@@ -15,10 +15,20 @@ export const SAMPLE_STAGE = `剧情_卷一_示例:
         地点: 村口
         事件: 一句话事件。
         触发: 出现这种情况时发生。
+      - 名称: 酒馆密谈
+        事件: 一位陌生人约主角深夜密谈。
+        条件: 主角到过镇上的酒馆
+        时限: 20
+        错过: 陌生人离开了小镇，线索中断。
     世界动态:
       - 类型: 传闻
         来源: 谁传出
         内容: 外界正在发生什么。
+      - 类型: 山匪逼近
+        内容: 山匪袭击村庄。
+        进度钟: 6
+        前兆: 邻村有人被抢，夜里山上能看到火光。
+        后果: 村庄被洗劫，村民对官府失去信任。
     状态变化:
       - 本阶段结束时谁知道了什么、谁对谁的看法或关系变了。
 `;
@@ -26,11 +36,14 @@ export const SAMPLE_STAGE = `剧情_卷一_示例:
 const FOLD_KEEP = 16;
 const FOLD_CHARS = 24000;
 
-export function discussSystemPrompt({ guide, refs }) {
+// persona：用户在讨论页填的说话人格，只决定怎么说话，任务和回复结构不变。
+export function discussSystemPrompt({ guide, refs, persona = '' }) {
     const parts = [
         '你在帮用户构思一条同人 if 线：一起把世界观、人物处境、信息差和大纲方向想清楚。',
         '每次回复先回应用户的想法，再指出缺口或矛盾，最后给出两三个可选方向。不写小说正文。',
     ];
+    if (persona.trim()) parts.push(`【说话人格】
+${persona.trim()}`);
     if (refs.length) parts.push(...refs.map(ref => `【参考·${ref.title}】\n${ref.text}`));
     if (guide) parts.push(`【写作基准：同人世界观速成】\n${guide}`);
     return parts.join('\n\n');
@@ -100,6 +113,7 @@ const OUTLINE_RULES = [
     '只输出一个 ```yaml 代码块，不加说明。',
     '顶层键是卷名，写作「剧情_卷X_标题」；卷下是阶段，写作「阶段N_标题」；阶段字段为 时间范围、AI指令、主线节点、支线事件、世界动态、状态变化。',
     '节点字段：名称、地点、事件、偏转；支线事件多一个 触发；世界动态为 类型、来源、内容。',
+    '以下几个键可选，只在需要时写：支线事件可写 条件（出现条件满足后才安排）、时限（激活后的楼数，或写「本卷」）、错过（过期没接时的后果）、步骤（列表，分几步推进的支线）；世界动态可写 进度钟（总格数，常用 4、6、8，越大来得越慢）、前兆（过半时透露的风声）、后果（发生后世界的变化）。',
     '每个阶段 2 到 4 个主线节点，事件写已经发生的事实，偏转写玩家改变选择后的调整。',
     '时间范围写清本阶段从什么时候到什么时候，用来判断何时切到下一段。',
     '设定里的人物关系、认知和信息差是开局状态，会随剧情改变。状态变化逐条写本阶段结束时比之前变了什么，没有变化就省略。',
@@ -170,8 +184,13 @@ export function fixYamlMessages(text, error) {
 }
 
 // 从回复里取 YAML：优先 ```yaml 代码块，其次任意代码块，最后整篇。
-export function extractYaml(text) {
+// all：一次回了多卷、每卷一个 yaml 代码块时，把所有块接起来（卷名不同，顶层键不会冲突）；只给多卷相关的入口用，其余只取第一个块。
+export function extractYaml(text, { all = false } = {}) {
     const raw = String(text || '');
+    if (all) {
+        const blocks = [...raw.matchAll(/```ya?ml\s*\n([\s\S]*?)```/gi)].map(match => match[1].trim()).filter(Boolean);
+        if (blocks.length) return blocks.join('\n\n');
+    }
     const fenced = /```ya?ml\s*\n([\s\S]*?)```/i.exec(raw) || /```\s*\n([\s\S]*?)```/.exec(raw);
     return (fenced ? fenced[1] : raw).trim();
 }
@@ -180,12 +199,48 @@ export function hasYamlBlock(text) {
     return /```ya?ml\s*\n[\s\S]*?```/i.test(String(text || ''));
 }
 
-export function parseOutlineReply(text, idOf) {
-    const yaml = extractYaml(text);
+export function parseOutlineReply(text, idOf, { all = false } = {}) {
+    const yaml = extractYaml(text, { all });
     try {
         return { ok: true, yaml, volumes: volumesFromValue(parseYaml(yaml), idOf) };
     } catch (error) {
         const line = yamlErrorLine(error);
         return { ok: false, yaml, line, error: `${line ? `第 ${line} 行：` : ''}${String(error.message || error).split('\n')[0]}` };
     }
+}
+
+// outline v0.1.23：单阶段 AI 操作（细化节点 / 拆成两段 / 与下一段合并）。
+const STAGE_OPS = {
+    refine: '细化节点：保持阶段名不变，把现有节点写得更具体（事件写清谁做了什么、结果如何，偏转写清分支），必要时补充缺少的节点，不改变阶段的整体走向与时间范围。只输出这一个阶段。',
+    split: '拆成两段：把这个阶段按剧情先后拆成两个阶段，阶段名沿用「阶段N_标题」格式，两段的时间范围首尾相接且不重叠，节点、支线事件、世界动态按发生时间分到两段，状态变化归入对应的段。输出两个阶段。',
+    merge: '与下一段合并：把「当前阶段」和「下一阶段」合成一个阶段，阶段名取能概括两段的标题，时间范围覆盖两段，节点、支线事件、世界动态按时间顺序合并并去掉重复，状态变化全部保留。输出一个阶段。',
+};
+
+export function stageOpMessages({ setting, talk = '', refs = [], volumes, unit, next, op, request }) {
+    const rule = STAGE_OPS[op];
+    if (!rule) throw new Error('不支持的阶段操作');
+    const system = [
+        '你在调整剧情大纲中的单个阶段，格式必须与样例一致。',
+        OUTLINE_RULES,
+        '阶段里的字段（时间范围、AI指令、主线节点、支线事件、世界动态、状态变化，以及其他任何键）原样保留或合理改写，不要丢键。',
+        `顶层键只写所属卷名「${unit.volume.key}」，卷下只放结果阶段。`,
+        rule,
+        `【格式样例】\n${formatSample(volumes)}`,
+    ].join('\n');
+    const units = flattenUnits(volumes);
+    const before = units.slice(0, units.findIndex(item => item.id === unit.id));
+    const user = [
+        setting ? `【设定】\n${setting}` : '',
+        talk ? `【讨论摘要】\n${talk}` : '',
+        refBlock(refs),
+        changesBlock(before, '此前阶段的状态变化'),
+        `【当前阶段】\n${volumeStageText(unit.volume, unit.stage)}`,
+        next ? `【下一阶段】\n${volumeStageText(unit.volume, next)}` : '',
+        request ? `【额外要求】\n${request}` : '',
+    ].filter(Boolean).join('\n\n');
+    return [{ role: 'system', content: system }, { role: 'user', content: user }];
+}
+
+function volumeStageText(volume, stage) {
+    return outlineToText([{ ...volume, stages: [stage] }]);
 }

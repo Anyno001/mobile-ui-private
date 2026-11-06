@@ -48,6 +48,15 @@ export function pickOption(deps, { title, options, value }) {
     });
 }
 
+// 操作菜单：每项一行，点了直接返回 value；关闭为 null。items: [{ value, label, danger, disabled }]
+export function pickAction(deps, { title, items }) {
+    return openPlotDialog(deps, {
+        title,
+        body: `<div class="pm-plot-sheet-menu" role="menu">${items.map(item => `<button type="button" role="menuitem"${item.danger ? ' class="pm-control-menu-danger"' : ''} data-plot-dialog="${escapeAttr(`pick:${item.value}`)}"${item.disabled ? ' disabled' : ''}><span>${escapeHtml(item.label)}</span></button>`).join('')}</div>`,
+        actions: [{ label: '取消', value: 'cancel' }],
+    }).then(result => (result?.action?.startsWith('pick:') ? result.action.slice(5) : null));
+}
+
 // 多选清单：返回选中项的 value 数组；取消为 null。
 export function pickMany(deps, { title, items, okLabel = '确定', hint = '' }) {
     return openPlotDialog(deps, {

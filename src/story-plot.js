@@ -6,15 +6,18 @@ import { bindPressGesture } from './press-gesture.js';
 import { loadProfiles } from './storage-preferences.js';
 import { BUILTIN_GUIDE } from './plot-injector/core/guide.js';
 import { DEFAULT_PARAMS, POSITIONS, ROLES, buildIndexText, carriedNodes } from './plot-injector/core/inject.js';
-import { CHANGE_FIELD, NODE_FIELDS, changeLines, flattenUnits, makeId, outlineToText, parseOutlineText, replaceRest, stageLabel, stageNodes, stageToText, volumeLabel } from './plot-injector/core/outline.js';
-import { STATES, STATE_LABELS, currentIndex, emptyProgress, goTo, patchSlot, setNodeChecked, unitStates } from './plot-injector/core/progress.js';
-import { fixYamlMessages, outlineMessages, parseOutlineReply, rewriteRestMessages, transcript } from './plot-injector/core/prompts.js';
+import { flattenUnits, outlineToText, pushOutlineHistory, stageLabel, stageNodes, volumeLabel } from './plot-injector/core/outline.js';
+import { STATES, STATE_LABELS, checkBase, currentIndex, emptyProgress, goTo, offNodes, patchSlot, setNodeChecked, unitStates } from './plot-injector/core/progress.js';
+import { rewriteRestMessages, transcript } from './plot-injector/core/prompts.js';
 import { joinBlocks, pushHistory, splitBlocks } from './plot-injector/core/setting.js';
 import { groupProjects, normalizeChat, normalizeProject } from './plot-injector/core/store.js';
+import { outlineLinks, withAliases } from './plot-injector/core/align.js';
+import { liveThreads, maskUnits, patchLive, threadSwitches } from './plot-injector/core/threads.js';
 import { PLOT_TABS, renderPlotHomeCard, renderPlotNotices, renderPlotPage, renderPlotPrefs, renderPlotSettings, renderPlotSheet, renderPlotStage } from './story-plot-views.js';
-import { downloadText, openPlotDialog, pickOption, pickTextFile, promptText, showText } from './story-plot-io.js';
+import { downloadText, openPlotDialog, pickAction, pickOption, pickTextFile, promptText, showText } from './story-plot-io.js';
 import { createPlotSettingActions } from './story-plot-setting.js';
 import { createInfiniteActions } from './story-plot-infinite.js';
+import { createPlotOutlineActions } from './story-plot-outline.js';
 import { normalizeInfinite } from './plot-injector/core/infinite.js';
 import { escapeAttr as rawEscapeAttr, escapeHtml as rawEscapeHtml } from './ui.js';
 
@@ -37,7 +40,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     let nodeKind = 'main';
     let sheet = null;
     let settingDraft = null;
-    let outlineDraft = null;
+    let expiredOpen = false;
     let busy = '';
     let task = null;
     let unsubscribe = [];
@@ -71,11 +74,20 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     }
 
     // 某个项目的阶段与状态：当前聊天用的项目按聊天进度算，其余按空进度显示。
+    // units 按项目的支线、世界动态开关遮罩（执行页只显示开着的一类）；遮罩只删字段，阶段 id 与状态不变。
     function stateOf(target) {
-        const units = target ? flattenUnits(target.outline.volumes) : [];
+        const all = target ? flattenUnits(target.outline.volumes) : [];
+        const sw = threadSwitches(target);
+        const units = maskUnits(all, sw);
         const isActive = target && target.id === activeId();
         const progress = isActive ? api().runtime.progress() : emptyProgress(target?.id || '');
-        return { units, progress, states: units.length ? unitStates(units, progress) : {}, isActive };
+        return { units, sw, progress, states: units.length ? unitStates(units, progress) : {}, isActive };
+    }
+
+    // 当前聊天项目的支线钩子与进度钟（执行页显示、菜单操作都按它）。
+    function liveOf(units, states, progress) {
+        const s = settings();
+        return liveThreads(units, states, progress, { carryOver: s.carryOver !== false, hookCap: s.hookCap });
     }
 
     function routeRows() {
@@ -99,9 +111,9 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         const shown = project(id);
         if (id && !shown && ready) ensureProject(id).then(found => { if (found) scheduleRender(); }).catch(() => {});
         if (active && !project(active) && ready) ensureProject(active).then(found => { if (found) scheduleRender(); }).catch(() => {});
-        const { units, progress, states, isActive } = stateOf(shown);
+        const { units, sw, progress, states, isActive } = stateOf(shown);
         const unit = units.find(item => states[item.id] === 'active');
-        const off = unit ? new Set(progress.slots[unit.id]?.off || []) : new Set();
+        const off = unit ? new Set(offNodes(progress, unit)) : new Set();
         const mains = unit ? stageNodes(unit.stage.data).filter(node => node.kind === 'main') : [];
         const s = settings();
         const stage = stageId && shown ? shown.outline.volumes.map(volume => ({ volume, stage: volume.stages.find(item => item.id === stageId) })).find(item => item.stage) || null : null;
@@ -119,8 +131,10 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
             viewed: target === 'home' ? project(active) : shown,
             tab, units, progress, states,
             carried: isActive && s.carryOver !== false && units.length ? carriedNodes(units, states, progress, { withOff: true }) : [],
+            live: isActive && units.length ? liveOf(units, states, progress) : { clocks: [], hooks: [] },
+            switches: sw, expiredOpen,
             mainCount: { done: mains.filter(node => off.has(node.id)).length, total: mains.length },
-            gap: isActive ? (s.checkEvery || 3) - (plotApi.runtime.floorCount() - progress.lastCheckFloor) : 0,
+            gap: isActive ? (s.checkEvery || 3) - (plotApi.runtime.floorCount() - checkBase(progress)) : 0,
             checking: Boolean(isActive && plotApi.runtime.isChecking?.()),
             notices: plotApi?.owner === 'tianyin' ? plot()?.notice?.list?.() || [] : [],
             settings: s,
@@ -129,7 +143,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
             stage, nodeKind, sheet, busy, openMenuId,
             // 草稿只在生成它的项目里显示。
             settingDraft: settingDraft && settingDraft.projectId === shown?.id ? settingDraft : null,
-            outlineDraft: outlineDraft && outlineDraft.projectId === shown?.id ? outlineDraft : null,
+            ...outline.viewFields(shown?.id),
         };
         return { ...vm, ...infinite.viewFields(vm) };
     }
@@ -202,9 +216,17 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         history = pushHistory(history, text);
         setSetting({ text, history, ...extra });
     }
-    const updateVolumes = fn => updateViewed(current => ({ ...current, outline: { ...current.outline, volumes: fn(current.outline.volumes) } }));
-    const updateStage = (id, fn) => updateVolumes(volumes => volumes.map(volume => (volume.stages.some(stage => stage.id === id)
-        ? { ...volume, stages: volume.stages.map(stage => (stage.id === id ? fn(stage) : stage)) } : volume)));
+    // label 非空时改动前的大纲先入历史版本；alias 为附带写进对照表的阶段 id 别名 [[旧id, 新id]]，其他聊天读进度时按它对回。
+    const updateVolumes = (fn, label = '', alias = []) => updateViewed(current => ({
+        ...current,
+        outline: withAliases({
+            ...current.outline,
+            volumes: fn(current.outline.volumes),
+            ...(label ? { history: pushOutlineHistory(current.outline.history, current.outline.volumes, label) } : {}),
+        }, alias),
+    }));
+    const updateStage = (id, fn, label = '') => updateVolumes(volumes => volumes.map(volume => (volume.stages.some(stage => stage.id === id)
+        ? { ...volume, stages: volume.stages.map(stage => (stage.id === id ? fn(stage) : stage)) } : volume)), label);
     const moveUp = (list, index) => {
         if (index <= 0) return list;
         const out = [...list];
@@ -214,9 +236,25 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     const safeFileName = name => String(name || '剧情项目').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60);
     const confirmAction = message => (typeof globalThis.confirm === 'function' ? globalThis.confirm(message) : false);
     const runtimeForViewed = () => (viewed()?.id === activeId() ? api().runtime : null);
+    // 改大纲之前取的进度（之后再取会先按对照表归位，再按位置重排会排反）；不是当前聊天的项目返回 null。
+    const liveProgress = () => runtimeForViewed()?.progress() || null;
 
     // 无限流项目的世界库、骰池、主空间参数在 story-plot-infinite.js。
     const infinite = createInfiniteActions(deps, { api, viewed, updateViewed, runtimeForViewed, toast, rerender, confirmAction });
+
+    // 大纲页签的动作与草稿在 story-plot-outline.js。
+    const outline = createPlotOutlineActions(deps, {
+        api, viewed, resolveViewedId, updateVolumes, updateStage, runAi, rerender, navigate, toast, confirmAction, talkText, runtimeForViewed, liveProgress, safeFileName, moveUp, plot,
+        chooseWorldBookRefs: (...args) => chooseWorldBookRefs(...args),
+        syncOutline: (...args) => syncOutline(...args),
+        setTab: value => { tab = value; },
+        setStage: value => { stageId = value; },
+        getStage: () => stageId,
+        setNodeKind: value => { nodeKind = value; },
+        isBusy: () => Boolean(busy),
+        setTask: (kind, controller) => { busy = kind; task = controller; },
+        clearTask: controller => { if (task === controller) { task = null; busy = ''; } },
+    });
 
     // 设定页签与设置页的动作在 story-plot-setting.js；草稿仍由这里持有。
     const settingCtx = {
@@ -304,7 +342,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         await api().data.deleteProject(id);
         if (viewedId === id) { viewedId = ''; stageId = ''; }
         if (settingDraft?.projectId === id) settingDraft = null;
-        if (outlineDraft?.projectId === id) outlineDraft = null;
+        outline.forget(id);
         sheet = null;
         api().runtime.refresh?.();
         rerender();
@@ -360,7 +398,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         tab = 'outline';
         const recent = runtime.recentFloors(6).map(floor => floor.text).join('\n\n');
         const reply = await runAi('outline', 'outline', rewriteRestMessages({ setting: current.setting.text, volumes: current.outline.volumes, fromUnitIndex: from, units, recent, reason }));
-        if (reply) setOutlineDraft(reply, 'rewrite', { fromUnitId: units[from].id, reason });
+        if (reply) outline.setOutlineDraft(reply, 'rewrite', { fromUnitId: units[from].id, reason });
         rerender();
     }
 
@@ -418,156 +456,82 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
     function showIndex() {
         const runtime = runtimeForViewed();
         if (!runtime) return;
-        const units = runtime.units();
+        const units = maskUnits(runtime.units(), threadSwitches(viewed()));
         const progress = runtime.progress();
-        return showText(deps, { title: '剧情索引', text: buildIndexText(units, unitStates(units, progress), progress, { carryOver: settings().carryOver !== false }) });
-    }
-    // ---- 大纲 ----
-    function addVolumes(incoming) {
-        const existing = new Set(viewed().outline.volumes.map(volume => volume.key));
-        const fresh = incoming.map(volume => (existing.has(volume.key) ? { ...volume, key: `${volume.key}_导入${Date.now().toString(36).slice(-3)}` } : volume));
-        updateVolumes(volumes => [...volumes, ...fresh]);
-        return fresh;
+        const opts = { carryOver: settings().carryOver !== false, hookCap: settings().hookCap, links: outlineLinks(viewed().outline) };
+        return showText(deps, { title: '剧情索引', text: buildIndexText(units, unitStates(units, progress), progress, opts) });
     }
 
-    function importOutlineText(text, name = '粘贴内容') {
-        try {
-            const added = addVolumes(parseOutlineText(text));
-            toast('success', `已导入 ${added.length} 卷。`);
-        } catch (error) {
-            toast('error', `${name}：${error.message}`);
-        }
-        rerender();
-    }
-
-    async function aiVolume() {
-        const current = viewed();
-        const request = await promptText(deps, { title: `AI写第 ${current.outline.volumes.length + 1} 卷`, label: '给AI的额外要求（可空）', multiline: true, rows: 4 });
-        if (request == null) return;
-        const talk = talkText(12000);
-        const refs = await chooseWorldBookRefs('写大纲参考的世界书条目');
-        if (refs == null) return;
-        if (!current.setting.text.trim() && !talk.trim() && !refs.length) throw new Error('没有可参考的内容：先写设定，或在剧情参谋里聊一聊。');
-        const reply = await runAi('outline', 'outline', outlineMessages({ setting: current.setting.text, talk, refs, volumes: current.outline.volumes, volumeNo: current.outline.volumes.length + 1, request }));
-        if (reply) setOutlineDraft(reply, 'volume');
-        rerender();
-    }
-
-    function setOutlineDraft(reply, mode = 'volume', extra = {}) {
-        outlineDraft = { mode, ...parseOutlineReply(reply), projectId: resolveViewedId(), ...extra };
-        tab = 'outline';
-    }
-
-    async function fixDraft() {
-        const draft = outlineDraft;
-        const reply = await runAi('outline', 'outline', fixYamlMessages(draft.yaml, draft.error));
-        if (reply) setOutlineDraft(reply, draft.mode, { fromUnitId: draft.fromUnitId, reason: draft.reason });
-        rerender();
-    }
-
-    async function editDraft() {
-        const draft = outlineDraft;
-        const yaml = await promptText(deps, { title: '手动修改YAML', label: draft.error, value: draft.yaml, multiline: true, rows: 16 });
-        if (yaml == null) return;
-        setOutlineDraft(`\`\`\`yaml\n${yaml}\n\`\`\``, draft.mode, { fromUnitId: draft.fromUnitId, reason: draft.reason });
-        rerender();
-    }
-
-    async function applyRest() {
-        const draft = outlineDraft;
-        const current = viewed();
-        const unit = flattenUnits(current.outline.volumes).find(item => item.id === draft.fromUnitId);
-        if (!unit) throw new Error('原来的阶段已不存在，改用「存为新卷」。');
-        if (!confirmAction('当前阶段及之后的阶段会换成改写后的内容，进度跳到改写后的第一段。')) return;
-        const volumes = replaceRest(current.outline.volumes, unit.stage.id, draft.volumes);
-        updateVolumes(() => volumes);
-        const first = draft.volumes[0]?.stages[0];
+    // ---- 执行页：节点、支线钩子、进度钟 ----
+    function viewLive() {
         const runtime = runtimeForViewed();
-        if (first && runtime) runtime.setProgress(goTo(runtime.progress(), flattenUnits(volumes), first.id));
-        outlineDraft = null;
-        rerender();
-        const from = first ? flattenUnits(volumes).findIndex(item => item.id === first.id) : 0;
-        await syncOutline({ from: Math.max(0, from), reason: draft.reason, auto: true });
+        if (!runtime) return null;
+        const units = maskUnits(runtime.units(), threadSwitches(viewed()));
+        const progress = runtime.progress();
+        return liveOf(units, unitStates(units, progress), progress);
     }
 
-    const draftHere = () => Boolean(outlineDraft && outlineDraft.projectId === resolveViewedId());
-    const findVolume = id => viewed()?.outline.volumes.find(volume => volume.id === id) || null;
-    const findStage = () => {
-        for (const volume of viewed()?.outline.volumes || []) {
-            const stage = volume.stages.find(item => item.id === stageId);
-            if (stage) return { volume, stage };
-        }
-        return null;
-    };
+    // checked=true 为恢复未演；勾回走完的支线链时停在最后一步，免得显示空步骤。
+    function toggleNode(unitId, nodeId, checked) {
+        const runtime = runtimeForViewed();
+        if (!runtime) return;
+        const unit = runtime.units().find(item => item.id === unitId);
+        const node = unit && stageNodes(unit.stage.data).find(item => item.id === nodeId);
+        let next = setNodeChecked(runtime.progress(), unitId, nodeId, checked, node ? node.name : '');
+        const hook = checked && viewLive()?.hooks.find(item => item.key === `${unitId}:${nodeId}`);
+        if (hook && hook.steps.length && hook.step >= hook.steps.length) next = patchLive(next, hook, { step: hook.steps.length - 1 });
+        runtime.setProgress(next);
+    }
 
-    async function editStageField(field) {
-        const found = findStage();
-        if (!found) return;
-        if (field === CHANGE_FIELD) {
-            const value = await promptText(deps, { title: field, label: '每行一条，本阶段演完后接在设定后面注入', value: changeLines(found.stage.data).join('\n'), multiline: true, rows: 5 });
-            if (value == null) return;
-            const lines = String(value).split('\n').map(line => line.trim()).filter(Boolean);
-            updateStage(found.stage.id, stage => {
-                const data = { ...stage.data, [field]: lines };
-                if (!lines.length) delete data[field];
-                return { ...stage, data };
-            });
-            rerender();
-            return;
-        }
-        const value = await promptText(deps, { title: field, label: field === '时间范围' ? '时间范围（用来判断何时切到下一段）' : 'AI指令', value: String(found.stage.data?.[field] ?? ''), multiline: field === 'AI指令', rows: 5 });
-        if (value == null) return;
-        updateStage(found.stage.id, stage => ({ ...stage, data: { ...stage.data, [field]: String(value) } }));
+    // 支线钩子：手动激活或退回待触发、支线链换步、恢复过期、标为过期、标记已演。
+    async function hookMenu(key) {
+        const runtime = runtimeForViewed();
+        const live = viewLive();
+        const hook = live?.hooks.find(item => item.key === key);
+        if (!hook) return;
+        const open = hook.status === 'active' || hook.status === 'queue';
+        const items = [
+            ...(hook.status === 'wait' ? [{ label: '标为已激活', value: 'on' }] : []),
+            ...(open && hook.pooled ? [{ label: '退回待触发', value: 'off' }] : []),
+            ...(open && hook.step + 1 < hook.steps.length ? [{ label: '进入下一步', value: 'next' }] : []),
+            ...(open && hook.step > 0 ? [{ label: '回到上一步', value: 'prev' }] : []),
+            ...(hook.status === 'expired' ? [{ label: '恢复', value: 'restore' }] : []),
+            ...(open && hook.limit ? [{ label: '标为过期', value: 'expire' }] : []),
+            { label: hook.status === 'done' ? '恢复未演' : '标记已演', value: hook.status === 'done' ? 'unplay' : 'played' },
+        ];
+        const pick = await pickAction(deps, { title: hook.carried ? `${hook.node.name}（来自${stageLabel(hook.unit.stage.key)}）` : hook.node.name, items });
+        if (!pick) return;
+        if (pick === 'played' || pick === 'unplay') { toggleNode(hook.unit.id, hook.node.id, pick === 'unplay'); rerender(); return; }
+        const floor = Math.max(1, runtime.floorCount());
+        // 恢复：重新计时；条件钩子重新排进注入名额。「本卷」时限从恢复时所在的卷算到卷末。
+        const restore = hook.pooled ? { at: floor, shownAt: undefined } : { since: floor };
+        const patch = {
+            on: { at: floor },
+            off: { at: undefined, shownAt: undefined },
+            next: { step: hook.step + 1 },
+            prev: { step: hook.step - 1 },
+            restore: { expired: undefined, ...restore, keepVol: hook.limit && hook.limit.volume ? live.activeVol : undefined },
+            expire: { expired: true },
+        }[pick];
+        runtime.setProgress(patchLive(runtime.progress(), hook, patch));
         rerender();
     }
 
-    async function editStageRaw() {
-        const found = findStage();
-        if (!found) return;
-        const text = await promptText(deps, { title: '编辑YAML原文', label: '只能有一个阶段', value: stageToText(found.stage), multiline: true, rows: 16 });
-        if (text == null) return;
-        const parsed = parseOutlineText(String(text));
-        const next = parsed[0]?.stages[0];
-        if (!next || parsed.length > 1 || parsed[0].stages.length > 1) throw new Error('原文里只能有一个阶段');
-        updateStage(found.stage.id, stage => ({ ...stage, key: next.key, data: next.data }));
-        rerender();
-    }
-
-    const NODE_KEYS = Object.freeze({ main: ['名称', '地点', '事件', '偏转'], side: ['名称', '地点', '事件', '触发', '偏转'], world: ['类型', '来源', '内容'] });
-    const LONG_KEYS = new Set(['事件', '偏转', '内容', '触发']);
-
-    // 节点编辑弹窗：新增时 index 为 -1。
-    async function editNode(field, index) {
-        const found = findStage();
-        if (!found) return;
-        const meta = NODE_FIELDS.find(item => item.field === field);
-        const list = Array.isArray(found.stage.data?.[field]) ? found.stage.data[field] : [];
-        const raw = index >= 0 ? list[index] : null;
-        const value = raw && typeof raw === 'object' ? raw : raw != null ? { 内容: String(raw) } : {};
-        const keys = [...new Set([...NODE_KEYS[meta.kind], ...Object.keys(value)])];
-        const body = keys.map(key => `<label class="pm-settings-field"><span class="pm-cfg-label">${escapeHtml(key)}</span>${LONG_KEYS.has(key)
-            ? `<textarea class="pm-cfg-input" rows="3" name="${escapeAttr(key)}">${escapeHtml(value[key] ?? '')}</textarea>`
-            : `<input class="pm-cfg-input" name="${escapeAttr(key)}" value="${escapeAttr(value[key] ?? '')}">`}</label>`).join('');
-        const actions = index >= 0 ? [{ label: '删除', value: 'delete' }, { label: '取消', value: 'cancel' }, { label: '保存', value: 'ok', primary: true }] : [{ label: '取消', value: 'cancel' }, { label: '添加', value: 'ok', primary: true }];
-        const read = overlay => Object.fromEntries(keys.map(key => [key, overlay.querySelector(`[name="${CSS.escape(key)}"]`)?.value ?? '']));
-        const result = await openPlotDialog(deps, { title: `${meta.label}节点`, body, actions, read });
-        if (!result) return;
-        if (result.action === 'delete') {
-            if (!confirmAction('删除这个节点？')) return;
-            updateStage(found.stage.id, stage => {
-                const next = stage.data[field].filter((_, i) => i !== index);
-                const data = { ...stage.data, [field]: next };
-                if (!next.length && field !== '主线节点') delete data[field];
-                return { ...stage, data };
-            });
-        } else {
-            updateStage(found.stage.id, stage => {
-                const current = Array.isArray(stage.data[field]) ? [...stage.data[field]] : [];
-                if (index >= 0) current[index] = { ...value, ...result };
-                else current.push(result);
-                return { ...stage, data: { ...stage.data, [field]: current } };
-            });
-        }
+    // 世界进度钟：手动推进、倒退、标记已发生、重置。
+    async function clockMenu(key) {
+        const runtime = runtimeForViewed();
+        const clock = viewLive()?.clocks.find(item => item.key === key);
+        if (!clock) return;
+        const items = clock.done ? [{ label: '重置', value: 'reset' }] : [
+            ...(clock.filled < clock.total ? [{ label: '推进一格', value: 'up' }] : []),
+            ...(clock.filled > 0 ? [{ label: '倒退一格', value: 'down' }] : []),
+            { label: '标记已发生', value: 'done' },
+            { label: '重置', value: 'reset' },
+        ];
+        const pick = await pickAction(deps, { title: `${clock.node.name} ${clock.filled}/${clock.total}`, items });
+        if (!pick) return;
+        const patch = pick === 'reset' ? null : pick === 'done' ? { filled: clock.total, done: true } : { filled: Math.max(0, Math.min(clock.total, clock.filled + (pick === 'up' ? 1 : -1))) };
+        runtime.setProgress(patchLive(runtime.progress(), clock, patch));
         rerender();
     }
     // ---- 点击分发 ----
@@ -596,9 +560,17 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         pace: button => { const runtime = runtimeForViewed(); runtime?.setProgress({ ...runtime.progress(), pace: button.dataset.plotPace }); rerender(); },
         node: button => {
             const runtime = runtimeForViewed();
-            if (!runtime) return;
-            const done = button.getAttribute('aria-pressed') === 'true';
-            runtime.setProgress(setNodeChecked(runtime.progress(), button.dataset.plotUnit, button.dataset.plotNode, done));
+            const unit = runtime?.units().find(item => item.id === button.dataset.plotUnit);
+            if (!unit) return;
+            toggleNode(unit.id, button.dataset.plotNode, offNodes(runtime.progress(), unit).includes(button.dataset.plotNode));
+            rerender();
+        },
+        'hook-menu': button => hookMenu(button.dataset.plotKey),
+        'clock-menu': button => clockMenu(button.dataset.plotKey),
+        'expired-toggle': () => { expiredOpen = !expiredOpen; rerender(); },
+        'thread-switch': button => {
+            const key = button.dataset.plotKey;
+            updateViewed(current => { const sw = threadSwitches(current); return { ...current, threads: { ...sw, [key]: !sw[key] } }; });
             rerender();
         },
         'unit-goto': button => { const runtime = runtimeForViewed(); runtime?.setProgress(goTo(runtime.progress(), runtime.units(), button.dataset.plotUnit)); rerender(); },
@@ -636,72 +608,9 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         'setting-full': editFullSetting,
         'setting-history': settingHistory,
         'setting-import': importSettingFromBooks,
-        'outline-import': async () => { const file = await pickTextFile('.yaml,.yml,.txt'); if (file) importOutlineText(file.text, file.name); },
-        'outline-paste': async () => { const text = await promptText(deps, { title: '粘贴剧情YAML', multiline: true, rows: 14, placeholder: '剧情_卷一_标题:\n  阶段一_标题:\n    时间范围: …' }); if (String(text || '').trim()) importOutlineText(text); },
-        'outline-export': () => downloadText(`${safeFileName(viewed().name)}-大纲.yaml`, outlineToText(viewed().outline.volumes), 'text/yaml'),
-        'outline-ai': aiVolume,
-        'odraft-fix': fixDraft,
-        'odraft-edit': editDraft,
-        'odraft-drop': () => { outlineDraft = null; rerender(); },
-        'odraft-new': () => { if (!draftHere()) return; addVolumes(outlineDraft.volumes); outlineDraft = null; rerender(); },
-        'odraft-append': () => {
-            if (!draftHere()) return;
-            const stages = outlineDraft.volumes.flatMap(volume => volume.stages);
-            updateVolumes(volumes => volumes.map((volume, i) => (i === volumes.length - 1 ? { ...volume, stages: [...volume.stages, ...stages] } : volume)));
-            outlineDraft = null;
-            rerender();
-        },
-        'odraft-rest': () => { if (draftHere()) applyRest(); },
-        'vol-add': () => {
-            const count = viewed().outline.volumes.length;
-            updateVolumes(volumes => [...volumes, { id: makeId('v'), key: `剧情_卷${count + 1}_新卷`, stages: [{ id: makeId('s'), key: '阶段一_新阶段', data: { 时间范围: '', AI指令: '', 主线节点: [] } }] }]);
-            rerender();
-        },
-        'vol-rename': async button => {
-            const volume = findVolume(button.dataset.plotVol);
-            const key = volume && await promptText(deps, { title: '改卷名', label: '格式：剧情_卷X_标题', value: volume.key });
-            if (!String(key || '').trim() || viewed().outline.volumes.some(item => item.key === key.trim() && item.id !== volume.id)) return;
-            updateVolumes(volumes => volumes.map(item => (item.id === volume.id ? { ...item, key: key.trim() } : item)));
-            rerender();
-        },
-        'vol-up': button => { updateVolumes(volumes => moveUp(volumes, volumes.findIndex(volume => volume.id === button.dataset.plotVol))); rerender(); },
-        'vol-del': button => {
-            const volume = findVolume(button.dataset.plotVol);
-            if (!volume || !confirmAction(`删除「${volumeLabel(volume.key)}」？连同 ${volume.stages.length} 个阶段一起删除。`)) return;
-            updateVolumes(volumes => volumes.filter(item => item.id !== volume.id));
-            rerender();
-        },
-        'stage-add': button => {
-            const volume = findVolume(button.dataset.plotVol);
-            if (!volume) return;
-            const stage = { id: makeId('s'), key: `阶段${volume.stages.length + 1}_新阶段`, data: { 时间范围: '', AI指令: '', 主线节点: [] } };
-            updateVolumes(volumes => volumes.map(item => (item.id === volume.id ? { ...item, stages: [...item.stages, stage] } : item)));
-            stageId = stage.id;
-            navigate('stage');
-        },
-        'open-stage': button => { stageId = button.dataset.plotStage; nodeKind = 'main'; navigate('stage'); },
-        'stage-field': button => editStageField(button.dataset.plotField),
-        'stage-rename': async () => {
-            const found = findStage();
-            const key = found && await promptText(deps, { title: '改阶段名', label: '格式：阶段N_标题', value: found.stage.key });
-            if (!String(key || '').trim() || found.volume.stages.some(item => item.key === key.trim() && item.id !== found.stage.id)) return;
-            updateStage(found.stage.id, stage => ({ ...stage, key: key.trim() }));
-            rerender();
-        },
-        'stage-raw': editStageRaw,
-        'stage-up': () => { const found = findStage(); if (found) updateVolumes(volumes => volumes.map(volume => (volume.id === found.volume.id ? { ...volume, stages: moveUp(volume.stages, volume.stages.indexOf(found.stage)) } : volume))); rerender(); },
-        'stage-del': () => {
-            const found = findStage();
-            if (!found || !confirmAction(`删除「${stageLabel(found.stage.key)}」？`)) return;
-            updateVolumes(volumes => volumes.map(volume => (volume.id === found.volume.id ? { ...volume, stages: volume.stages.filter(item => item.id !== found.stage.id) } : volume)));
-            stageId = '';
-            navigate('plot');
-        },
         'stage-goto': () => { const runtime = runtimeForViewed(); if (runtime) runtime.setProgress(goTo(runtime.progress(), runtime.units(), stageId)); rerender(); },
-        'stage-discuss': () => { const found = findStage(); if (found) openAdvisor?.(`讨论「${volumeLabel(found.volume.key)}·${stageLabel(found.stage.key)}」：`); },
-        'node-kind': button => { nodeKind = button.dataset.plotKind; rerender(); },
-        'node-edit': button => editNode(button.dataset.plotField, Number(button.dataset.plotIndex)),
-        'node-add': button => editNode(button.dataset.plotField, -1),
+        'stage-discuss': () => { const found = outline.findStage(); if (found) openAdvisor?.(`讨论「${volumeLabel(found.volume.key)}·${stageLabel(found.stage.key)}」：`); },
+        ...outline.actions,
         'set-every': () => setNumber('checkEvery', '每几楼检测一次', 1, 50),
         'set-floors': () => setNumber('checkFloors', '每次读最近几楼', 1, 20),
         'set-handle': () => setChoice('handleMode', '阶段演完后', [
@@ -713,6 +622,12 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
             { value: 'ask', label: '询问', hint: '弹提示，可填说明后改写后续阶段' },
             { value: 'auto', label: '自动改写后续', hint: '提示里可以撤销' },
             { value: 'off', label: '不检查' },
+        ]),
+        'set-hookcap': () => setNumber('hookCap', '同时注入的激活支线', 1, 6),
+        'set-newthread': () => setChoice('newThreadMode', '正文出现大纲外的新线时', [
+            { value: 'ask', label: '询问', hint: '弹提示，可收录为支线或忽略' },
+            { value: 'auto', label: '自动收录为支线' },
+            { value: 'off', label: '不识别' },
         ]),
         'set-carry': () => { api().data.updateSettings({ carryOver: settings().carryOver === false }); rerender(); },
         'open-api': () => globalThis.window?.__pmShowConfig?.('api'),
@@ -767,7 +682,8 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         sheet = null;
         stageId = '';
         settingDraft = null;
-        outlineDraft = null;
+        outline.reset();
+        expiredOpen = false;
         infinite.reset();
         viewedId = '';
         tab = 'progress';
@@ -778,7 +694,7 @@ export function createStoryPlot(deps, { rerender, navigate, getAdvisorMessages, 
         const id = activeId() || resolveViewedId();
         if (!id) { toast('info', '先在剧情页建一个项目。'); return false; }
         viewedId = id;
-        setOutlineDraft(text);
+        outline.setOutlineDraft(text, 'volume', {}, { all: true });
         navigate('plot');
         return true;
     }

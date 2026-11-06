@@ -19,7 +19,8 @@
 .pm-plot-chip{display:inline-flex;align-items:center;justify-content:center;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-3);border:0;border-radius:var(--pm-radius-pill);background:var(--pm-color-surface);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);cursor:pointer;}
 .pm-plot-chip.is-ink{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
 .pm-plot-chip:disabled,.pm-plot-op:disabled{color:var(--pm-color-text-disabled);cursor:default;}
-.pm-plot-chip.is-ink:disabled,.pm-plot-op.is-ink:disabled{background:var(--pm-color-fill-strong);}
+/* 墨色主按钮禁用：照天音 .pm-action-button:disabled 保留墨色底，只降不透明度，看得出是个按钮 */
+.pm-plot-chip.is-ink:disabled,.pm-plot-op.is-ink:disabled{color:var(--pm-color-on-ink);opacity:var(--pm-opacity-disabled);}
 /* 检测结果提示卡 */
 .pm-plot-notice{display:flex;flex-direction:column;gap:var(--pm-space-1);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-large);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);color:var(--pm-color-label);}
 .pm-plot-notice b{font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);}
@@ -40,12 +41,12 @@
 .pm-plot-tl-item{position:relative;}
 .pm-plot-tl-item::before{content:'';position:absolute;left:calc(var(--pm-space-5) * -1 + var(--pm-space-1));top:var(--pm-space-1-5);width:var(--pm-space-2);height:var(--pm-space-2);border-radius:var(--pm-radius-circle);background:var(--pm-color-fill-strong);}
 .pm-plot-tl-item.is-done::before{background:var(--pm-color-ink);}
-.pm-plot-tl-item.is-active::before{background:var(--pm-color-accent);box-shadow:var(--pm-shadow-segment);}
+.pm-plot-tl-item.is-active::before{background:var(--pm-color-accent);}
 .pm-plot-tl-head{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-sm);}
 .pm-plot-tl-name{flex:1 1 auto;min-width:0;font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
 .pm-plot-tl-item.is-done .pm-plot-tl-name,.pm-plot-tl-item.is-todo .pm-plot-tl-name,.pm-plot-tl-item.is-next .pm-plot-tl-name{color:var(--pm-color-label-2);font-weight:var(--pm-font-weight-regular);}
 .pm-plot-tl-head small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
-.pm-plot-nodes{display:flex;flex-direction:column;gap:var(--pm-space-0-5);margin:var(--pm-space-1) var(--pm-space-0) var(--pm-space-0);padding:var(--pm-space-2) var(--pm-space-3);border-radius:var(--pm-radius-panel);background:var(--pm-color-surface);box-shadow:var(--pm-shadow-card);}
+.pm-plot-nodes{display:flex;flex-direction:column;gap:var(--pm-space-1);margin:var(--pm-space-1) var(--pm-space-0) var(--pm-space-2);padding:var(--pm-space-0);}
 .pm-plot-node{display:flex;align-items:center;gap:var(--pm-space-2);width:100%;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:var(--pm-color-surface);color:var(--pm-color-label);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);text-align:left;cursor:pointer;}
 .pm-plot-node.is-done .pm-plot-node-name{color:var(--pm-color-label-3);}
 .pm-plot-node small{flex:0 0 auto;margin-left:var(--pm-space-auto);color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
@@ -53,6 +54,62 @@
 .pm-plot-check{display:grid;place-items:center;flex:0 0 auto;width:var(--pm-size-icon-md);height:var(--pm-size-icon-md);border-radius:var(--pm-radius-sm);background:var(--pm-color-fill);color:var(--pm-color-on-ink);}
 .pm-plot-node.is-done .pm-plot-check{background:var(--pm-color-ink);}
 .pm-plot-check svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);}
+/* 执行页节点行：类型标签 + 名称 + 行尾「未演/已演」灰字；已演整行变灰、名称划掉 */
+.pm-plot-line{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-sm);color:var(--pm-color-label);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);}
+.pm-plot-line-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pm-plot-line.is-done .pm-plot-line-name{color:var(--pm-color-label-3);text-decoration:line-through;}
+.pm-plot-line.is-quiet .pm-plot-line-name{color:var(--pm-color-label-3);}
+/* 类型标签三档：主线深色实心、支线浅底、世界动态只写灰字 */
+.pm-plot-kind{flex:0 0 auto;padding:var(--pm-space-0) var(--pm-space-1-5);border-radius:var(--pm-radius-sm);font-size:var(--pm-font-size-helper);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);}
+.pm-plot-kind.is-main{background:var(--pm-color-ink);color:var(--pm-color-on-ink);}
+.pm-plot-kind.is-side{background:var(--pm-color-surface);color:var(--pm-color-label-2);}
+.pm-plot-kind.is-world{padding:var(--pm-space-0);background:transparent;color:var(--pm-color-label-3);font-weight:var(--pm-font-weight-regular);}
+.pm-plot-line.is-done .pm-plot-kind.is-main{background:var(--pm-color-fill-strong);}
+/* 行尾状态字：灰色小字按钮；已激活的支线在字前加粉点 */
+.pm-plot-mark{display:inline-flex;align-items:center;gap:var(--pm-space-1);flex:0 0 auto;min-height:var(--pm-size-control-sm);margin-left:var(--pm-space-auto);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);cursor:pointer;}
+.pm-plot-mark.is-dot::before{content:'';width:var(--pm-space-1-5);height:var(--pm-space-1-5);border-radius:var(--pm-radius-circle);background:var(--pm-color-accent);}
+.pm-plot-line-label{margin:var(--pm-space-2) var(--pm-space-0) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);}
+.pm-plot-fold{align-self:flex-start;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);cursor:pointer;}
+/* 世界进度钟：名称、圆点（深色为已填）、k/n */
+.pm-plot-clock{display:flex;align-items:center;gap:var(--pm-space-2);width:100%;min-height:var(--pm-size-control-sm);padding:var(--pm-space-0);border:0;background:transparent;color:var(--pm-color-label);font-size:var(--pm-font-size-compact);line-height:var(--pm-line-height-control);text-align:left;cursor:pointer;}
+.pm-plot-clock small{flex:0 0 auto;min-width:var(--pm-size-control-sm);color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);text-align:right;}
+.pm-plot-clock.is-due small{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-plot-clock.is-done .pm-plot-line-name{color:var(--pm-color-label-3);text-decoration:line-through;}
+.pm-plot-clock.is-done .pm-plot-dots i.is-on{background:var(--pm-color-fill-strong);}
+.pm-plot-clock.is-done .pm-plot-dots i{background:var(--pm-color-fill);}
+.pm-plot-dots{display:inline-flex;flex:0 0 auto;gap:var(--pm-space-0-5);}
+.pm-plot-dots i{width:var(--pm-space-1-5);height:var(--pm-space-1-5);border-radius:var(--pm-radius-circle);background:var(--pm-color-fill-strong);}
+.pm-plot-dots i.is-on{background:var(--pm-color-ink);}
+/* 支线、世界动态开关 */
+.pm-plot-switches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--pm-space-1-5);}
+.pm-plot-switch-cell .pm-custom-check.is-checked{background:var(--pm-color-accent)!important;}
+.pm-plot-switch-cell{display:flex;align-items:center;justify-content:space-between;gap:var(--pm-space-2);min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-3);border-radius:var(--pm-radius-pill);background:var(--pm-color-surface);color:var(--pm-color-label);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);}
+/* 剧情页的分段：选中用主题色实底（同日历页签与开关开启色），不用浅粉块 */
+.pm-plot-tab .pm-story-oracle-segment.is-selected{background:var(--pm-color-accent);color:var(--pm-color-on-accent);}
+/* 大纲页面板切换：四项一行 */
+.pm-plot-panels{grid-template-columns:repeat(4,minmax(0,1fr));}
+/* 大纲页：历史版本、总览、多卷草稿、节点编辑里的玩法区 */
+.pm-plot-rows>.pm-plot-hist{display:flex;flex-direction:column;align-items:stretch;gap:var(--pm-space-1);padding:var(--pm-space-1) var(--pm-space-0);}
+.pm-plot-hist .pm-plot-pre{max-height:40vh;overflow-y:auto;}
+.pm-plot-hist-head{display:flex;align-items:center;gap:var(--pm-space-1-5);min-height:var(--pm-size-control-lg);}
+.pm-plot-hist .pm-plot-chip:not(.is-ink){background:var(--pm-color-fill);}
+.pm-plot-ov.is-done b{color:var(--pm-color-label-2);font-weight:var(--pm-font-weight-regular);}
+/* 多卷草稿：白卡里每卷一行，细分隔；状态字灰色，格式错误的卷用正文色加粗并展开说明与操作 */
+.pm-plot-multi{display:flex;flex-direction:column;margin:var(--pm-space-0);padding:var(--pm-space-0);list-style:none;}
+.pm-plot-multi-row{display:flex;flex-direction:column;gap:var(--pm-space-1-5);padding:var(--pm-space-1-5) var(--pm-space-0);color:var(--pm-color-label);}
+.pm-plot-multi-head{display:flex;align-items:center;gap:var(--pm-space-2);min-height:var(--pm-size-control-sm);}
+.pm-plot-multi-head>b{flex:1 1 auto;min-width:0;font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-medium);line-height:var(--pm-line-height-control);}
+.pm-plot-multi-head>small{flex:0 0 auto;color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);}
+.pm-plot-multi-row.is-error .pm-plot-multi-head>small{color:var(--pm-color-label);font-weight:var(--pm-font-weight-semibold);}
+.pm-plot-multi-head>small.is-live{color:var(--pm-color-accent);}
+.pm-plot-multi-card .pm-plot-chip:not(.is-ink){background:var(--pm-color-fill);}
+.pm-plot-multi-row.is-pending .pm-plot-multi-head>b{color:var(--pm-color-label-3);}
+.pm-plot-err{margin:var(--pm-space-0);color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);}
+.pm-plot-err-detail summary{color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-control);cursor:pointer;}
+.pm-plot-err-detail p{margin:var(--pm-space-1) var(--pm-space-0) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);white-space:pre-wrap;overflow-wrap:anywhere;-webkit-line-clamp:unset;}
+.pm-plot-play{display:flex;flex-direction:column;gap:var(--pm-space-2);}
+.pm-plot-play>.pm-settings-field{margin-top:var(--pm-space-2);}
+.pm-plot-play summary{color:var(--pm-color-label-2);font-size:var(--pm-font-size-label);font-weight:var(--pm-font-weight-semibold);line-height:var(--pm-line-height-control);cursor:pointer;}
 /* 一行三个操作键 */
 .pm-plot-ops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--pm-space-1-5);}
 .pm-plot-ops.is-four{grid-template-columns:repeat(2,minmax(0,1fr));}

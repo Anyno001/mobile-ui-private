@@ -81,10 +81,10 @@ export function parseSettingReply(text) {
     return { body, fixes, check: verdict ? verdict[1].toUpperCase() : '' };
 }
 
-export function pushHistory(history, text, limit = 10, now = Date.now()) {
+export function pushHistory(history, text, limit = 10, now = Date.now(), label = '') {
     const list = Array.isArray(history) ? history : [];
     if (list.length && list[0].text === text) return list;
-    return [{ at: now, text }, ...list].slice(0, limit);
+    return [{ at: now, text, ...(label ? { label } : {}) }, ...list].slice(0, limit);
 }
 
 export function diffLines(a, b) {

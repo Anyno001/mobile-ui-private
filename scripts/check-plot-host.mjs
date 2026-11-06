@@ -239,6 +239,151 @@ await check('检测接口失败自动重试 3 次，仍失败弹提示，不抛�
     await plot.destroy();
 });
 
+// v0.1.24 运行层：检测带进度钟与支线钩子并合并结果、失败只记 lastFailFloor、新线询问收录、读进度时按对照表归位、开关遮罩。
+const THREAD_OUTLINE = {
+    剧情_卷一_测试: {
+        阶段一_开端: {
+            时间范围: '开始时',
+            主线节点: [{ 名称: '甲事件', 事件: '甲发生。' }],
+            支线事件: [{ 名称: '酒馆密谈', 事件: '陌生人约谈。', 条件: '主角到过酒馆' }],
+            世界动态: [{ 类型: '山匪逼近', 内容: '山匪袭击村庄。', 进度钟: 4, 后果: '村庄被洗劫。' }],
+        },
+        阶段二_发展: { 时间范围: '之后', 主线节点: [{ 名称: '乙事件', 事件: '乙发生。' }] },
+    },
+};
+
+async function withThreads(plot) {
+    const { data, runtime } = plot.getPlotApi();
+    const project = await data.createProject('钩子线');
+    data.saveProject({ ...project, outline: { ...project.outline, volumes: volumesFromValue(THREAD_OUTLINE) } });
+    await runtime.switchProject(project.id);
+    return project;
+}
+
+await check('检测提示带进度钟与支线钩子，结果按 applyCheck 合并：钟推进、钩子激活', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    await withThreads(plot);
+    const { runtime } = plot.getPlotApi();
+    world.setReply(() => '{"done":[],"stageDone":false,"clocks":[{"name":"山匪逼近","tick":2}],"hooks":["酒馆密谈"],"newThread":null,"reason":"推进"}');
+    world.context.chat.push({ mes: '主角走进酒馆。', is_user: false });
+    await runtime.checkNow({ manual: true });
+    assert.match(world.aiCalls[0].system, /"clocks"/);
+    assert.match(world.aiCalls[0].user, /【世界进度钟】/);
+    assert.match(world.aiCalls[0].user, /【支线钩子】/);
+    const threads = runtime.progress().threads;
+    const clock = Object.values(threads.clocks)[0];
+    const hook = Object.values(threads.hooks)[0];
+    assert.equal(clock.filled, 2);
+    assert.equal(hook.at, 1, '条件钩子在检测时的楼数激活');
+    assert.ok(runtime.diagnose().logs.some(item => /进度钟「山匪逼近」推进到 2\/4/.test(item.text)));
+    const lore = await loreNow(world);
+    assert.match(lore[0].content, /酒馆密谈/, '激活的支线写进当前阶段条目');
+    assert.doesNotMatch(lore[0].content, /进度钟: 4/, '带新键的节点不原样写进阶段 YAML');
+    await plot.destroy();
+});
+
+await check('检测失败只记 lastFailFloor，不动 lastCheckFloor；之后按两者较大值计间隔，成功后删掉', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    await withProject(plot);
+    const { runtime } = plot.getPlotApi();
+    world.setReply(() => { throw new Error('接口挂了'); });
+    world.context.chat.push({ mes: '一', is_user: false }, { mes: '二', is_user: true }, { mes: '三', is_user: false });
+    await world.eventSource.emit('msg_received', 2);
+    await tick(6500);
+    assert.equal(runtime.progress().lastCheckFloor, 0);
+    assert.equal(runtime.progress().lastFailFloor, 3);
+    const calls = world.aiCalls.length;
+    world.context.chat.push({ mes: '四', is_user: false });
+    await world.eventSource.emit('msg_received', 3);
+    await tick(10);
+    assert.equal(world.aiCalls.length, calls, '失败后照样隔 N 楼再试');
+    world.setReply(() => '{"done":[],"stageDone":false,"reason":"无"}');
+    await runtime.checkNow({ manual: true });
+    assert.equal(runtime.progress().lastCheckFloor, 4);
+    assert.ok(!('lastFailFloor' in runtime.progress()));
+    world.context.chat.splice(2);
+    await world.eventSource.emit('msg_deleted');
+    assert.equal(runtime.progress().lastCheckFloor, 2, '删楼后夹到现有楼数');
+    await plot.destroy();
+});
+
+await check('正文开了大纲外的新线：询问模式弹提示卡，收录后进当前阶段支线并入大纲历史；忽略后不再提', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    const project = await withProject(plot);
+    const { data, runtime } = plot.getPlotApi();
+    const shown = [];
+    plot.notice.subscribe(list => shown.splice(0, shown.length, ...list));
+    world.setReply(() => '{"done":[],"stageDone":false,"newThread":{"name":"追查玉佩","summary":"主角决定追查玉佩来历"},"reason":"无"}');
+    world.context.chat.push({ mes: '主角捡起玉佩。', is_user: false });
+    await runtime.checkNow({ manual: true });
+    const card = shown.find(item => item.id === 'thread');
+    assert.ok(card, '弹出新线提示');
+    card.actions[0].run();
+    const after = data.project(project.id);
+    assert.ok(after.outline.volumes[0].stages[0].data.支线事件.some(node => node.名称 === '追查玉佩' && node.来源 === '玩家'));
+    assert.equal(after.outline.history[0].label, '收录支线');
+    world.setReply(() => '{"done":[],"stageDone":false,"newThread":{"name":"另一条线"},"reason":"无"}');
+    shown.splice(0);
+    await runtime.checkNow({ manual: true });
+    shown.find(item => item.id === 'thread').actions[1].run();
+    assert.deepEqual(runtime.progress().threads.ignored, ['另一条线']);
+    shown.splice(0);
+    await runtime.checkNow({ manual: true });
+    assert.ok(!shown.some(item => item.id === 'thread'), '忽略过的线不再提示');
+    data.updateSettings({ newThreadMode: 'off' });
+    world.setReply(() => '{"done":[],"stageDone":false,"newThread":{"name":"第三条线"},"reason":"无"}');
+    await runtime.checkNow({ manual: true });
+    assert.doesNotMatch(world.aiCalls[world.aiCalls.length - 1].system, /newThread/, '不识别时提示里不要 newThread');
+    await plot.destroy();
+});
+
+await check('读进度时按大纲对照表归位：别的聊天合并过阶段（阶段 id 别名），本聊天的 current 跟过去并写回', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    const project = await withProject(plot);
+    const { data, runtime } = plot.getPlotApi();
+    const [first, second] = data.project(project.id).outline.volumes[0].stages;
+    world.context.chatMetadata.plotInjector.byProject[project.id] = { projectId: project.id, current: second.id, slots: {}, muted: [], offMuted: [], lastCheckFloor: 0, pace: 'normal' };
+    await world.eventSource.emit('chat_changed');
+    data.updateProject(project.id, current => ({ ...current, outline: { ...current.outline, volumes: [{ ...current.outline.volumes[0], stages: [first] }], idAlias: { [second.id]: first.id } } }));
+    assert.equal(runtime.progress().current, first.id);
+    assert.equal(world.context.chatMetadata.plotInjector.byProject[project.id].current, first.id, '归位结果写回聊天');
+    await plot.destroy();
+});
+
+await check('支线、世界动态按项目关闭：注入与检测都看不到这一类，大纲原样保留', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    const project = await withThreads(plot);
+    const { data, runtime } = plot.getPlotApi();
+    data.updateProject(project.id, current => ({ ...current, threads: { sideOn: false, worldOn: false } }));
+    world.setReply(() => '{"done":[],"stageDone":false,"reason":"无"}');
+    world.context.chat.push({ mes: '一', is_user: false });
+    await runtime.checkNow({ manual: true });
+    assert.doesNotMatch(world.aiCalls[0].user, /酒馆密谈|山匪逼近/);
+    assert.doesNotMatch(world.aiCalls[0].system, /"clocks"|"hooks"|newThread/);
+    assert.doesNotMatch((await loreNow(world))[0].content, /酒馆密谈|山匪逼近/);
+    assert.ok(data.project(project.id).outline.volumes[0].stages[0].data.支线事件.length);
+    await plot.destroy();
+});
+
+await check('改写后续阶段：改写前的大纲入历史版本', async () => {
+    const world = makeWorld();
+    const plot = await boot(world);
+    const project = await withProject(plot);
+    const { data, runtime } = plot.getPlotApi();
+    world.setReply(() => `\`\`\`yaml\n${JSON.stringify({ 剧情_卷一_测试: { 阶段一_改写: { 时间范围: '现在', 主线节点: [{ 名称: '丙事件' }] } } })}\n\`\`\``);
+    world.context.chat.push({ mes: '一', is_user: false });
+    await runtime.rewriteRest('偏了');
+    const after = data.project(project.id);
+    assert.equal(after.outline.history[0].label, '偏离改写');
+    assert.equal(runtime.units()[0].stage.key, '阶段一_改写');
+    await plot.destroy();
+});
+
 await check('destroy 解绑全部酒馆监听', async () => {
     const world = makeWorld();
     const plot = await boot(world);

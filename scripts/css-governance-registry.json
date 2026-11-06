@@ -1247,6 +1247,7 @@
     "styles/overrides.css::root::.pm-sub-overlay::position::fixed !important",
     "styles/overrides.css::root::.pm-sub-overlay::width::100vw !important",
     "styles/overrides.css::root::.pm-sub-overlay::z-index::var(--pm-z-host) !important",
+    "styles/plot.css::root::.pm-plot-switch-cell .pm-custom-check.is-checked::background::var(--pm-color-accent) !important",
     "styles/today-trend.css::root::.pm-today-trend-error::color::var(--pm-color-danger) !important",
     "styles/core.css::root::.pm-name-edit:hover::color::var(--pm-color-label-2) !important",
     "styles/core.css::root::.pm-nav-btn::color::var(--pm-color-label-3) !important",
