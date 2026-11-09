@@ -219,7 +219,7 @@ const settings = (mode, body) => `<div class="pm-calendar-management" data-calen
 export function renderCalendarManagement({
     scope, holidayCache, weatherStore, cycleScope, recipeScope, weatherResults, viewMode,
     holidayAvailable = true, holidayRange = null, cycleSubjects = [], selectedCycleSubject = '__self__',
-    outfitProfile = {}, outfitSubjects = [], selectedOutfitSubject = '',
+    outfitProfile = {}, outfitSubjects = [], selectedOutfitSubject = '', worldBooks = [],
 }) {
     if (viewMode === 'outfit') {
         const subjects = outfitSubjects.length ? outfitSubjects : [{ value: '__self__', label: '我' }];
@@ -270,9 +270,17 @@ export function renderCalendarManagement({
               <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-cycle-clear">清除所选对象</button><button type="button" class="is-primary" data-action="calendar-cycle-save">保存生理期</button></div>
             </form>`)}`);
     }
+    const selectedBooks = scope.batchWorldBooks || [];
+    const bookNames = [...new Set([...worldBooks, ...selectedBooks])];
+    const bookChip = (attrs, label, checked) => `<label class="pm-calendar-batch-chip"><input type="checkbox" ${attrs} ${checked ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`;
+    const worldBookPicker = `<h4 class="pm-calendar-batch-subtitle">世界书</h4>${bookNames.length
+        ? `<div class="pm-calendar-batch-chips">${bookNames.map(name => bookChip(`data-action="calendar-batch-worldbook-book" value="${escapeAttr(name)}"`, name, selectedBooks.includes(name))).join('')}</div>`
+        : '<p class="pm-calendar-setting-hint">当前聊天没有可读取的世界书。</p>'}
+        ${selectedBooks.length ? `<div class="pm-calendar-batch-chips">${bookChip('data-action="calendar-batch-worldbook-auto"', '同时读取自动触发的条目', scope.batchAutoWorldBooks === true)}</div>` : ''}
+        <small class="pm-calendar-attribution">${selectedBooks.length ? '生成日程时读取所选世界书的全部条目。' : '未选择时按聊天内容自动触发世界书。'}</small>`;
     return settings('schedule', `${group('注入', injectionToggle('calendar-toggle-schedule-injection', '日程注入', scope.injectionScheduleEnabled))}
         ${group('正文日期', `<button type="button" class="pm-calendar-auto-switch" data-action="calendar-toggle-auto" role="switch" aria-checked="${scope.autoAdjust}"><span><b>自动跟随正文日期</b><small>角色回复后，日历日期会随正文更新。</small></span><i aria-hidden="true"></i></button><p class="pm-calendar-setting-hint">识别最后一条正文中标签内的日期与时间，并设为当前故事日期。标签可层层包裹，例如填写 time_bar 即可读取其中的 date 与 time。</p><div class="pm-calendar-data-row pm-calendar-date-tags-row"><input data-calendar-date-tags value="${escapeAttr((scope.dateTags || ['date']).join(', '))}" maxlength="160" placeholder="date, time_bar" aria-label="正文日期标签"><button type="button" class="is-primary" data-action="calendar-date-sync">保存并识别</button></div>`, ' pm-calendar-scan-card')}
-        ${group('数据来源', `<div class="pm-calendar-database-card"><span class="pm-calendar-setting-hint">选择生成日程时可参考的数据库记忆栏目。</span><button type="button" data-action="calendar-worldbook-columns" aria-label="选择日历可读取的数据库记忆栏目">选择栏目</button></div><div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}`)}
+        ${group('数据来源', `<div class="pm-calendar-database-card"><span class="pm-calendar-setting-hint">选择生成日程时可参考的数据库记忆栏目。</span><button type="button" data-action="calendar-worldbook-columns" aria-label="选择日历可读取的数据库记忆栏目">选择栏目</button></div>${worldBookPicker}<div class="pm-calendar-data-row pm-calendar-holiday-row"><select data-action="calendar-holiday-country" data-calendar-country aria-label="节假日国家"><option value="CN" ${holidayCache.selectedCountry === 'CN' ? 'selected' : ''}>中国</option><option value="US" ${holidayCache.selectedCountry === 'US' ? 'selected' : ''}>美国</option><option value="JP" ${holidayCache.selectedCountry === 'JP' ? 'selected' : ''}>日本</option></select><button type="button" data-action="calendar-holiday-refresh" ${holidayAvailable ? '' : 'disabled aria-disabled="true"'}>刷新节假日</button></div>${holidayAvailable ? '' : `<small class="pm-calendar-attribution">该国家在当前年代无外部数据源（仅支持 ${holidayRange?.min ?? '未知'}–${holidayRange?.max ?? '未知'} 年）</small>`}`)}
         ${group('生成规则', ruleEditor('data-calendar-generation-rule', '日程生成规则', scope.generationRule || DEFAULT_CALENDAR_GENERATION_RULE, 'calendar-generation-rule-save'))}`);
 }
 

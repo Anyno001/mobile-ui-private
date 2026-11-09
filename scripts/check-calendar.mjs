@@ -1341,13 +1341,14 @@ assert.doesNotMatch(renderedSchedule, /storyInitialDate|calendar-story-initial|�
     '月份面板不得保留无业务作用的故事初始日期入口');
 assert.doesNotMatch(renderedSchedule, /calendar-date-rescan/);
 assert.doesNotMatch(renderedSchedule, /calendar-base-edit|pm-calendar-base-dialog/);
-assert.match(renderedSchedule, /class="pm-calendar-primary-action" data-action="calendar-generate"[^>]*>[\s\S]*?M12 3l1\.2 3\.8L17 8[\s\S]*?<span>AI生成未来七日日程<\/span>/);
+assert.match(renderedSchedule, /class="pm-calendar-primary-action" data-action="calendar-batch-open"[^>]*>[\s\S]*?M12 3l1\.2 3\.8L17 8[\s\S]*?<span>安排日程<\/span>/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-generate"/, '日程模式只保留「安排日程」入口');
 assert.match(renderedSchedule, /class="pm-calendar-status" aria-live="polite">&lt;status&gt;<\/div>/);
-assert.match(renderedBusySchedule, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
+assert.match(renderedBusySchedule, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
     '生成中仅日程模式的生成按钮应保持 busy');
-assert.match(renderedBusySchedule, /data-action="calendar-generate"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+assert.match(renderedBusySchedule, /data-action="calendar-batch-open"[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     'AI 日程生成必须使用星光 SVG');
-assert.doesNotMatch(renderedBusySchedule, /data-action="calendar-generate"[\s\S]*?M23 4v6h-6/);
+assert.doesNotMatch(renderedBusySchedule, /data-action="calendar-batch-open"[\s\S]*?M23 4v6h-6/);
 assert.match(renderedBusySchedule, /class="pm-calendar-status is-generating" aria-live="polite">/,
     '生成中状态必须使用独立样式类');
 assert.match(renderedBusyWeather, /class="pm-calendar-primary-action is-loading" data-action="calendar-weather-refresh" aria-busy="true" disabled/,
@@ -1389,7 +1390,7 @@ assert.match(renderedScheduleMenu, /aria-expanded="true"[\s\S]*?class="pm-calend
     '展开后必须在卡片内给出编辑与删除');
 assert.match(renderedRegeneratingSchedule, /class="pm-calendar-round pm-calendar-inline-regenerate is-loading" data-action="calendar-regenerate"[^>]*aria-busy="true" disabled/,
     '当日日程重新生成期间，详情刷新按钮必须旋转并禁用');
-assert.match(renderedRegeneratingSchedule, /class="pm-calendar-primary-action is-loading" data-action="calendar-generate" aria-busy="true" disabled>[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+assert.match(renderedRegeneratingSchedule, /class="pm-calendar-primary-action is-loading" data-action="calendar-batch-open" aria-busy="true" disabled>[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     '详情重新生成不得改变底部生成按钮的 busy 行为');
 assert.doesNotMatch(renderedSchedule, /pm-calendar-inline-regenerate is-loading/,
     '未生成时详情刷新按钮不得错误旋转');
@@ -1502,7 +1503,7 @@ assert.deepEqual(entryTitleFocusOptions, { preventScroll: true }, '主动新增�
 assert.doesNotMatch(renderedSchedule, /20°\/30°C|生理期提示|data-calendar-management="weather"|data-calendar-management="cycle"/);
 assert.match(renderedWeather, /data-calendar-view-mode="weather"/);
 assert.match(renderedWeather, /class="pm-calendar-primary-action" data-action="calendar-weather-refresh"[^>]*>[\s\S]*?<span>刷新天气<\/span>/);
-assert.doesNotMatch(renderedWeather, /data-action="calendar-generate"/);
+assert.doesNotMatch(renderedWeather, /data-action="calendar-batch-open"/);
 assert.match(settingsWeather, /data-calendar-management="weather"/);
 assert.match(renderedWeather, /data-action="calendar-mode-weather"[^>]*aria-pressed="true"/);
 assert.match(renderedWeather, /aria-label="[^"]*少云 30°/);
@@ -1586,7 +1587,7 @@ assert.doesNotMatch(renderedRecipe, /不会把天气城市当作文化身份|奥
 assert.doesNotMatch(renderedRecipe, /菜谱模式尚未启用|菜谱存储、生成与注入协议尚未启用/);
 assert.doesNotMatch(renderedRecipe, /&lt;日程&gt;|&lt;备注&gt;/,
     '菜谱详情不得读取普通 calendar scope.events');
-assert.doesNotMatch(renderedRecipe, /data-action="calendar-generate"|data-action="calendar-weather-refresh"|&lt;日程&gt;|&lt;Holiday&gt;/);
+assert.doesNotMatch(renderedRecipe, /data-action="calendar-batch-open"|data-action="calendar-weather-refresh"|&lt;日程&gt;|&lt;Holiday&gt;/);
 assert.match(renderedOutfit, /data-calendar-view-mode="outfit"/);
 assert.match(renderedOutfit, /记录对象：&lt;user&gt;/, '穿搭选中用户本人时副标题必须标出记录对象');
 assert.match(renderedOutfit, /class="pm-calendar-card-subject">&lt;user&gt;<\/span>/, '用户本人的穿搭卡片必须带对象标签');
@@ -1684,7 +1685,7 @@ assert.doesNotMatch(terminalSchedule, /is-placeholder[^>]*(?:data-action|data-ca
     '占位格不得携带选择动作或日期数据');
 assert.match(terminalSchedule, /data-action="calendar-next-month"[^>]*disabled/,
     '9999 年 12 月必须禁用下个月按钮');
-assert.match(terminalSchedule, /<span>AI生成9999-12-31 当日日程<\/span>/);
+assert.match(terminalSchedule, /<span>安排日程<\/span>/);
 assert.doesNotMatch(terminalSchedule, /生成未来七日日程|10000-01-01/);
 const terminalSettings = renderCalendarPageHtml(
     { ...createEmptyCalendarScope(), baseDate: '9999-12-31' }, { occasions: [] }, '', {}, {}, {}, [],
@@ -3498,7 +3499,7 @@ try {
     assert.match(container.innerHTML, /data-action="calendar-mode-schedule"[^>]*aria-pressed="true"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-weather"[^>]*aria-pressed="false"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-cycle"[^>]*aria-pressed="false"/);
-    assert.match(container.innerHTML, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
+    assert.match(container.innerHTML, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
         '日程生成 pending 时生成按钮必须保持 busy');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-weather' } }, app);
     assert.match(container.innerHTML, /data-calendar-view-mode="weather"/);
@@ -3513,14 +3514,14 @@ try {
     assert.match(container.innerHTML, /data-action="calendar-mode-schedule"[^>]*aria-pressed="false"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-weather"[^>]*aria-pressed="false"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-cycle"[^>]*aria-pressed="true"/);
-    assert.doesNotMatch(container.innerHTML, /pm-calendar-header-action|data-action="calendar-generate"|data-action="calendar-weather-refresh"/,
+    assert.doesNotMatch(container.innerHTML, /pm-calendar-header-action|data-action="calendar-batch-open"|data-action="calendar-weather-refresh"/,
         '周期模式不得渲染日程或天气 header action');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-schedule' } }, app);
     assert.match(container.innerHTML, /data-calendar-view-mode="schedule"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-schedule"[^>]*aria-pressed="true"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-weather"[^>]*aria-pressed="false"/);
     assert.match(container.innerHTML, /data-action="calendar-mode-cycle"[^>]*aria-pressed="false"/);
-    assert.match(container.innerHTML, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
+    assert.match(container.innerHTML, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
         'pending 期间返回日程模式后生成按钮必须恢复 busy 展示');
     await deps.handleCalendarAction({ dataset: { action: 'calendar-mode-weather' } }, app);
     assert.match(container.innerHTML, /data-calendar-view-mode="weather"/);
@@ -3666,20 +3667,20 @@ try {
     assert.equal(overlappingOptions[0].signal.aborted, true);
     const newGeneratePromise = deps.handleCalendarAction({ dataset: { action: 'calendar-generate' } }, app);
     await overlappingStarts[1].promise;
-    assert.match(container.innerHTML, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
+    assert.match(container.innerHTML, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
         '新生成任务接管后必须保持 busy');
     overlappingResponses[0].resolve('{"version":1,"kind":"calendar_events","events":[]}');
     await oldGeneratePromise;
-    assert.match(container.innerHTML, /data-action="calendar-generate"[^>]*aria-busy="true"[^>]*disabled/,
+    assert.match(container.innerHTML, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
         '旧任务迟到 finally 不得清除新任务 busy');
     assert.equal(overlappingOptions[1].signal.aborted, false, '旧任务结束不得取消新任务');
     deps.cancelCalendarTasks('cancel-new-generation');
     assert.equal(overlappingOptions[1].signal.aborted, true);
     overlappingResponses[1].resolve('{"version":1,"kind":"calendar_events","events":[]}');
     await newGeneratePromise;
-    assert.match(container.innerHTML, /data-action="calendar-generate"[^>]*aria-busy="false"/,
+    assert.match(container.innerHTML, /data-action="calendar-batch-open"[^>]*aria-busy="false"/,
         '当前任务取消后必须恢复非 busy');
-    assert.doesNotMatch(container.innerHTML, /data-action="calendar-generate"[^>]*disabled/,
+    assert.doesNotMatch(container.innerHTML, /data-action="calendar-batch-open"[^>]*disabled/,
         '当前任务取消后生成按钮必须恢复可用');
     assert.equal(statusNode.textContent, stableStatusBeforeOverlap, '新任务取消不得恢复已失效旧任务的 pending 文案');
     assert.doesNotMatch(statusNode.textContent, /正在生成/);

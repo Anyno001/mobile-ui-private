@@ -14,6 +14,21 @@ const ruleFromOccasion = occasion => ({
 const isBatchRule = occasion => Boolean(occasion.repeat) && occasion.repeat !== 'yearly';
 const all = (root, selector) => [...(root?.querySelectorAll?.(selector) || [])];
 
+/**
+ * 日程生成的资料：读日历设置「数据来源」中的世界书。未选世界书时保持原行为（按聊天自动触发）；
+ * 选了世界书时读取所选的全部条目，勾选自动触发时再并入按聊天触发的条目。
+ */
+export async function gatherScheduleContext(gatherContext, scope, { signal, worldBookMaxChars = 12000 } = {}) {
+    const books = Array.isArray(scope?.batchWorldBooks) ? scope.batchWorldBooks : [];
+    if (!books.length) return gatherContext(null, { module: 'calendar', signal, worldBookMaxChars });
+    const selected = await gatherContext(null, {
+        module: 'calendar', signal, includeWorldBook: true, worldBookMaxChars, worldBookNames: books, worldBookActivationMode: 'selected',
+    });
+    if (scope.batchAutoWorldBooks !== true || signal?.aborted) return selected;
+    const auto = await gatherContext(null, { module: 'calendar', signal, worldBookMaxChars });
+    return { ...auto, worldBookText: [selected?.worldBookText, auto?.worldBookText].filter(Boolean).join('\n\n') };
+}
+
 export function createCalendarBatchController({
     state, tasks, getScope, getOccasions, commitScope, commitOccasions, gatherContext, callAI, status, errorStatus, rerender,
     getCtx, confirmImpl,
@@ -25,16 +40,11 @@ export function createCalendarBatchController({
     const savedText = (storageId, date) => formatBatchDayText(getScope(storageId).events[date] || []);
     const dayText = (storageId, batch, date) => batch.drafts[date]?.text ?? savedText(storageId, date);
     const weekDirty = (storageId, batch) => weekDates(batch).some(date => batch.drafts[date] && batch.drafts[date].text !== savedText(storageId, date));
-    const availableBooks = () => {
-        try { return getReadableWorldBookNames(getCtx?.(), globalThis.window?.__pmWorldBookConfig); } catch (error) { return []; }
-    };
 
     const open = storageId => {
         const reference = formatCalendarDate(calendarReferenceDate(getScope(storageId)));
-        const scope = getScope(storageId);
         sessions.set(storageId, {
             start: reference, drafts: {}, ruleDrafts: new Map(), adding: false, importPreview: null,
-            selectedBooks: scope.batchWorldBooks ? [...scope.batchWorldBooks] : null, autoBooks: scope.batchAutoWorldBooks === true,
             rangeMode: 'week', customStart: reference, customEnd: calendarDateRangeKeys(reference, 13, 13)[0], plan: '',
             generationTask: null, importTask: null,
         });
@@ -59,10 +69,6 @@ export function createCalendarBatchController({
                 seasonOnly: read('seasonOnly')?.checked === true, note: read('note')?.value || '',
             });
         }
-        const books = all(app, '[data-batch-book]');
-        if (books.length) batch.selectedBooks = books.filter(item => item.checked).map(item => item.value);
-        const auto = app.querySelector?.('[data-batch-auto-books]');
-        if (auto) batch.autoBooks = auto.checked === true;
         const plan = app.querySelector?.('[data-batch-plan]');
         if (plan) batch.plan = plan.value;
         const range = app.querySelector?.('[data-batch-range]');
@@ -75,7 +81,8 @@ export function createCalendarBatchController({
             if (item) item.checked = box.checked === true;
         }
         const seasonStart = app.querySelector?.('[data-batch-season-start]'), seasonWeeks = app.querySelector?.('[data-batch-season-weeks]');
-        if (seasonStart || seasonWeeks) batch.seasonDraft = { start: seasonStart?.value || '', weeks: Number(seasonWeeks?.value) || '' };
+        const seasonName = app.querySelector?.('[data-batch-season-name]');
+        if (seasonStart || seasonWeeks) batch.seasonDraft = { start: seasonStart?.value || '', weeks: Number(seasonWeeks?.value) || '', name: seasonName?.value || '' };
     };
     const currentApp = () => state.phoneWindow?.querySelector?.('#pm-calendar-app');
     const refresh = storageId => { capture(storageId, currentApp()); rerender(storageId); };
@@ -91,15 +98,13 @@ export function createCalendarBatchController({
             if (!fixedByDate.has(item.date)) fixedByDate.set(item.date, []);
             fixedByDate.get(item.date).push({ ...item, skipped: Boolean(original?.excludedDates?.includes(item.date)) });
         }
-        const books = availableBooks();
-        const selectedBooks = batch.selectedBooks || [];
         const rules = occasionScope.occasions.filter(isBatchRule).map(occasion => ({ id: occasion.id, rule: batch.ruleDrafts.get(occasion.id) || ruleFromOccasion(occasion) }));
         if (batch.adding) rules.push({ id: 'new', rule: batch.ruleDrafts.get('new') || { title: '', time: '', repeat: 'weekly', weekdays: [], intervalDays: 1, start: batch.start, seasonOnly: false, note: '' } });
         return {
             start: batch.start, dates, reference: calendarReferenceDate(scope), texts: Object.fromEntries(dates.map(date => [date, dayText(storageId, batch, date)])),
             fixedByDate, rules, adding: batch.adding, season: occasionScope.season || null, seasonDraft: batch.seasonDraft || null,
-            books: [...new Set([...books, ...selectedBooks])], selectedBooks, importPreview: batch.importPreview, importing: Boolean(batch.importTask),
-            rangeMode: batch.rangeMode, customStart: batch.customStart, customEnd: batch.customEnd, autoBooks: batch.autoBooks, plan: batch.plan,
+            books: scope.batchWorldBooks || [], importPreview: batch.importPreview, importing: Boolean(batch.importTask),
+            rangeMode: batch.rangeMode, customStart: batch.customStart, customEnd: batch.customEnd, plan: batch.plan,
             generating: Boolean(batch.generationTask), busy: Boolean(batch.generationTask || batch.importTask),
         };
     };
@@ -107,18 +112,14 @@ export function createCalendarBatchController({
     const switchWeek = (storageId, nextStart) => {
         const batch = session(storageId);
         if (!parseCalendarDate(nextStart) || nextStart === batch.start) return false;
-        if (weekDirty(storageId, batch) && !confirmAction('这七天的改动尚未保存，草稿会暂时保留。是否切换？')) return false;
+        if (weekDirty(storageId, batch) && !confirmAction('本周安排的改动尚未保存，草稿会暂时保留。是否切换？')) return false;
         batch.start = nextStart;
         return true;
     };
 
-    const saveBooks = (storageId, batch) => commitScope(storageId, current => ({
-        ...current, batchWorldBooks: batch.selectedBooks || [], batchAutoWorldBooks: batch.autoBooks === true,
-    }), null, { refreshInjection: false });
-
     const readRule = draft => {
         const title = String(draft.title || '').trim();
-        if (!title) throw new Error('固定节目标题不能为空');
+        if (!title) throw new Error('重复日程标题不能为空');
         const timeText = String(draft.timeText ?? draft.time ?? '').trim();
         const time = timeText ? parseCalendarTimeInput(timeText) : '';
         if (timeText && !time) throw new Error('时间格式无效，可填写20:00、20:00-21:30或晚间');
@@ -132,14 +133,13 @@ export function createCalendarBatchController({
         const drafts = Object.fromEntries(dates.filter(date => batch.drafts[date]).map(date => [date, batch.drafts[date]]));
         await commitScope(storageId, current => applyBatchDays(current, dates, drafts));
         for (const date of dates) delete batch.drafts[date];
-        status(storageId, '这七天的日程已保存。');
+        status(storageId, '本周安排已保存。');
     }
 
     async function importRules(storageId) {
         const batch = session(storageId);
-        const books = batch.selectedBooks || [];
-        if (!books.length) throw new Error('请先选择世界书');
-        await saveBooks(storageId, batch);
+        const books = getScope(storageId).batchWorldBooks || [];
+        if (!books.length) throw new Error('请先在日历设置的「数据来源」中选择世界书');
         const task = tasks.begin(storageId, 'batch-import');
         if (!task) return;
         batch.importTask = task;
@@ -151,14 +151,14 @@ export function createCalendarBatchController({
             });
             if (!tasks.active(task)) return;
             if (!String(context?.worldBookText || '').trim()) throw new Error('所选世界书没有可读取的内容');
-            const prompts = buildOccasionImportPrompts({ worldBookText: context.worldBookText, start: batch.start });
+            const prompts = buildOccasionImportPrompts({ worldBookText: context.worldBookText, start: batch.start, season: getOccasions(storageId).season });
             const raw = await callAI(prompts.systemPrompt, prompts.userPrompt, { isolated: true, module: 'calendar', signal: task.signal });
             if (!tasks.active(task)) return;
             capture(storageId, currentApp());
             const occasions = getOccasions(storageId).occasions;
             batch.importPreview = parseOccasionImportResponse(raw, { defaultStart: batch.start })
                 .map(rule => ({ ...rule, duplicate: isDuplicateBatchRule(occasions, rule), checked: true }));
-            status(storageId, `读取到${batch.importPreview.length}条固定节目，勾选后写入。`);
+            status(storageId, `读取到${batch.importPreview.length}条重复日程，勾选后写入。`);
         } catch (error) {
             if (tasks.active(task)) errorStatus(storageId, error);
         } finally {
@@ -183,7 +183,7 @@ export function createCalendarBatchController({
             return next;
         });
         batch.importPreview = null;
-        status(storageId, skipped ? `已写入${added}条，跳过${skipped}条重复。` : `已写入${added}条固定节目。`);
+        status(storageId, skipped ? `已写入${added}条，跳过${skipped}条重复。` : `已写入${added}条重复日程。`);
     }
 
     // 后台每 7 天一批调用 AI，结果只进草稿；单批失败不影响其他批次。
@@ -194,7 +194,6 @@ export function createCalendarBatchController({
             mode: batch.rangeMode, start: batch.start, season: occasionScope.season,
             customStart: batch.customStart, customEnd: batch.customEnd,
         });
-        await saveBooks(storageId, batch);
         const task = tasks.begin(storageId, 'batch-generate');
         if (!task) throw new Error('当前已有批量生成任务');
         batch.generationTask = task;
@@ -203,15 +202,8 @@ export function createCalendarBatchController({
         let filled = 0;
         status(storageId, '正在读取资料…', { persistent: true }); refresh(storageId);
         try {
-            const books = batch.selectedBooks || [];
-            const base = await gatherContext(null, { module: 'calendar', signal: task.signal, includeWorldBook: batch.autoBooks === true, worldBookMaxChars: 12000 });
+            const context = await gatherScheduleContext(gatherContext, getScope(storageId), { signal: task.signal });
             if (!tasks.active(task)) return;
-            const selected = books.length ? await gatherContext(null, {
-                module: 'calendar', signal: task.signal, includeWorldBook: true, worldBookMaxChars: 12000,
-                worldBookNames: books, worldBookActivationMode: 'selected',
-            }) : null;
-            if (!tasks.active(task)) return;
-            const context = { ...base, worldBookText: [selected?.worldBookText, base?.worldBookText].filter(Boolean).join('\n\n') };
             for (const [index, chunk] of chunks.entries()) {
                 status(storageId, `正在生成第${index + 1}批，共${chunks.length}批…`, { persistent: true });
                 const occupied = expandOccasions(getOccasions(storageId), { start: parseCalendarDate(chunk[0]), days: chunk.length })
@@ -262,13 +254,24 @@ export function createCalendarBatchController({
     async function handleAction(button, app, storageId) {
         const action = button.dataset.action;
         if (action === 'calendar-batch-open') { open(storageId); rerender(storageId); return true; }
+        // 日历设置「数据来源」里的世界书选择：普通生成与安排日程共用。
+        if (action === 'calendar-batch-worldbook-book' || action === 'calendar-batch-worldbook-auto') {
+            try {
+                await commitScope(storageId, current => {
+                    if (action === 'calendar-batch-worldbook-auto') return { ...current, batchAutoWorldBooks: button.checked === true };
+                    const books = (current.batchWorldBooks || []).filter(name => name !== button.value);
+                    return { ...current, batchWorldBooks: button.checked === true ? [...books, button.value] : books };
+                }, null, { refreshInjection: false });
+            } catch (error) { errorStatus(storageId, error); }
+            rerender(storageId); return true;
+        }
         if (!action.startsWith('calendar-batch-')) return false;
         const batch = session(storageId);
         if (!batch) return true;
         capture(storageId, app);
         try {
             if (action === 'calendar-batch-close') {
-                if (weekDirty(storageId, batch) && !confirmAction('这七天的改动尚未保存。是否放弃并返回？')) return true;
+                if (weekDirty(storageId, batch) && !confirmAction('本周安排的改动尚未保存。是否放弃并返回？')) return true;
                 batch.generationTask?.controller.abort('closed'); batch.importTask?.controller.abort('closed');
                 sessions.delete(storageId);
             } else if (action === 'calendar-batch-prev-week' || action === 'calendar-batch-next-week') {
@@ -305,29 +308,29 @@ export function createCalendarBatchController({
                 const rule = readRule(batch.ruleDrafts.get(id) || {});
                 await commitOccasions(storageId, current => {
                     const existing = id === 'new' ? null : findOccasion(current, id);
-                    if (id !== 'new' && !existing) throw new Error('固定节目不存在');
+                    if (id !== 'new' && !existing) throw new Error('重复日程不存在');
                     return upsertOccasion(current, batchRuleToOccasion(rule, existing));
                 });
                 batch.ruleDrafts.delete(id);
                 if (id === 'new') batch.adding = false;
-                status(storageId, '固定节目已保存。');
+                status(storageId, '重复日程已保存。');
             } else if (action === 'calendar-batch-rule-delete') {
                 const id = button.dataset.ruleId, occasion = findOccasion(getOccasions(storageId), id);
-                if (occasion && confirmAction(`删除固定节目“${occasion.title}”？`)) {
+                if (occasion && confirmAction(`删除重复日程“${occasion.title}”？`)) {
                     await commitOccasions(storageId, current => deleteOccasion(current, id).scope);
                     batch.ruleDrafts.delete(id);
-                    status(storageId, '固定节目已删除。');
+                    status(storageId, '重复日程已删除。');
                 }
             } else if (action === 'calendar-batch-season-save') {
                 const season = normalizeOccasionSeason(batch.seasonDraft);
-                if (!season) throw new Error('节目周期无效，总周数为1–104');
+                if (!season) throw new Error('阶段无效，持续周数为1–104');
                 await commitOccasions(storageId, current => ({ ...current, season }));
                 batch.seasonDraft = null;
-                status(storageId, '节目周期已保存。');
+                status(storageId, '阶段已保存。');
             } else if (action === 'calendar-batch-season-clear') {
                 await commitOccasions(storageId, ({ season, ...current }) => current);
                 batch.seasonDraft = null;
-                status(storageId, '节目周期已清空。');
+                status(storageId, '阶段已清空。');
             } else if (action === 'calendar-batch-import') {
                 await importRules(storageId); return true;
             } else if (action === 'calendar-batch-import-discard') {
@@ -350,6 +353,7 @@ export function createCalendarBatchController({
 
     return {
         isOpen: storageId => sessions.has(storageId),
+        worldBooks: () => { try { return getReadableWorldBookNames(getCtx?.(), globalThis.window?.__pmWorldBookConfig); } catch (error) { return []; } },
         render: (storageId, statusText) => renderCalendarBatchPage(model(storageId), statusText),
         handleAction,
         reset: () => {

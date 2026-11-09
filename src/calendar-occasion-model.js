@@ -4,7 +4,7 @@ export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
 export const OCCASION_LEAP_DAY_RULES = Object.freeze(['feb28', 'mar1', 'skip']);
 export const OCCASION_REPEAT_RULES = Object.freeze(['daily', 'weekly', 'biweekly', 'monthly', 'custom', 'yearly']);
-export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000, intervalDays: 9999, excludedDates: 9999, seasonWeeks: 104 });
+export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000, intervalDays: 9999, excludedDates: 9999, seasonWeeks: 104, seasonName: 20 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -27,12 +27,13 @@ const DAY_MS = 86400000;
 const mondayOf = date => { const monday = new Date(date); monday.setDate(date.getDate() - ((date.getDay() + 6) % 7)); return monday; };
 const weeksBetween = (from, to) => Math.round((mondayOf(to).getTime() - mondayOf(from).getTime()) / (7 * DAY_MS));
 
-/** 节目周期：{ start: 'YYYY-MM-DD', weeks: 1–104 }，无效时返回 null。 */
+/** 阶段：{ start: 'YYYY-MM-DD', weeks: 1–104, name?: 阶段名称（如学期、赛季，≤20 字） }，无效时返回 null。 */
 export function normalizeOccasionSeason(value) {
     if (!plainRecord(value)) return null;
     const start = dateKey(value.start);
     const weeks = Number(value.weeks);
-    return start && Number.isInteger(weeks) && weeks >= 1 && weeks <= OCCASION_LIMITS.seasonWeeks ? { start, weeks } : null;
+    const name = cleanText(value.name, OCCASION_LIMITS.seasonName);
+    return start && Number.isInteger(weeks) && weeks >= 1 && weeks <= OCCASION_LIMITS.seasonWeeks ? { start, weeks, ...(name ? { name } : {}) } : null;
 }
 
 export function occasionSeasonEnd(seasonValue) {
@@ -40,7 +41,7 @@ export function occasionSeasonEnd(seasonValue) {
     return season ? calendarDateRangeKeys(season.start, season.weeks * 7 - 1, season.weeks * 7 - 1)[0] || '' : '';
 }
 
-/** 某日在节目周期中的第几周；周期外或未设周期返回 null。 */
+/** 某日在阶段中的第几周；阶段外或未设阶段返回 null。 */
 export function seasonWeekIndex(seasonValue, date) {
     const season = normalizeOccasionSeason(seasonValue);
     const target = parseCalendarDate(dateKey(date));

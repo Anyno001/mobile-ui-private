@@ -7,7 +7,6 @@ import { holidayYearFromCache, holidayYearRange, isHolidayYearSupported, normali
 import { predictCyclePhase } from './calendar-cycle-model.js';
 import { outfitForDate } from './calendar-outfit-model.js';
 import { RECIPE_MEAL_TYPES, recipeDayFor } from './calendar-recipe-model.js';
-import { calendarGenerationCopy } from './calendar-model.js';
 import { weatherCodeLabel } from './calendar-weather.js';
 import { resolveWeatherForDate, weatherSourceLabel } from './calendar-weather-source.js';
 import { weatherSceneKind } from './calendar-scene-art.js';
@@ -172,20 +171,19 @@ export function renderCalendarPageHtml(
         { canRegenerate: selectedDate >= todayKey, outfitSubjectLabel },
     );
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh'
-        : viewMode === 'schedule' ? 'calendar-generate'
+        : viewMode === 'schedule' ? 'calendar-batch-open'
             : viewMode === 'recipe' ? 'calendar-recipe-generate'
                 : viewMode === 'outfit' ? 'calendar-outfit-generate' : '';
     const recipeWindow = calendarWindowDescription(today, 7);
     const headerActionLabel = viewMode === 'weather' ? '刷新天气'
         : viewMode === 'recipe' ? `AI生成${recipeWindow.label}菜谱`
-            : viewMode === 'outfit' ? `AI生成${recipeWindow.label}OOTD` : `AI${calendarGenerationCopy(today).actionLabel}`;
+            : viewMode === 'outfit' ? `AI生成${recipeWindow.label}OOTD` : '安排日程';
     const headerBusy = viewMode === 'weather' ? view.weatherRefreshing === true : viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'outfit' ? view.outfitGenerating === true : viewMode === 'schedule' && view.generating === true;
     const statusBusy = viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'outfit' ? view.outfitGenerating === true : viewMode === 'schedule' && view.generating === true;
     const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG;
-    const batchEntry = viewMode === 'schedule' ? '<button type="button" class="pm-calendar-primary-action is-secondary" data-action="calendar-batch-open">批量安排</button>' : '';
-    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button>${batchEntry}</div>` : '';
+    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button></div>` : '';
     const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     const statusLine = `<div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>`;
 
@@ -196,6 +194,7 @@ export function renderCalendarPageHtml(
             holidayAvailable: monthKeys.some(date => isHolidayYearSupported(holidayCountry, Number(date.slice(0, 4)))),
             holidayRange: holidayYearRange(holidayCountry), cycleSubjects: view.cycleSubjects,
             selectedCycleSubject: view.cycleSubject, outfitSubjects: view.outfitSubjects, selectedOutfitSubject: view.outfitSubject,
+            worldBooks: view.worldBooks || [],
         });
         return `<div id="pm-calendar-app" class="pm-calendar-shell is-settings" data-calendar-view-mode="${viewMode}">
             <header class="pm-calendar-header is-sub"><button type="button" class="pm-calendar-icon-button" data-action="calendar-settings" aria-label="返回日历">${BACK_ICON_SVG}</button><h2>${MODE_SETTING_TITLES[viewMode]}</h2><span class="pm-calendar-header-spacer" aria-hidden="true"></span></header>
