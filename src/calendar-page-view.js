@@ -184,7 +184,8 @@ export function renderCalendarPageHtml(
     const statusBusy = viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'outfit' ? view.outfitGenerating === true : viewMode === 'schedule' && view.generating === true;
     const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG;
-    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button></div>` : '';
+    const batchEntry = viewMode === 'schedule' ? '<button type="button" class="pm-calendar-primary-action is-secondary" data-action="calendar-batch-open">批量安排</button>' : '';
+    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button>${batchEntry}</div>` : '';
     const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     const statusLine = `<div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>`;
 

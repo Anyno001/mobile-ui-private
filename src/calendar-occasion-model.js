@@ -1,10 +1,10 @@
-import { calendarDateFromParts, calendarDateRangeKeys, parseCalendarDate } from './calendar-model.js';
+import { calendarDateFromParts, calendarDateRangeKeys, normalizeCalendarTime, parseCalendarDate } from './calendar-model.js';
 
 export const OCCASION_STORE_VERSION = 1;
 export const OCCASION_TYPES = Object.freeze(['birthday', 'anniversary']);
 export const OCCASION_LEAP_DAY_RULES = Object.freeze(['feb28', 'mar1', 'skip']);
 export const OCCASION_REPEAT_RULES = Object.freeze(['daily', 'weekly', 'biweekly', 'monthly', 'custom', 'yearly']);
-export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000, intervalDays: 9999, excludedDates: 9999 });
+export const OCCASION_LIMITS = Object.freeze({ scopes: 80, occasions: 80, title: 120, note: 1000, intervalDays: 9999, excludedDates: 9999, seasonWeeks: 104 });
 
 const plainRecord = value => value && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -19,6 +19,36 @@ const dateKey = value => {
 };
 const normalizedExcludedDates = value => [...new Set((Array.isArray(value) ? value : [])
     .map(dateKey).filter(Boolean))].sort().slice(0, OCCASION_LIMITS.excludedDates);
+const WEEKDAY_REPEATS = new Set(['weekly', 'biweekly']);
+const normalizedWeekdays = value => [...new Set((Array.isArray(value) ? value : [])
+    .map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))].sort((left, right) => left - right);
+const DAY_MS = 86400000;
+// 以周一为一周第一天，返回该周周一（与 parseCalendarDate 一样取当天正午，避免夏令时误差）。
+const mondayOf = date => { const monday = new Date(date); monday.setDate(date.getDate() - ((date.getDay() + 6) % 7)); return monday; };
+const weeksBetween = (from, to) => Math.round((mondayOf(to).getTime() - mondayOf(from).getTime()) / (7 * DAY_MS));
+
+/** 节目周期：{ start: 'YYYY-MM-DD', weeks: 1–104 }，无效时返回 null。 */
+export function normalizeOccasionSeason(value) {
+    if (!plainRecord(value)) return null;
+    const start = dateKey(value.start);
+    const weeks = Number(value.weeks);
+    return start && Number.isInteger(weeks) && weeks >= 1 && weeks <= OCCASION_LIMITS.seasonWeeks ? { start, weeks } : null;
+}
+
+export function occasionSeasonEnd(seasonValue) {
+    const season = normalizeOccasionSeason(seasonValue);
+    return season ? calendarDateRangeKeys(season.start, season.weeks * 7 - 1, season.weeks * 7 - 1)[0] || '' : '';
+}
+
+/** 某日在节目周期中的第几周；周期外或未设周期返回 null。 */
+export function seasonWeekIndex(seasonValue, date) {
+    const season = normalizeOccasionSeason(seasonValue);
+    const target = parseCalendarDate(dateKey(date));
+    if (!season || !target) return null;
+    const elapsed = Math.round((target.getTime() - parseCalendarDate(season.start).getTime()) / DAY_MS);
+    if (elapsed < 0 || elapsed >= season.weeks * 7) return null;
+    return { week: Math.floor(elapsed / 7) + 1, total: season.weeks };
+}
 
 export function isLeapYear(year) {
     return Number.isInteger(year) && year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -73,12 +103,18 @@ export function normalizeOccasion(value, now = Date.now()) {
     const hasRepeat = Object.hasOwn(value, 'repeat');
     const hasDate = Object.hasOwn(value, 'date');
     const repeat = hasRepeat ? normalizedRepeat(value.repeat) : undefined;
+    const time = normalizeCalendarTime(value.time);
+    const weekdays = WEEKDAY_REPEATS.has(repeat) ? normalizedWeekdays(value.weekdays) : [];
+    const seasonOnly = value.seasonOnly === true && Boolean(repeat) && repeat !== 'yearly';
     return {
         id: cleanText(value.id, 80) || uid(), type, month, day, title,
+        ...(time ? { time } : {}),
         note: cleanText(value.note, OCCASION_LIMITS.note),
         leapDayRule: OCCASION_LEAP_DAY_RULES.includes(value.leapDayRule) ? value.leapDayRule : 'feb28',
         ...(repeat ? { repeat } : {}),
         ...(repeat === 'custom' ? { intervalDays: normalizedIntervalDays(value.intervalDays) } : {}),
+        ...(weekdays.length ? { weekdays } : {}),
+        ...(seasonOnly ? { seasonOnly } : {}),
         ...(hasDate ? { date: `${date.getFullYear().toString().padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` } : {}),
         ...(normalizedExcludedDates(value.excludedDates).length ? { excludedDates: normalizedExcludedDates(value.excludedDates) } : {}),
         createdAt, updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt)),
@@ -95,7 +131,8 @@ export function normalizeOccasionScope(value) {
             seen.add(occasion.id); occasions.push(occasion);
         } catch (error) {}
     }
-    return { occasions };
+    const season = normalizeOccasionSeason(source.season);
+    return season ? { occasions, season } : { occasions };
 }
 
 
@@ -138,7 +175,7 @@ export function upsertOccasion(scope, rawOccasion, now = Date.now()) {
 export function deleteOccasion(scope, occasionId) {
     const next = normalizeOccasionScope(scope);
     const occasions = next.occasions.filter(item => item.id !== occasionId);
-    return { scope: { occasions }, removed: occasions.length !== next.occasions.length };
+    return { scope: { ...next, occasions }, removed: occasions.length !== next.occasions.length };
 }
 
 export function excludeOccasionDate(scope, occasionId, occurrenceDate, now = Date.now()) {
@@ -147,7 +184,7 @@ export function excludeOccasionDate(scope, occasionId, occurrenceDate, now = Dat
     const next = normalizeOccasionScope(scope);
     const occasion = findOccasion(next, occasionId);
     if (!occasion) throw new Error('重复日程不存在');
-    const occursOnDate = expandOccasions({ occasions: [occasion] }, {
+    const occursOnDate = expandOccasions({ occasions: [occasion], season: next.season }, {
         start: parseCalendarDate(date), days: 1,
     }).some(item => item.id === occasionId && item.date === date);
     if (!occursOnDate) throw new Error('该日期没有可清理的重复日程');
@@ -177,7 +214,11 @@ export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
     const dates = new Set(dateKeys);
     const years = new Set([...dates].map(date => Number(date.slice(0, 4))));
     const result = [];
-    for (const occasion of normalizeOccasionScope(scope).occasions) {
+    const normalizedScope = normalizeOccasionScope(scope);
+    const season = normalizedScope.season || null;
+    const seasonStart = season ? parseCalendarDate(season.start) : null;
+    const seasonEnd = season ? occasionSeasonEnd(season) : '';
+    for (const occasion of normalizedScope.occasions) {
         const repeat = occasion.repeat || 'yearly';
         const excludedDates = new Set(occasion.excludedDates || []);
         if (repeat === 'yearly') {
@@ -188,11 +229,15 @@ export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
             continue;
         }
         const anchor = anchorDate(occasion.date, occasion.month, occasion.day);
+        const weekdays = occasion.weekdays?.length ? new Set(occasion.weekdays) : null;
+        if (occasion.seasonOnly && !season) continue;
+        const weekBase = seasonStart || anchor;
         for (const date of dateKeys) {
             const parsed = parseCalendarDate(date);
             const anchorKey = `${anchor.getFullYear().toString().padStart(4, '0')}-${pad(anchor.getMonth() + 1)}-${pad(anchor.getDate())}`;
             if (!parsed || date < anchorKey) continue;
-            const sameWeekday = parsed.getDay() === anchor.getDay();
+            if (occasion.seasonOnly && (date < season.start || date > seasonEnd)) continue;
+            const sameWeekday = weekdays ? weekdays.has(parsed.getDay()) : parsed.getDay() === anchor.getDay();
             const elapsedDays = Math.round((parsed.getTime() - anchor.getTime()) / 86400000);
             const sameMonthDay = parsed.getDate() === anchor.getDate();
             const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate())
@@ -200,7 +245,8 @@ export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
             if (excludedDates.has(date)) continue;
             if (repeat === 'daily'
                 || (repeat === 'weekly' && sameWeekday)
-                || (repeat === 'biweekly' && sameWeekday && elapsedDays % 14 === 0)
+                || (repeat === 'biweekly' && sameWeekday && (weekdays
+                    ? ((weeksBetween(weekBase, parsed) % 2) + 2) % 2 === 0 : elapsedDays % 14 === 0))
                 || (repeat === 'monthly' && (sameMonthDay || lastDayOfMonth))) {
                 result.push({ ...occasion, date, leapAdjusted: false });
             } else if (repeat === 'custom' && elapsedDays % normalizedIntervalDays(occasion.intervalDays) === 0) {

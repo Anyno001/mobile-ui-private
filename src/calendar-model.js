@@ -150,6 +150,75 @@ const normalizeStoryWeatherIntensity = value => typeof value === 'string' && STO
 const normalizeStoryWeatherDays = value => Number.isInteger(value) && value >= 1 && value <= 7 ? value : 0;
 const normalizeStoryWeatherRevision = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 
+// 日程时间：时段键、HH:MM 或 HH:MM-HH:MM；排序键按分钟，时段取代表钟点。
+export const CALENDAR_TIME_PERIODS = Object.freeze({
+    morning: Object.freeze({ label: '上午', minutes: 540 }),
+    afternoon: Object.freeze({ label: '下午', minutes: 840 }),
+    dusk: Object.freeze({ label: '傍晚', minutes: 1050 }),
+    evening: Object.freeze({ label: '晚间', minutes: 1170 }),
+    late: Object.freeze({ label: '深夜', minutes: 1380 }),
+});
+const CLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const clockMinutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+
+export function normalizeCalendarTime(value) {
+    const source = typeof value === 'string' ? value.trim() : '';
+    if (Object.hasOwn(CALENDAR_TIME_PERIODS, source)) return source;
+    if (CLOCK_PATTERN.test(source)) return source;
+    const range = source.split('-');
+    return range.length === 2 && range.every(part => CLOCK_PATTERN.test(part)) ? source : '';
+}
+
+/** 用户输入的时间：上午/下午等中文时段、9:00、20:00-21:30、20:00–21:30；认不出返回空串。 */
+export function parseCalendarTimeInput(value) {
+    const source = String(value ?? '').trim();
+    if (!source) return '';
+    const period = Object.entries(CALENDAR_TIME_PERIODS).find(([key, item]) => item.label === source || key === source);
+    if (period) return period[0];
+    const clock = part => {
+        const match = String(part).trim().match(/^(\d{1,2})[:：](\d{2})$/);
+        return match ? clockText(Number(match[1]), Number(match[2])) : '';
+    };
+    const parts = source.split(/\s*[-–—~～至]\s*/);
+    if (parts.length === 1) return clock(parts[0]);
+    if (parts.length !== 2) return '';
+    const [start, end] = parts.map(clock);
+    return start && end ? `${start}-${end}` : '';
+}
+
+export function calendarTimeSortKey(value) {
+    const time = normalizeCalendarTime(value);
+    if (!time) return Number.POSITIVE_INFINITY;
+    if (CALENDAR_TIME_PERIODS[time]) return CALENDAR_TIME_PERIODS[time].minutes;
+    return clockMinutes(time);
+}
+
+/** 时间段的结束分钟；单点时间与时段等于开始分钟。 */
+export function calendarTimeEndKey(value) {
+    const time = normalizeCalendarTime(value);
+    if (!time) return Number.POSITIVE_INFINITY;
+    return time.includes('-') ? clockMinutes(time.slice(6)) : calendarTimeSortKey(time);
+}
+
+export function calendarTimeLabel(value) {
+    const time = normalizeCalendarTime(value);
+    if (!time) return '';
+    if (CALENDAR_TIME_PERIODS[time]) return CALENDAR_TIME_PERIODS[time].label;
+    return time.replace('-', '–');
+}
+
+/** 按时间排序，无时间的排在最后并保持原顺序。 */
+export function sortByCalendarTime(items, timeOf = item => item?.time) {
+    return (Array.isArray(items) ? items : []).map((item, index) => ({ item, index, key: calendarTimeSortKey(timeOf(item)) }))
+        .sort((left, right) => (left.key === right.key ? 0 : left.key < right.key ? -1 : 1) || left.index - right.index)
+        .map(entry => entry.item);
+}
+
+const BATCH_WORLD_BOOK_LIMITS = Object.freeze({ count: 40, length: 200 });
+const normalizeBatchWorldBooks = value => [...new Set((Array.isArray(value) ? value : [])
+    .filter(item => typeof item === 'string').map(item => item.trim()).filter(item => item && item.length <= BATCH_WORLD_BOOK_LIMITS.length))]
+    .slice(0, BATCH_WORLD_BOOK_LIMITS.count);
+
 export function normalizeCalendarEvent(value, expectedDate = '', now = Date.now()) {
     if (!plainRecord(value)) throw new Error('日程必须是对象');
     const date = parseCalendarDate(expectedDate || value.date) ? (expectedDate || value.date) : '';
@@ -158,10 +227,12 @@ export function normalizeCalendarEvent(value, expectedDate = '', now = Date.now(
     if (!title) throw new Error('日程标题不能为空');
     const source = CALENDAR_SOURCES.includes(value.source) ? value.source : 'manual';
     const createdAt = normalizeTimestamp(value.createdAt, now);
+    const time = normalizeCalendarTime(value.time);
     return {
         id: cleanText(value.id, 80) || uid(),
         date,
         title,
+        ...(time ? { time } : {}),
         note: cleanText(value.note, CALENDAR_LIMITS.note),
         source,
         createdAt,
@@ -215,6 +286,9 @@ export function normalizeCalendarScope(value) {
     };
     const weatherEvent = normalizeStoryWeatherEvent(source.weatherEvent);
     if (weatherEvent) normalized.weatherEvent = weatherEvent;
+    const batchWorldBooks = normalizeBatchWorldBooks(source.batchWorldBooks);
+    if (batchWorldBooks.length) normalized.batchWorldBooks = batchWorldBooks;
+    if (source.batchAutoWorldBooks === true) normalized.batchAutoWorldBooks = true;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
     if (parseCalendarDate(source.baseDate)) {
         normalized.baseDate = source.baseDate;
@@ -603,7 +677,7 @@ export function buildCalendarPrompts(payload, existing, mode, generationRule = '
 }
 
 
-function firstJsonObject(raw) {
+export function firstJsonObject(raw) {
     const source = String(raw ?? '').replace(/```(?:json)?/gi, '').trim();
     for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
         let depth = 0, quoted = false, escaped = false;
@@ -638,10 +712,10 @@ export function parseCalendarAiResponse(raw, { start = new Date(), days = 7 } = 
     const events = [];
     for (const rawEvent of data.events.slice(0, days * 6)) {
         if (!plainRecord(rawEvent)) continue;
-        const unsupported = Object.keys(rawEvent).find(key => !['date', 'title', 'note'].includes(key));
+        const unsupported = Object.keys(rawEvent).find(key => !['date', 'title', 'note', 'time'].includes(key));
         if (unsupported || !allowedDates.has(rawEvent.date)) continue;
         try {
-            const event = normalizeCalendarEvent({ ...rawEvent, source: 'ai' }, rawEvent.date);
+            const event = normalizeCalendarEvent({ ...rawEvent, time: parseCalendarTimeInput(rawEvent.time), source: 'ai' }, rawEvent.date);
             const key = `${event.date}\u0000${event.title}`;
             if (seen.has(key)) continue;
             seen.add(key); events.push(event);

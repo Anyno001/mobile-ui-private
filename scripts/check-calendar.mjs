@@ -3875,4 +3875,108 @@ try {
     globalThis.localStorage = previousLocalStorage;
 }
 
+// —— 批量安排日程：time / weekdays / biweekly 按周 / season / 注入标记 / 批量保存对照 / 旧数据兼容 ——
+{
+    const { normalizeCalendarTime, parseCalendarTimeInput, calendarTimeSortKey, calendarTimeLabel, sortByCalendarTime, normalizeCalendarEvent: normEvent } = await import('../src/calendar-model.js');
+    const { normalizeOccasionScope, seasonWeekIndex, occasionSeasonEnd } = await import('../src/calendar-occasion-model.js');
+    const { applyBatchDays, parseBatchDayLine, formatBatchDayText, batchGenerationDates, parseOccasionImportResponse, isDuplicateBatchRule } = await import('../src/calendar-batch-model.js');
+    // time 解析、非法值丢弃、显示与排序
+    assert.equal(normalizeCalendarTime('evening'), 'evening');
+    assert.equal(normalizeCalendarTime('20:00-21:30'), '20:00-21:30');
+    assert.equal(normalizeCalendarTime('25:00'), '', '非法钟点必须丢弃');
+    assert.equal(normalizeCalendarTime('晚上'), '', '存储层只认时段键');
+    assert.equal(parseCalendarTimeInput('晚间'), 'evening');
+    assert.equal(parseCalendarTimeInput('9:05'), '09:05');
+    assert.equal(parseCalendarTimeInput('20:00–21:30'), '20:00-21:30');
+    assert.equal(calendarTimeLabel('20:00-21:30'), '20:00–21:30');
+    assert.equal(calendarTimeLabel('late'), '深夜');
+    assert.equal(calendarTimeSortKey('dusk'), 17 * 60 + 30);
+    assert.deepEqual(sortByCalendarTime([{ t: 'b' }, { t: 'a', time: '20:00' }, { t: 'c' }, { t: 'd', time: 'morning' }]).map(item => item.t),
+        ['d', 'a', 'b', 'c'], '无时间排最后并保持原顺序');
+    const legacyEvent = normEvent({ id: 'x', title: '旧日程', note: '' }, '2030-01-01', 1);
+    assert.equal(Object.hasOwn(legacyEvent, 'time'), false, '旧数据没有 time 字段时不得补写');
+    assert.equal(normEvent({ title: '坏时间', time: 'noon' }, '2030-01-01', 1).time, undefined, '非法 time 丢弃');
+    // weekdays：每周多选，按 weekdays 判断不看锚点星期（2030-01-07 是周一）
+    const weeklyScope = { occasions: [{ id: 'w', type: 'anniversary', month: 1, day: 7, date: '2030-01-07', title: '例会', repeat: 'weekly', weekdays: [2, 4], time: '20:00' }] };
+    assert.deepEqual(expandOccasions(weeklyScope, { start: new Date(2030, 0, 7, 12), days: 7 }).map(item => item.date), ['2030-01-08', '2030-01-10']);
+    assert.equal(normalizeOccasion({ ...weeklyScope.occasions[0], repeat: 'daily' }).weekdays, undefined, '非每周规则不保留 weekdays');
+    // biweekly 按周奇偶：锚点 2030-01-09（周三）所在周为第 0 周
+    const biweekly = { occasions: [{ id: 'b', type: 'anniversary', month: 1, day: 9, date: '2030-01-09', title: '双周', repeat: 'biweekly', weekdays: [1, 5] }] };
+    assert.deepEqual(expandOccasions(biweekly, { start: new Date(2030, 0, 7, 12), days: 21 }).map(item => item.date),
+        ['2030-01-11', '2030-01-21', '2030-01-25'], '锚点之前不展开，偶数周出现');
+    const legacyBiweekly = { occasions: [{ id: 'l', type: 'anniversary', month: 1, day: 9, date: '2030-01-09', title: '旧双周', repeat: 'biweekly' }] };
+    assert.deepEqual(expandOccasions(legacyBiweekly, { start: new Date(2030, 0, 7, 12), days: 21 }).map(item => item.date), ['2030-01-09', '2030-01-23'], '无 weekdays 时保持旧逻辑');
+    // season 边界、seasonOnly、biweekly 以 season.start 所在周为第 0 周
+    const season = { start: '2030-01-14', weeks: 2 };
+    assert.equal(occasionSeasonEnd(season), '2030-01-27');
+    assert.deepEqual(seasonWeekIndex(season, '2030-01-14'), { week: 1, total: 2 });
+    assert.deepEqual(seasonWeekIndex(season, '2030-01-27'), { week: 2, total: 2 });
+    assert.equal(seasonWeekIndex(season, '2030-01-28'), null);
+    assert.equal(seasonWeekIndex(season, '2030-01-13'), null);
+    const seasonDaily = { season, occasions: [{ id: 's', type: 'anniversary', month: 1, day: 1, date: '2030-01-01', title: '录制', repeat: 'daily', seasonOnly: true }] };
+    const seasonDates = expandOccasions(seasonDaily, { start: new Date(2030, 0, 10, 12), days: 25 }).map(item => item.date);
+    assert.equal(seasonDates[0], '2030-01-14'); assert.equal(seasonDates.at(-1), '2030-01-27'); assert.equal(seasonDates.length, 14);
+    assert.equal(expandOccasions({ occasions: seasonDaily.occasions }, { start: new Date(2030, 0, 10, 12), days: 25 }).length, 0, '没有周期时 seasonOnly 不展开');
+    const seasonBiweekly = { season, occasions: [{ ...biweekly.occasions[0], date: '2030-01-07', day: 7 }] };
+    assert.deepEqual(expandOccasions(seasonBiweekly, { start: new Date(2030, 0, 7, 12), days: 21 }).map(item => item.date), ['2030-01-14', '2030-01-18'],
+        '有周期时双周以开拍周为第 0 周');
+    // normalizeOccasionScope / deleteOccasion 保留 season
+    assert.deepEqual(normalizeOccasionScope({ occasions: [], season }).season, season);
+    assert.equal(normalizeOccasionScope({ occasions: [], season: { start: '2030-01-14', weeks: 105 } }).season, undefined);
+    assert.deepEqual(deleteOccasion(seasonDaily, 's').scope.season, season, 'deleteOccasion 必须保留 season');
+    assert.deepEqual(normalizeOccasionStore({ scopes: { a: seasonDaily } }).scopes.a.season, season);
+    // 注入：同日合并排序、已过/接下来
+    const injectStore = { version: 1, scopes: { inj: { ...createEmptyCalendarScope(), baseDate: '2030-01-15', baseTime: '19:00', events: {
+        '2030-01-15': [
+            { id: 'e1', date: '2030-01-15', title: '无时间事项', note: '', source: 'manual', createdAt: 1, updatedAt: 1 },
+            { id: 'e2', date: '2030-01-15', title: '直播', time: '20:00-21:30', note: '', source: 'manual', createdAt: 2, updatedAt: 2 },
+            { id: 'e3', date: '2030-01-15', title: '早训', time: 'morning', note: '', source: 'manual', createdAt: 3, updatedAt: 3 },
+            { id: 'e4', date: '2030-01-15', title: '真心话游戏', time: 'evening', note: '', source: 'manual', createdAt: 4, updatedAt: 4 },
+        ],
+    } } } };
+    const injOccasions = { version: 1, scopes: { inj: { occasions: [{ id: 'o1', type: 'anniversary', month: 1, day: 14, date: '2030-01-14', title: '晚餐', repeat: 'daily', time: '18:00-19:30' }] } } };
+    const injected = renderCalendarContextInjection({ currentStorageId: 'inj', calendarStore: injectStore, occasionStore: injOccasions, start: new Date(2030, 0, 15, 12) });
+    const todayLine = injected.split('\n').find(line => line.startsWith('今天 2030-01-15'));
+    assert.equal(todayLine, '今天 2030-01-15｜日程：上午 早训（已过）；每日重复日程：18:00–19:30 晚餐；日程：晚间 真心话游戏（接下来）；日程：20:00–21:30 直播；日程：无时间事项',
+        '同日按时间排序，已过与接下来只标今天');
+    assert.doesNotMatch(injected.split('\n').find(line => line.includes('2030-01-16')) || '', /已过|接下来/, '非今天不标记');
+    // 批量保存对照：标题相同保留 id，其余新增/删除，只影响给定日期
+    assert.deepEqual(parseBatchDayLine('20:00-21:30 直播｜第一期'), { time: '20:00-21:30', title: '直播', note: '第一期' });
+    assert.deepEqual(parseBatchDayLine('晚间 真心话游戏'), { time: 'evening', title: '真心话游戏', note: '' });
+    assert.deepEqual(parseBatchDayLine('晚间散步'), { time: '', title: '晚间散步', note: '' }, '时段词与标题未分开时整体作标题');
+    const batchScope = { ...createEmptyCalendarScope(), events: {
+        '2030-01-15': [{ id: 'keep', date: '2030-01-15', title: '直播', note: '', source: 'ai', createdAt: 5, updatedAt: 5 },
+            { id: 'drop', date: '2030-01-15', title: '删掉', note: '', source: 'manual', createdAt: 6, updatedAt: 6 }],
+        '2030-01-20': [{ id: 'outside', date: '2030-01-20', title: '窗口外', note: '', source: 'manual', createdAt: 7, updatedAt: 7 }],
+    } };
+    assert.equal(formatBatchDayText(batchScope.events['2030-01-15']), '直播\n删掉');
+    const saved = applyBatchDays(batchScope, ['2030-01-15', '2030-01-16'], {
+        '2030-01-15': { text: '20:00 直播｜改时间\n上午 新事项' },
+        '2030-01-16': { text: '草稿事项', aiTitles: ['草稿事项'] },
+    }, 100);
+    const day15 = saved.events['2030-01-15'];
+    assert.equal(day15.find(item => item.title === '直播').id, 'keep', '同名保留原 id');
+    assert.equal(day15.find(item => item.title === '直播').source, 'ai', '保留原来源');
+    assert.equal(day15.find(item => item.title === '直播').time, '20:00');
+    assert.ok(!day15.some(item => item.id === 'drop'), '草稿中删掉的日程被删除');
+    assert.equal(day15.find(item => item.title === '新事项').source, 'manual');
+    assert.equal(saved.events['2030-01-16'][0].source, 'ai', 'AI 草稿保存时 source 记为 ai');
+    assert.equal(saved.events['2030-01-20'][0].id, 'outside', '只影响这七天');
+    // 范围、导入解析、重复判断
+    assert.equal(batchGenerationDates({ mode: 'month', start: '2030-01-14', season }).length, 14, '这个月不超过节目周期结束');
+    assert.equal(batchGenerationDates({ mode: 'month', start: '2030-01-14' }).length, 28);
+    assert.throws(() => batchGenerationDates({ mode: 'custom', customStart: '2030-01-01', customEnd: '2030-03-31' }), /最多8周/);
+    const imported = parseOccasionImportResponse('{"version":1,"kind":"calendar_rules","rules":[{"title":"直播","time":"20:00","repeat":"weekly","weekdays":[1,3]},{"title":"生日","repeat":"yearly"}]}', { defaultStart: '2030-01-14' });
+    assert.equal(imported.length, 1, '导入不收每年规则');
+    assert.equal(imported[0].start, '2030-01-14');
+    assert.equal(isDuplicateBatchRule([{ title: '直播', time: '20:00' }], imported[0]), true, '同名同时间视为重复');
+    // AI 响应允许可选 time
+    const aiEvents = parseCalendarAiResponse('{"version":1,"kind":"calendar_events","events":[{"date":"2030-01-15","time":"晚间","title":"排练","note":""}]}', { start: new Date(2030, 0, 15, 12), days: 7 });
+    assert.equal(aiEvents[0].time, 'evening');
+    // 旧数据兼容：无 time/weekdays/season 照常读取与展开
+    const legacyOccasion = normalizeOccasion({ id: 'old', type: 'anniversary', month: 1, day: 7, date: '2030-01-07', title: '旧每周', repeat: 'weekly' });
+    assert.equal(['time', 'weekdays', 'seasonOnly'].some(key => Object.hasOwn(legacyOccasion, key)), false);
+    assert.deepEqual(expandOccasions({ occasions: [legacyOccasion] }, { start: new Date(2030, 0, 7, 12), days: 14 }).map(item => item.date), ['2030-01-07', '2030-01-14']);
+}
+
 console.log('Calendar checks passed.');

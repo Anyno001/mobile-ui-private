@@ -27,6 +27,7 @@ import { handleOutfitPageAction, loadOutfitStore, outfitSubjectOptions, renderPh
 import { createCalendarRecipeController } from './calendar-recipe-controller.js';
 import { createTaskController } from './calendar-task-controller.js';
 import { createCalendarAutoDetect } from './calendar-auto-detect.js';
+import { createCalendarBatchController } from './calendar-batch-controller.js';
 export const calendarGenerationErrorMessage = generationErrorMessage; export { renderCalendarPageHtml };
 export function installCalendar(state, deps) {
     const { getStorageId, gatherContext, callAI, fetchImpl, makeOverlay, closeOverlay } = deps;
@@ -106,6 +107,12 @@ export function installCalendar(state, deps) {
         const scrollTop = previousShell?.scrollTop;
         const currentView = viewFor(storageId);
         runtime.viewByStorage.set(storageId, currentView);
+        if (batchController.isOpen(storageId)) {
+            container.innerHTML = batchController.render(storageId, runtime.statusByStorage.get(storageId) || '');
+            const batchShell = container.querySelector?.('.pm-calendar-shell');
+            if (Number.isFinite(scrollTop) && batchShell) batchShell.scrollTop = scrollTop;
+            return true;
+        }
         container.innerHTML = renderCalendarPageHtml(
             scope(storageId), occasions(storageId), runtime.statusByStorage.get(storageId) || '',
             runtime.holidayStore, runtime.weatherStore,
@@ -123,6 +130,11 @@ export function installCalendar(state, deps) {
         autoDetect.run(storageId); return true;
     };
     const rerender = storageId => { if (getStorageId() === storageId) render(storageId); };
+    const batchController = createCalendarBatchController({
+        state, tasks, getScope: id => scope(id), getOccasions: id => occasions(id), commitScope: (...args) => commitScope(...args),
+        commitOccasions: (...args) => commitOccasions(...args), gatherContext, callAI, status, errorStatus, rerender,
+        getCtx: deps.getCtx, confirmImpl: deps.confirmImpl || globalThis.confirm,
+    });
     const weatherController = createCalendarWeatherController({
         tasks, runtime, getScope: scope, getReferenceDate: current => formatCalendarDate(calendarReferenceDate(current)),
         getView: viewFor, setView: (storageId, view) => runtime.viewByStorage.set(storageId, view),
@@ -498,6 +510,7 @@ export function installCalendar(state, deps) {
                         calendar: upsertCalendarEvent(calendar, {
                             id: normalizedKind === 'event' ? existingEntry?.id : undefined,
                             date: entries.date, title: value.title, note: value.note,
+                            ...(normalizedKind === 'event' && existingEntry?.time ? { time: existingEntry.time } : {}),
                             source: normalizedKind === 'event' ? existingEntry?.source || 'manual' : 'manual',
                             createdAt: normalizedKind === 'event' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
                         }),
@@ -512,6 +525,7 @@ export function installCalendar(state, deps) {
                         month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                         day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
                         ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}),
+                        ...(normalizedKind === 'occasion' ? { time: existingEntry?.time, weekdays: existingEntry?.weekdays, seasonOnly: existingEntry?.seasonOnly } : {}),
                         repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
                         ...(value.intervalDays === undefined ? {} : { intervalDays: value.intervalDays }),
                         createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
@@ -533,6 +547,7 @@ export function installCalendar(state, deps) {
         }
         const outfitAction = handleOutfitPageAction({ button, app, storageId, state, runtime, viewFor, rerender, outfitController });
         if (outfitAction === true || (outfitAction && await outfitAction)) return;
+        if (action.startsWith('calendar-batch-')) { await batchController.handleAction(button, app, storageId); return; }
         if (action === 'calendar-worldbook-columns') {
             await globalThis.window?.__pmShowWorldBookColumns?.({
                 title: '数据来源',
@@ -771,7 +786,7 @@ export function installCalendar(state, deps) {
     const releasesCalendarRuntime = reason => reason === 'phone-closed' || reason === 'host-chat-changed' || reason === 'beforeunload' || reason === 'document-hidden' || transfersCalendarStateOwnership(reason);
     const clearCalendarRuntime = () => {
         for (const token of runtime.statusTimerByStorage.values()) cancelTimeout(token.timer);
-        runtime.statusTimerByStorage.clear(); runtime.statusByStorage.clear(); runtime.viewByStorage.clear(); runtime.weatherSearchResults = []; autoDetect.reset();
+        runtime.statusTimerByStorage.clear(); runtime.statusByStorage.clear(); runtime.viewByStorage.clear(); runtime.weatherSearchResults = []; autoDetect.reset(); batchController.reset();
     };
     const cancelCalendarTasks = reason => {
         if (transfersCalendarStateOwnership(reason)) invalidateCommits();

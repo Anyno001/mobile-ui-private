@@ -1,4 +1,4 @@
-import { DEFAULT_CALENDAR_GENERATION_RULE, calendarDateRangeKeys, parseCalendarDate } from './calendar-model.js';
+import { DEFAULT_CALENDAR_GENERATION_RULE, calendarDateRangeKeys, calendarTimeLabel, calendarTimeSortKey, parseCalendarDate } from './calendar-model.js';
 import { normalizeCycleScope, phaseForDay, predictCyclePhase } from './calendar-cycle-model.js';
 import { holidayYearFromCache } from './calendar-holiday.js';
 import { DEFAULT_OUTFIT_GENERATION_RULE, outfitForDate } from './calendar-outfit-model.js';
@@ -47,21 +47,31 @@ function entryActions(kind, id, title) {
 }
 
 function eventRows(scope, occasionsByDate, date, openMenu = '') {
-    const occasionCards = (occasionsByDate.get(date) || []).map(occasion => {
+    const timed = items => items.map((item, index) => ({ item, index, key: calendarTimeSortKey(item.time) }))
+        .sort((left, right) => (left.key === right.key ? 0 : left.key < right.key ? -1 : 1) || left.index - right.index);
+    const cards = [];
+    for (const { item: occasion, key: sortKey } of timed(occasionsByDate.get(date) || [])) {
         const key = `occasion:${occasion.id}`;
         const yearly = !occasion.repeat || occasion.repeat === 'yearly';
         const tone = yearly ? 'occasion' : 'schedule';
         const label = yearly ? occasionTypeLabel(occasion.type, occasion.repeat, occasion.intervalDays) : '日程';
         const repeatLabel = yearly ? '每年' : occasionTypeLabel(occasion.type, occasion.repeat, occasion.intervalDays);
-        const meta = metaChip(`${repeatLabel}${occasion.leapAdjusted ? ' · 闰日顺延' : ''}`);
-        return entryCard({ kind: 'occasion', key, pillHtml: pill(tone, label), title: occasion.title, note: occasion.note, meta,
-            actions: entryActions('occasion', occasion.id, occasion.title), openMenu });
-    });
-    const eventCards = (scope.events[date] || []).map(event => entryCard({
-        kind: 'event', key: `event:${event.id}`, pillHtml: pill('schedule', '日程'), title: event.title, note: event.note,
-        actions: entryActions('event', event.id, event.title), openMenu,
-    }));
-    return [...occasionCards, ...eventCards].join('');
+        const time = calendarTimeLabel(occasion.time);
+        const meta = metaChip(`${time ? `${time} · ` : ''}${repeatLabel}${occasion.leapAdjusted ? ' · 闰日顺延' : ''}`);
+        cards.push({ sortKey, html: entryCard({ kind: 'occasion', key, pillHtml: pill(tone, label), title: occasion.title, note: occasion.note, meta,
+            actions: entryActions('occasion', occasion.id, occasion.title), openMenu }) });
+    }
+    for (const { item: event, key: sortKey } of timed(scope.events[date] || [])) {
+        const time = calendarTimeLabel(event.time);
+        cards.push({ sortKey, html: entryCard({
+            kind: 'event', key: `event:${event.id}`, pillHtml: pill('schedule', '日程'), title: event.title, note: event.note,
+            meta: time ? metaChip(time) : '', actions: entryActions('event', event.id, event.title), openMenu,
+        }) });
+    }
+    // 有时间的按时间先后排列；无时间的保持原顺序排在后面。
+    return cards.map((card, index) => ({ ...card, index }))
+        .sort((left, right) => (left.sortKey === right.sortKey ? 0 : left.sortKey < right.sortKey ? -1 : 1) || left.index - right.index)
+        .map(card => card.html).join('');
 }
 
 function holidayRows(cache, date) {

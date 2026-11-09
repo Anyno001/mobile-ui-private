@@ -9,7 +9,8 @@ import { renderShopInjection } from './shop-model.js';
 import { resolveEmojiText } from './messaging.js';
 import { getGroupMembers, resolveCommunitySources, resolvePhoneSources } from './permissions.js';
 import {
-    calendarDateRangeKeys, calendarReferenceDate, calendarScopeFor, relativeCalendarLabel,
+    calendarDateRangeKeys, calendarReferenceDate, calendarScopeFor, calendarTimeEndKey, calendarTimeLabel, calendarTimeSortKey,
+    normalizeStoryTime, relativeCalendarLabel, sortByCalendarTime,
 } from './calendar-model.js';
 import { occasionScopeFor, expandOccasions } from './calendar-occasion-model.js';
 import { buildCulturalFestivals, HOLIDAY_YEAR_RANGE, holidayYearFromCache, mergeCalendarDateFacts, normalizeHolidayCache } from './calendar-holiday.js';
@@ -210,19 +211,23 @@ export function renderCalendarContextInjection({
             }
         }
     }
+    // 一次性日程与循环日程同日合并、按时间排序；故事今天按剧情钟点标已过与接下来。
+    const scheduleItemsByDate = new Map();
+    const addScheduleItem = (date, item) => {
+        if (!scheduleItemsByDate.has(date)) scheduleItemsByDate.set(date, []);
+        scheduleItemsByDate.get(date).push(item);
+    };
     if (calendarScope.injectionScheduleEnabled) {
         for (const date of scheduleDates) {
-        for (const event of calendarScope.events[date] || []) {
-            const note = event.note ? `（${event.note.replace(/\s+/g, ' ').slice(0, 180)}）` : '';
-            addFact(date, `日程：${event.title}${note}`);
-        }
+            for (const event of calendarScope.events[date] || []) addScheduleItem(date, { label: '日程', title: event.title, time: event.time, note: event.note });
         }
     }
     let hasOccasionFacts = false;
     if (calendarScope.injectionScheduleEnabled) {
         const occasionScope = occasionScopeFor(occasionStore, currentStorageId);
-        const extendedScope = { occasions: occasionScope.occasions.filter(usesExtendedOccasionWindow) };
-        const standardScope = { occasions: occasionScope.occasions.filter(occasion => !usesExtendedOccasionWindow(occasion)) };
+        const seasonPart = occasionScope.season ? { season: occasionScope.season } : {};
+        const extendedScope = { occasions: occasionScope.occasions.filter(usesExtendedOccasionWindow), ...seasonPart };
+        const standardScope = { occasions: occasionScope.occasions.filter(occasion => !usesExtendedOccasionWindow(occasion)), ...seasonPart };
         const standardStart = calendarDateRangeKeys(windowStart, -3, -3)[0];
         const expanded = [
             ...expandOccasions(extendedScope, { start: windowStart, days: 60 }),
@@ -230,9 +235,29 @@ export function renderCalendarContextInjection({
         ];
         for (const occasion of expanded) {
             const kind = calendarRepeatLabel(occasion.repeat) || (occasion.type === 'birthday' ? '生日' : '纪念日');
-            addFact(occasion.date, `${kind}：${occasion.title}${occasion.note ? `（${occasion.note.replace(/\s+/g, ' ').slice(0, 180)}）` : ''}`);
+            addScheduleItem(occasion.date, { label: kind, title: occasion.title, time: occasion.time, note: occasion.note });
         }
         hasOccasionFacts = occasionScope.occasions.length > 0;
+    }
+    const todayKey = calendarDateRangeKeys(windowStart, 0, 0)[0];
+    const storyTime = normalizeStoryTime(calendarScope.baseTime);
+    const nowMinutes = storyTime ? calendarTimeSortKey(storyTime) : null;
+    for (const [date, items] of scheduleItemsByDate) {
+        const sorted = sortByCalendarTime(items);
+        const marks = new Map();
+        if (date === todayKey && nowMinutes !== null) {
+            let upcomingMarked = false;
+            for (const item of sorted) {
+                if (!calendarTimeLabel(item.time)) continue;
+                if (calendarTimeEndKey(item.time) < nowMinutes) marks.set(item, '（已过）');
+                else if (!upcomingMarked && calendarTimeSortKey(item.time) >= nowMinutes) { marks.set(item, '（接下来）'); upcomingMarked = true; }
+            }
+        }
+        for (const item of sorted) {
+            const timeLabel = calendarTimeLabel(item.time);
+            const note = item.note ? `（${item.note.replace(/\s+/g, ' ').slice(0, 180)}）` : '';
+            addFact(date, `${item.label}：${timeLabel ? `${timeLabel} ` : ''}${item.title}${marks.get(item) || ''}${note}`);
+        }
     }
     const holidays = normalizeHolidayCache(holidayStore);
     const holidayYears = [...new Set(scheduleDates.map(date => Number(date.slice(0, 4))))];
