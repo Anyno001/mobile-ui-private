@@ -17,7 +17,7 @@ import { CYCLE_SELF_SUBJECT, clearCycleScope, cycleScopeFor, cycleSubjectKeys, n
 import { normalizeOutfitStore, OUTFIT_SELF_SUBJECT, outfitScopeFor } from './calendar-outfit-model.js';
 import { normalizeRecipeStore, recipeScopeFor } from './calendar-recipe-model.js';
 import { createCalendarCommitters } from './calendar-commit.js';
-import { fillCalendarEntryForm, readCalendarEntryForm, setCalendarEntryRepeat } from './calendar-dom.js';
+import { fillCalendarEntryForm, readCalendarEntryForm, bindCalendarEntryBulk, setCalendarEntryRepeat } from './calendar-dom.js';
 import { loadCalendar, loadCalendarCycles, loadCalendarHolidays, loadCalendarOccasions, loadCalendarRecipes, loadCalendarWeather, loadCalendarWithLegacyInjectionMigration } from './calendar-storage.js';
 import { occasionTypeLabel, renderCalendarEntryDialog, renderCalendarRepeatDeleteDialog } from './calendar-view.js';
 import { showCalendarMonthDialog } from './calendar-month-dialog.js';
@@ -487,12 +487,12 @@ export function installCalendar(state, deps) {
         const showError = error => { if (errorNode) errorNode.textContent = error?.message || '安排更新失败'; };
         overlay.querySelector('[data-calendar-entry-close]')?.addEventListener('click', () => closeOverlay?.('close'));
         overlay.querySelector('[data-calendar-repeat-select]')?.addEventListener('change', event => setCalendarEntryRepeat(overlay, event.currentTarget.value));
+        bindCalendarEntryBulk(overlay);
         form?.addEventListener('submit', async event => {
             event.preventDefault();
             try {
-                const value = readCalendarEntryForm(overlay);
-                if (!value.title) throw new Error('安排名称不能为空');
-                await commitSchedule(storageId, current => {
+                const base = readCalendarEntryForm(overlay), items = base.lines || [base]; if (!items[0]?.title) throw new Error('安排名称不能为空'); if (base.weekdays && !base.weekdays.length) throw new Error('请至少选择一天'); // 批量时每行一条，共用同一重复规则
+                await commitSchedule(storageId, start => items.reduce((current, line) => { const value = { ...base, ...line };
                     const calendar = normalizedKind === 'event' && existingEntry
                         ? deleteCalendarEvent(current.calendar, existingEntry.id).scope : current.calendar;
                     const occasionScope = normalizedKind === 'occasion' && existingEntry
@@ -501,7 +501,7 @@ export function installCalendar(state, deps) {
                         calendar: upsertCalendarEvent(calendar, {
                             id: normalizedKind === 'event' ? existingEntry?.id : undefined,
                             date: entries.date, title: value.title, note: value.note,
-                                ...(normalizedKind === 'event' && existingEntry?.time ? { time: existingEntry.time } : {}), source: normalizedKind === 'event' ? existingEntry?.source || 'manual' : 'manual',
+                                ...(normalizedKind === 'event' && existingEntry?.time ? { time: existingEntry.time } : value.time ? { time: value.time } : {}), source: normalizedKind === 'event' ? existingEntry?.source || 'manual' : 'manual',
                             createdAt: normalizedKind === 'event' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
                         }),
                         occasions: occasionScope,
@@ -514,13 +514,13 @@ export function installCalendar(state, deps) {
                         date: normalizedKind === 'occasion' ? existingEntry?.date || entries.date : entries.date,
                         month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                         day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
-                        ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}), ...(normalizedKind === 'occasion' ? { time: existingEntry?.time, weekdays: existingEntry?.weekdays, seasonOnly: existingEntry?.seasonOnly } : {}), repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
+                        ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}), time: normalizedKind === 'occasion' ? existingEntry?.time : value.time, weekdays: value.weekdays, until: value.until, ...(normalizedKind === 'occasion' ? { seasonOnly: existingEntry?.seasonOnly } : {}), repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
                         ...(value.intervalDays === undefined ? {} : { intervalDays: value.intervalDays }),
                         createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
                     }),
                     };
-                });
-                status(storageId, existingEntry ? '日程已更新。' : '日程已添加。');
+                }, start));
+                status(storageId, existingEntry ? '日程已更新。' : items.length > 1 ? `已添加${items.length}条日程。` : '日程已添加。');
                 closeOverlay?.('saved'); rerender(storageId);
             } catch (error) { showError(error); }
         });

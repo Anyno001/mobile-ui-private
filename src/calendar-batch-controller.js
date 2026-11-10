@@ -39,7 +39,7 @@ export function createCalendarBatchController({
     const weekDates = batch => calendarDateRangeKeys(batch.start, 0, 6);
     const savedText = (storageId, date) => formatBatchDayText(getScope(storageId).events[date] || []);
     const dayText = (storageId, batch, date) => batch.drafts[date]?.text ?? savedText(storageId, date);
-    const weekDirty = (storageId, batch) => weekDates(batch).some(date => batch.drafts[date] && batch.drafts[date].text !== savedText(storageId, date));
+    const weekDirty = (storageId, batch) => Object.keys(batch.drafts).some(date => batch.drafts[date] && batch.drafts[date].text !== savedText(storageId, date));
 
     // mode：ai 为底部「AI生成日程」入口，只含 AI 排程与草稿；manual 为设置页「批量安排」入口，含重复日程、阶段与按周手填。
     const open = (storageId, mode = 'ai') => {
@@ -102,7 +102,7 @@ export function createCalendarBatchController({
         const rules = occasionScope.occasions.filter(isBatchRule).map(occasion => ({ id: occasion.id, rule: batch.ruleDrafts.get(occasion.id) || ruleFromOccasion(occasion) }));
         if (batch.adding) rules.push({ id: 'new', rule: batch.ruleDrafts.get('new') || { title: '', time: '', repeat: 'weekly', weekdays: [], intervalDays: 1, start: batch.start, seasonOnly: false, note: '' } });
         return {
-            mode: batch.mode, start: batch.start, dates, reference: calendarReferenceDate(scope), texts: Object.fromEntries(dates.map(date => [date, dayText(storageId, batch, date)])),
+            mode: batch.mode, start: batch.start, dates, reference: calendarReferenceDate(scope), texts: Object.fromEntries(dates.map(date => [date, dayText(storageId, batch, date)])), drafted: new Set(Object.keys(batch.drafts)), draftDates: Object.keys(batch.drafts).sort(), draftTexts: Object.fromEntries(Object.keys(batch.drafts).map(date => [date, batch.drafts[date].text])),
             fixedByDate, rules, adding: batch.adding, season: occasionScope.season || null, seasonDraft: batch.seasonDraft || null,
             books: scope.batchWorldBooks || [], importPreview: batch.importPreview, importing: Boolean(batch.importTask),
             rangeMode: batch.rangeMode, customStart: batch.customStart, customEnd: batch.customEnd, plan: batch.plan,
@@ -113,8 +113,7 @@ export function createCalendarBatchController({
     const switchWeek = (storageId, nextStart) => {
         const batch = session(storageId);
         if (!parseCalendarDate(nextStart) || nextStart === batch.start) return false;
-        if (weekDirty(storageId, batch) && !confirmAction('本周安排的改动尚未保存，草稿会暂时保留。是否切换？')) return false;
-        batch.start = nextStart;
+                batch.start = nextStart;
         return true;
     };
 
@@ -130,11 +129,11 @@ export function createCalendarBatchController({
 
     async function saveDays(storageId) {
         const batch = session(storageId);
-        const dates = weekDates(batch);
-        const drafts = Object.fromEntries(dates.filter(date => batch.drafts[date]).map(date => [date, batch.drafts[date]]));
+        const dates = Object.keys(batch.drafts).sort(); // 生成范围可跨多周，全部一起保存
+        const drafts = { ...batch.drafts };
         await commitScope(storageId, current => applyBatchDays(current, dates, drafts));
         for (const date of dates) delete batch.drafts[date];
-        status(storageId, '本周安排已保存。');
+        status(storageId, '已保存到日历。');
     }
 
     async function importRules(storageId) {
@@ -237,8 +236,8 @@ export function createCalendarBatchController({
                 rerender(storageId);
             }
             status(storageId, failed.length
-                ? `已填入${filled}项草稿；${failed.join('、')}生成失败，可重试。`
-                : `已填入${filled}项草稿，确认后点保存。`, { duration: 10000 });
+                ? `已生成${filled}项；${failed.join('、')}生成失败，可重试。`
+                : `已生成${filled}项，确认后点保存。`, { duration: 10000 });
         } catch (error) {
             if (tasks.active(task)) errorStatus(storageId, error);
         } finally {
@@ -246,7 +245,7 @@ export function createCalendarBatchController({
             tasks.finish(task);
             if (batch.generationTask === task) {
                 batch.generationTask = null;
-                if (cancelled && sessions.get(storageId) === batch) status(storageId, '已取消生成，已完成的批次保留在草稿中。');
+                if (cancelled && sessions.get(storageId) === batch) status(storageId, '已取消生成，已完成的部分保留。');
             }
             refresh(storageId);
         }
@@ -278,7 +277,7 @@ export function createCalendarBatchController({
         capture(storageId, app);
         try {
             if (action === 'calendar-batch-close') {
-                if (weekDirty(storageId, batch) && !confirmAction('本周安排的改动尚未保存。是否放弃并返回？')) return true;
+                if (weekDirty(storageId, batch) && !confirmAction('生成的结果尚未保存。是否放弃并返回？')) return true;
                 batch.generationTask?.controller.abort('closed'); batch.importTask?.controller.abort('closed');
                 sessions.delete(storageId);
             } else if (action === 'calendar-batch-prev-week' || action === 'calendar-batch-next-week') {
@@ -287,6 +286,10 @@ export function createCalendarBatchController({
                 switchWeek(storageId, button.value);
             } else if (action === 'calendar-batch-save') {
                 await saveDays(storageId);
+            } else if (action === 'calendar-batch-line-delete') {
+                const date = button.dataset.date, lines = parseBatchDayText(dayText(storageId, batch, date));
+                lines.splice(Number(button.dataset.index), 1);
+                batch.drafts[date] = { ...batch.drafts[date], text: formatBatchDayText(lines) };
             } else if (action === 'calendar-batch-copy-next') {
                 const date = button.dataset.date, next = calendarDateRangeKeys(date, 1, 1)[0];
                 const source = parseBatchDayText(dayText(storageId, batch, date));

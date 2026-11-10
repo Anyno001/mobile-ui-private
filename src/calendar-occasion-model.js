@@ -116,6 +116,7 @@ export function normalizeOccasion(value, now = Date.now()) {
         ...(repeat === 'custom' ? { intervalDays: normalizedIntervalDays(value.intervalDays) } : {}),
         ...(weekdays.length ? { weekdays } : {}),
         ...(seasonOnly ? { seasonOnly } : {}),
+        ...(repeat && repeat !== 'yearly' && parseCalendarDate(value.until) ? { until: String(value.until) } : {}),
         ...(hasDate ? { date: `${date.getFullYear().toString().padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` } : {}),
         ...(normalizedExcludedDates(value.excludedDates).length ? { excludedDates: normalizedExcludedDates(value.excludedDates) } : {}),
         createdAt, updatedAt: Math.max(createdAt, timestamp(value.updatedAt, createdAt)),
@@ -243,7 +244,7 @@ export function expandOccasions(scope, { start = new Date(), days = 7 } = {}) {
             const sameMonthDay = parsed.getDate() === anchor.getDate();
             const lastDayOfMonth = !calendarDateFromParts(parsed.getFullYear(), parsed.getMonth() + 1, anchor.getDate())
                 && parsed.getDate() === daysInCalendarMonth(parsed.getFullYear(), parsed.getMonth() + 1);
-            if (excludedDates.has(date)) continue;
+            if (excludedDates.has(date) || (occasion.until && date > occasion.until)) continue;
             if (repeat === 'daily'
                 || (repeat === 'weekly' && sameWeekday)
                 || (repeat === 'biweekly' && sameWeekday && (weekdays

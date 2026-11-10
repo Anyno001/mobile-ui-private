@@ -1,3 +1,4 @@
+import { parseBatchDayText } from './calendar-batch-model.js';
 import { calendarTimeLabel, parseCalendarDate, relativeCalendarLabel, sortByCalendarTime } from './calendar-model.js';
 import { occasionSeasonEnd } from './calendar-occasion-model.js';
 import { BACK_ICON_SVG, FORWARD_ICON_SVG } from './icons.js';
@@ -53,25 +54,22 @@ function fixedSection(model) {
         <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-batch-season-clear" ${season ? '' : 'disabled'}>清空</button><button type="button" class="is-primary" data-action="calendar-batch-season-save">保存阶段</button></div>`);
 }
 
-function daysSection(model) {
-    const { dates, reference, texts, fixedByDate } = model;
-    const rows = dates.map((date, index) => {
+// AI生成结果：只列出生成了内容的日子，每天一张卡，一行一件事，可逐条删除。
+function resultSection(model) {
+    const { draftDates, reference, draftTexts: texts } = model;
+    const rows = draftDates.map(date => {
         const parsed = parseCalendarDate(date);
         const relative = relativeCalendarLabel(reference, date);
-        const fixed = sortByCalendarTime(fixedByDate.get(date) || []).map(item => {
+        const items = parseBatchDayText(texts[date]).map((item, index) => {
             const time = calendarTimeLabel(item.time);
-            const label = `${time ? `${time} ` : ''}${item.title}`;
-            return item.skipped
-                ? `<li class="is-skipped"><span>${escapeHtml(label)}</span><em>已跳过</em><button type="button" data-action="calendar-batch-unskip" data-occasion-id="${escapeAttr(item.id)}" data-date="${date}">恢复</button></li>`
-                : `<li><span>${escapeHtml(label)}</span>${item.repeat && item.repeat !== 'yearly' ? `<button type="button" data-action="calendar-batch-skip" data-occasion-id="${escapeAttr(item.id)}" data-date="${date}">本次跳过</button>` : ''}</li>`;
+            return `<li><span>${escapeHtml(`${time ? `${time} ` : ''}${item.title}`)}${item.note ? `<small class="pm-calendar-setting-hint">${escapeHtml(item.note)}</small>` : ''}</span><button type="button" data-action="calendar-batch-line-delete" data-date="${date}" data-index="${index}">删除</button></li>`;
         }).join('');
         return `<div class="pm-calendar-batch-day">
-            <div class="pm-calendar-batch-day-head"><b>${escapeHtml(dayFormat.format(parsed))}</b><span>${escapeHtml(weekdayFormat.format(parsed))}${relative ? ` · ${escapeHtml(relative)}` : ''}</span>${index < dates.length - 1 ? `<button type="button" data-action="calendar-batch-copy-next" data-date="${date}">复制到下一天</button>` : ''}</div>
-            ${fixed ? `<ul class="pm-calendar-batch-fixed">${fixed}</ul>` : ''}
-            <textarea data-batch-day="${date}" maxlength="6000" placeholder="一行一件事：时间 标题｜备注" aria-label="${escapeAttr(`${date}的日程`)}">${escapeHtml(texts[date] || '')}</textarea>
+            <div class="pm-calendar-batch-day-head"><b>${escapeHtml(dayFormat.format(parsed))}</b><span>${escapeHtml(weekdayFormat.format(parsed))}${relative ? ` · ${escapeHtml(relative)}` : ''}</span></div>
+            <ul class="pm-calendar-batch-fixed">${items}</ul>
         </div>`;
     }).join('');
-    return group(model.mode === 'manual' ? '本周安排' : '草稿', rows, ' pm-calendar-batch-days');
+    return rows ? group('生成结果', rows, ' pm-calendar-batch-days') : '';
 }
 
 function aiSection(model) {
@@ -80,22 +78,21 @@ function aiSection(model) {
     return group('生成范围', `<select data-action="calendar-batch-range" data-batch-range aria-label="生成范围">${option('week', '这一周')}${option('month', '这个月')}${option('custom', '自选起止日')}</select>
         ${rangeMode === 'custom' ? `<div class="pm-calendar-batch-pair"><label class="pm-calendar-batch-inline">开始<input type="date" data-batch-custom-start value="${escapeAttr(customStart)}" aria-label="开始日期"></label><label class="pm-calendar-batch-inline">结束<input type="date" data-batch-custom-end value="${escapeAttr(customEnd)}" aria-label="结束日期"></label></div><small class="pm-calendar-attribution">最多8周。</small>` : ''}
         <textarea data-batch-plan maxlength="3000" placeholder="我的安排（可选，优先级最高）" aria-label="我的安排">${escapeHtml(plan)}</textarea>
-        <small class="pm-calendar-attribution">结果填入草稿，确认后保存才会写入。</small>
-        <div class="pm-calendar-editor-actions">${generating ? '<button type="button" data-action="calendar-batch-cancel">取消生成</button>' : ''}<button type="button" class="is-primary" data-action="calendar-batch-generate" ${busy ? 'disabled' : ''}>${generating ? '正在生成…' : '生成草稿'}</button></div>`);
+        <small class="pm-calendar-attribution">生成后确认无误再保存。</small>
+        <div class="pm-calendar-editor-actions">${generating ? '<button type="button" data-action="calendar-batch-cancel">取消生成</button>' : ''}<button type="button" class="is-primary" data-action="calendar-batch-generate" ${busy ? 'disabled' : ''}>${generating ? '正在生成…' : '生成'}</button></div>`);
 }
 
 export function renderCalendarBatchPage(model, status = '') {
     return `<div id="pm-calendar-app" class="pm-calendar-shell is-settings is-batch" data-calendar-view-mode="schedule">
-        <header class="pm-calendar-header is-sub"><button type="button" class="pm-calendar-icon-button" data-action="calendar-batch-close" aria-label="返回日历">${BACK_ICON_SVG}</button><h2>${model.mode === 'manual' ? '批量安排' : 'AI生成日程'}</h2><span class="pm-calendar-header-spacer" aria-hidden="true"></span></header>
-        <div class="pm-calendar-batch-bar">
+        <header class="pm-calendar-header is-sub"><button type="button" class="pm-calendar-icon-button" data-action="calendar-batch-close" aria-label="返回日历">${BACK_ICON_SVG}</button><h2>${model.mode === 'manual' ? '重复日程与阶段' : 'AI生成日程'}</h2><span class="pm-calendar-header-spacer" aria-hidden="true"></span></header>
+        ${model.mode === 'manual' ? '' : `<div class="pm-calendar-batch-bar">
             <button type="button" class="pm-calendar-month-nav" data-action="calendar-batch-prev-week" aria-label="上一周" title="上一周">${BACK_ICON_SVG}</button>
             <input type="date" data-action="calendar-batch-start" value="${escapeAttr(model.start)}" aria-label="起始日">
             <button type="button" class="pm-calendar-month-nav" data-action="calendar-batch-next-week" aria-label="下一周" title="下一周">${FORWARD_ICON_SVG}</button>
-            <button type="button" class="pm-calendar-batch-save" data-action="calendar-batch-save" ${model.busy ? 'disabled' : ''}>保存</button>
-        </div>
+            <button type="button" class="pm-calendar-batch-save" data-action="calendar-batch-save" ${model.busy || !model.drafted.size ? 'disabled' : ''}>保存</button>
+        </div>`}
         <div class="pm-calendar-management" data-calendar-management="batch">
-            ${model.mode === 'manual' ? fixedSection(model) : aiSection(model)}
-            ${daysSection(model)}
+            ${model.mode === 'manual' ? fixedSection(model) : `${aiSection(model)}${resultSection(model)}`}
         </div>
         <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
     </div>`;
