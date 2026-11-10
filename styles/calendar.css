@@ -53,6 +53,7 @@
 .pm-calendar-month-nav:focus-visible,.pm-calendar-month-title:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
 .pm-calendar-month-title{display:inline-flex;align-items:center;gap:var(--pm-space-1);min-height:var(--pm-size-control-sm);padding:var(--pm-space-0) var(--pm-space-2);border:0;border-radius:var(--pm-radius-pill);background:transparent;color:var(--pm-color-label);font:inherit;cursor:pointer;}
 .pm-calendar-month-title b{font-size:var(--pm-font-size-compact);font-weight:var(--pm-font-weight-semibold);}
+.pm-calendar-month-title small{color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);white-space:nowrap;}
 .pm-calendar-month-title svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);color:var(--pm-color-label-3);}
 .pm-calendar-weekdays,.pm-calendar-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));}
 .pm-calendar-weekdays span{padding:var(--pm-space-1) var(--pm-space-0);text-align:center;color:var(--pm-color-label-3);font-size:var(--pm-font-size-caption);}
@@ -317,6 +318,9 @@
 .pm-calendar-batch-rule+.pm-calendar-batch-rule,.pm-calendar-batch-day+.pm-calendar-batch-day{margin-top:var(--pm-space-3);}
 .pm-calendar-batch-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:var(--pm-space-2);}
 .pm-calendar-batch-inline{display:flex;flex-direction:column;gap:var(--pm-space-1);min-width:0;color:var(--pm-color-label-3);font-size:var(--pm-font-size-helper);}
+/* 农历样式：圆圈内两字农历日，字号收一档防溢出 */
+.pm-calendar-shell.is-lunar .pm-calendar-day>b{width:auto;min-width:var(--pm-calendar-day-circle);padding:var(--pm-space-0) var(--pm-space-0-5);box-sizing:border-box;border-radius:var(--pm-radius-pill);font-size:var(--pm-font-size-label);font-variant-numeric:normal;white-space:nowrap;}
+.pm-calendar-editor-actions button{min-width:0;overflow:hidden;text-overflow:ellipsis;}
 .pm-calendar-batch-chips{display:flex;flex-wrap:wrap;gap:var(--pm-space-1-5);}
 .pm-calendar-batch-chip{position:relative;display:inline-flex;align-items:center;min-width:0;cursor:pointer;}
 .pm-calendar-data-tools .pm-calendar-batch-chip input{position:absolute;inset:0;width:100%;height:100%;min-height:var(--pm-space-0);margin:var(--pm-space-0);padding:var(--pm-space-0);opacity:0;cursor:pointer;}

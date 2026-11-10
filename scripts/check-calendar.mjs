@@ -1341,8 +1341,8 @@ assert.doesNotMatch(renderedSchedule, /storyInitialDate|calendar-story-initial|�
     '月份面板不得保留无业务作用的故事初始日期入口');
 assert.doesNotMatch(renderedSchedule, /calendar-date-rescan/);
 assert.doesNotMatch(renderedSchedule, /calendar-base-edit|pm-calendar-base-dialog/);
-assert.match(renderedSchedule, /class="pm-calendar-primary-action" data-action="calendar-batch-open"[^>]*>[\s\S]*?M12 3l1\.2 3\.8L17 8[\s\S]*?<span>安排日程<\/span>/);
-assert.doesNotMatch(renderedSchedule, /data-action="calendar-generate"/, '日程模式只保留「安排日程」入口');
+assert.match(renderedSchedule, /class="pm-calendar-primary-action" data-action="calendar-batch-open" data-batch-mode="ai"[^>]*>[\s\S]*?M12 3l1\.2 3\.8L17 8[\s\S]*?<span>AI生成日程<\/span>/);
+assert.doesNotMatch(renderedSchedule, /data-action="calendar-generate"/, '日程模式底部只保留「AI生成日程」入口');
 assert.match(renderedSchedule, /class="pm-calendar-status" aria-live="polite">&lt;status&gt;<\/div>/);
 assert.match(renderedBusySchedule, /data-action="calendar-batch-open"[^>]*aria-busy="true"[^>]*disabled/,
     '生成中仅日程模式的生成按钮应保持 busy');
@@ -1390,7 +1390,7 @@ assert.match(renderedScheduleMenu, /aria-expanded="true"[\s\S]*?class="pm-calend
     '展开后必须在卡片内给出编辑与删除');
 assert.match(renderedRegeneratingSchedule, /class="pm-calendar-round pm-calendar-inline-regenerate is-loading" data-action="calendar-regenerate"[^>]*aria-busy="true" disabled/,
     '当日日程重新生成期间，详情刷新按钮必须旋转并禁用');
-assert.match(renderedRegeneratingSchedule, /class="pm-calendar-primary-action is-loading" data-action="calendar-batch-open" aria-busy="true" disabled>[\s\S]*?M12 3l1\.2 3\.8L17 8/,
+assert.match(renderedRegeneratingSchedule, /class="pm-calendar-primary-action is-loading" data-action="calendar-batch-open" data-batch-mode="ai" aria-busy="true" disabled>[\s\S]*?M12 3l1\.2 3\.8L17 8/,
     '详情重新生成不得改变底部生成按钮的 busy 行为');
 assert.doesNotMatch(renderedSchedule, /pm-calendar-inline-regenerate is-loading/,
     '未生成时详情刷新按钮不得错误旋转');
@@ -1685,7 +1685,7 @@ assert.doesNotMatch(terminalSchedule, /is-placeholder[^>]*(?:data-action|data-ca
     '占位格不得携带选择动作或日期数据');
 assert.match(terminalSchedule, /data-action="calendar-next-month"[^>]*disabled/,
     '9999 年 12 月必须禁用下个月按钮');
-assert.match(terminalSchedule, /<span>安排日程<\/span>/);
+assert.match(terminalSchedule, /<span>AI生成日程<\/span>/);
 assert.doesNotMatch(terminalSchedule, /生成未来七日日程|10000-01-01/);
 const terminalSettings = renderCalendarPageHtml(
     { ...createEmptyCalendarScope(), baseDate: '9999-12-31' }, { occasions: [] }, '', {}, {}, {}, [],
@@ -3981,3 +3981,22 @@ try {
 }
 
 console.log('Calendar checks passed.');
+
+// —— 农历：正文识别与月历样式 ——
+{
+    const { extractLunarDate, lunarCellLabel, lunarToSolar } = await import('../src/calendar-lunar.js');
+    if (lunarCellLabel(new Date(2026, 1, 17, 12))) {
+        assert.equal(lunarToSolar(2026, 1, 1), '2026-02-17');
+        assert.equal(lunarToSolar(2025, 6, 1, true), '2025-07-25', '闰月须单独换算');
+        assert.equal(extractLunarDate('腊月廿八', '2026-12-01'), '2027-02-04', '无年份农历取离故事日期最近的一年');
+        assert.equal(extractLunarDate('三月十五日', '2026-03-01'), null, '无农历标记的「X月X日」按公历处理');
+        assert.equal(extractCalendarBaseDate('<date>丙午年三月十五</date>', ['date'], '2026-11-01'), '2026-05-01');
+        assert.equal(extractCalendarBaseDate('<date>2026年3月20日 农历二月初二</date>'), '2026-03-20', '公历农历并写时以公历为准');
+        assert.equal(extractCalendarBaseDate('<date>3月5日 星期三</date>', ['date'], '2026-11-01'), '2027-03-05', '无年份公历照旧补年');
+        const lunarPage = renderCalendarPageHtml(normalizeCalendarScope({ baseDate: '2026-03-20', lunarDisplay: true }), { occasions: [] }, '', {}, {}, {}, [],
+            { viewYear: 2026, viewMonth: 3, selectedDate: '2026-03-20', viewMode: 'schedule' });
+        assert.match(lunarPage, /class="pm-calendar-shell is-lunar"/);
+        assert.match(lunarPage, /data-calendar-date="2026-03-20"[^>]*><b>初二<\/b><span>20<\/span>/, '农历样式圈内写农历日、下方写公历日');
+        assert.match(lunarPage, /丙午年二月初二/, '选中日详情显示完整农历');
+    }
+}

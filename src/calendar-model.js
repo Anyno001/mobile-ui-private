@@ -1,4 +1,5 @@
 import { normalizeStoryWeatherEvent } from './calendar-weather-source.js';
+import { extractLunarDate } from './calendar-lunar.js';
 
 export const CALENDAR_STORE_VERSION = 1;
 export const CALENDAR_LIMITS = Object.freeze({ scopes: 80, dates: 366, eventsPerDate: 40, title: 120, note: 1000 });
@@ -289,6 +290,7 @@ export function normalizeCalendarScope(value) {
     const batchWorldBooks = normalizeBatchWorldBooks(source.batchWorldBooks);
     if (batchWorldBooks.length) normalized.batchWorldBooks = batchWorldBooks;
     if (source.batchAutoWorldBooks === true) normalized.batchAutoWorldBooks = true;
+    if (source.lunarDisplay === true) normalized.lunarDisplay = true;
     if (parseCalendarDate(source.storyInitialDate)) normalized.storyInitialDate = source.storyInitialDate;
     if (parseCalendarDate(source.baseDate)) {
         normalized.baseDate = source.baseDate;
@@ -558,7 +560,9 @@ export function extractCalendarBaseDate(text, dateTags = DEFAULT_CALENDAR_DATE_T
     if (!source) return null;
     const reference = new Date();
     for (const content of extractCalendarDateTagContents(source, dateTags).reverse()) {
-        const date = hasExplicitCalendarYear(content) ? dateFromNaturalText(content, reference) : yearlessTaggedDate(content, hint);
+        // 明确的公历年月日优先，其次农历（初三、腊月、丙午年等写法），最后按无年份公历补年。
+        const solar = hasExplicitCalendarYear(content) ? dateFromNaturalText(content, reference) : null;
+        const date = solar || extractLunarDate(content, hint) || (hasExplicitCalendarYear(content) ? null : yearlessTaggedDate(content, hint));
         if (date) return date;
     }
     const legacyTag = source.match(/<\s*(\d{4})[\s年./-]+(\d{1,2})[\s月./-]+(\d{1,2})\s*日?\s*>/);

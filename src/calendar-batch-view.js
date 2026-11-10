@@ -43,7 +43,7 @@ function fixedSection(model) {
         <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-batch-import-discard">放弃</button><button type="button" class="is-primary" data-action="calendar-batch-import-apply">写入所选</button></div></div>` : '';
     const importHint = books.length ? '' : '<small class="pm-calendar-attribution">在日历设置的「数据来源」中选择世界书后可用。</small>';
     return group('重复日程', `${cards || '<p class="pm-calendar-setting-hint">暂无重复日程。</p>'}
-        <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-batch-import" ${busy || !books.length ? 'disabled' : ''}>${importing ? '正在读取…' : '从世界书整理重复日程'}</button>${model.adding ? '' : '<button type="button" data-action="calendar-batch-rule-add">添加重复日程</button>'}</div>
+        <div class="pm-calendar-editor-actions"><button type="button" data-action="calendar-batch-import" ${busy || !books.length ? 'disabled' : ''}>${importing ? '正在读取…' : '从世界书整理'}</button></div>
         ${importHint}
         ${preview}
         <h4 class="pm-calendar-batch-subtitle">阶段</h4>
@@ -71,13 +71,13 @@ function daysSection(model) {
             <textarea data-batch-day="${date}" maxlength="6000" placeholder="一行一件事：时间 标题｜备注" aria-label="${escapeAttr(`${date}的日程`)}">${escapeHtml(texts[date] || '')}</textarea>
         </div>`;
     }).join('');
-    return group('本周安排', rows, ' pm-calendar-batch-days');
+    return group(model.mode === 'manual' ? '本周安排' : '草稿', rows, ' pm-calendar-batch-days');
 }
 
 function aiSection(model) {
     const { rangeMode, customStart, customEnd, plan, generating, busy } = model;
     const option = (value, label) => `<option value="${value}" ${rangeMode === value ? 'selected' : ''}>${label}</option>`;
-    return group('AI帮我排', `<select data-action="calendar-batch-range" data-batch-range aria-label="生成范围">${option('week', '这一周')}${option('month', '这个月')}${option('custom', '自选起止日')}</select>
+    return group('生成范围', `<select data-action="calendar-batch-range" data-batch-range aria-label="生成范围">${option('week', '这一周')}${option('month', '这个月')}${option('custom', '自选起止日')}</select>
         ${rangeMode === 'custom' ? `<div class="pm-calendar-batch-pair"><label class="pm-calendar-batch-inline">开始<input type="date" data-batch-custom-start value="${escapeAttr(customStart)}" aria-label="开始日期"></label><label class="pm-calendar-batch-inline">结束<input type="date" data-batch-custom-end value="${escapeAttr(customEnd)}" aria-label="结束日期"></label></div><small class="pm-calendar-attribution">最多8周。</small>` : ''}
         <textarea data-batch-plan maxlength="3000" placeholder="我的安排（可选，优先级最高）" aria-label="我的安排">${escapeHtml(plan)}</textarea>
         <small class="pm-calendar-attribution">结果填入草稿，确认后保存才会写入。</small>
@@ -86,7 +86,7 @@ function aiSection(model) {
 
 export function renderCalendarBatchPage(model, status = '') {
     return `<div id="pm-calendar-app" class="pm-calendar-shell is-settings is-batch" data-calendar-view-mode="schedule">
-        <header class="pm-calendar-header is-sub"><button type="button" class="pm-calendar-icon-button" data-action="calendar-batch-close" aria-label="返回日历">${BACK_ICON_SVG}</button><h2>批量安排</h2><span class="pm-calendar-header-spacer" aria-hidden="true"></span></header>
+        <header class="pm-calendar-header is-sub"><button type="button" class="pm-calendar-icon-button" data-action="calendar-batch-close" aria-label="返回日历">${BACK_ICON_SVG}</button><h2>${model.mode === 'manual' ? '批量安排' : 'AI生成日程'}</h2><span class="pm-calendar-header-spacer" aria-hidden="true"></span></header>
         <div class="pm-calendar-batch-bar">
             <button type="button" class="pm-calendar-month-nav" data-action="calendar-batch-prev-week" aria-label="上一周" title="上一周">${BACK_ICON_SVG}</button>
             <input type="date" data-action="calendar-batch-start" value="${escapeAttr(model.start)}" aria-label="起始日">
@@ -94,9 +94,8 @@ export function renderCalendarBatchPage(model, status = '') {
             <button type="button" class="pm-calendar-batch-save" data-action="calendar-batch-save" ${model.busy ? 'disabled' : ''}>保存</button>
         </div>
         <div class="pm-calendar-management" data-calendar-management="batch">
-            ${fixedSection(model)}
+            ${model.mode === 'manual' ? fixedSection(model) : aiSection(model)}
             ${daysSection(model)}
-            ${aiSection(model)}
         </div>
         <div class="pm-calendar-status" aria-live="polite">${escapeHtml(status)}</div>
     </div>`;

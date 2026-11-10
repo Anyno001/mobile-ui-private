@@ -16,6 +16,7 @@ import {
     WEATHER_STORM_ICON_SVG, WEATHER_SUN_ICON_SVG,
 } from './icons.js';
 import { renderCalendarManagement, renderSelectedDateDetail } from './calendar-view.js';
+import { lunarCellLabel, lunarFullLabel, lunarMonthRangeLabel } from './calendar-lunar.js';
 import { escapeAttr, escapeHtml } from './ui.js';
 
 const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
@@ -31,29 +32,6 @@ const SCENE_ICONS = {
 const shortDate = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
 const headerDate = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' });
 const monthTitle = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' });
-let lunarFormatter = null;
-try { lunarFormatter = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'short', day: 'numeric' }); } catch {}
-
-function lunarDayLabel(value) {
-    const day = Number(value);
-    if (!Number.isInteger(day) || day < 1 || day > 30) return '';
-    if (day <= 10) return `初${['一','二','三','四','五','六','七','八','九','十'][day - 1]}`;
-    if (day < 20) return `十${['一','二','三','四','五','六','七','八','九'][day - 11]}`;
-    if (day === 20) return '二十';
-    if (day < 30) return `廿${['一','二','三','四','五','六','七','八','九'][day - 21]}`;
-    return '三十';
-}
-
-function lunarLabel(date) {
-    if (!lunarFormatter) return '';
-    try {
-        const parts = lunarFormatter.formatToParts(date);
-        const month = parts.find(part => part.type === 'month')?.value || '';
-        const day = Number(parts.find(part => part.type === 'day')?.value);
-        return day === 1 ? month : lunarDayLabel(day);
-    } catch { return ''; }
-}
-
 function dateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, recipeScope, outfitProfile, date) {
     const parsed = parseCalendarDate(date);
     const events = scope.events[date] || [];
@@ -64,19 +42,20 @@ function dateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope
     const cycle = predictCyclePhase(cycleScope, date);
     const recipe = recipeDayFor(recipeScope, date);
     const outfit = outfitForDate(outfitProfile, date);
-    return { parsed, events, occasions, holidays, weather, cycle, lunar: lunarLabel(parsed),
+    return { parsed, events, occasions, holidays, weather, cycle, lunar: lunarCellLabel(parsed),
         hasRecipe: RECIPE_MEAL_TYPES.some(type => recipe[type]?.text), hasOutfit: Boolean(outfit?.text) };
 }
 
 const cycleBand = phase => phase === 'period' || phase === 'ovulatory' ? phase : '';
 
-function dayCell(meta, cell, { viewMode, viewMonth, todayKey, selectedDate, bands, index }) {
+function dayCell(meta, cell, { viewMode, viewMonth, todayKey, selectedDate, bands, index, lunarMode }) {
     const { parsed } = meta, date = cell.date;
     const classes = ['pm-calendar-day'];
     if (parsed.getMonth() !== viewMonth - 1) classes.push('is-other-month');
     if (date === todayKey) classes.push('is-today');
     if (date === selectedDate) classes.push('is-selected');
-    let sub = meta.lunar, dots = '', glyph = '';
+    // 农历样式：圆圈内写农历日，下方小字写公历日；节假日名照常覆盖小字。
+    let sub = lunarMode ? String(parsed.getDate()) : meta.lunar, dots = '', glyph = '';
     const summary = [];
     if (viewMode === 'schedule') {
         if (meta.holidays.length) { classes.push('has-holiday'); sub = meta.holidays[0].name; dots += '<i class="is-holiday"></i>'; }
@@ -98,7 +77,7 @@ function dayCell(meta, cell, { viewMode, viewMonth, todayKey, selectedDate, band
     } else if (viewMode === 'recipe' && meta.hasRecipe) { classes.push('has-recipe'); dots += '<i class="is-schedule"></i>'; summary.push('有菜谱'); }
     else if (viewMode === 'outfit' && meta.hasOutfit) { classes.push('has-outfit'); dots += '<i class="is-schedule"></i>'; summary.push('有OOTD'); }
     const label = [shortDate.format(parsed), ...summary.filter(Boolean)].join('，');
-    return `<button type="button" class="${classes.join(' ')}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(label)}"><b>${parsed.getDate()}</b>${glyph || `<span>${escapeHtml(sub)}</span>`}${dots ? `<i class="pm-calendar-day-dots" aria-hidden="true">${dots}</i>` : ''}</button>`;
+    return `<button type="button" class="${classes.join(' ')}" data-action="calendar-select-date" data-calendar-date="${date}" aria-pressed="${date === selectedDate}" aria-label="${escapeAttr(label)}"><b>${lunarMode && meta.lunar ? escapeHtml(meta.lunar) : parsed.getDate()}</b>${glyph || `<span>${escapeHtml(sub)}</span>`}${dots ? `<i class="pm-calendar-day-dots" aria-hidden="true">${dots}</i>` : ''}</button>`;
 }
 
 function headerSubtitle(viewMode, { today, scope, weatherStore, view, recipeScope, occasionsByDate, holidayCache }) {
@@ -150,12 +129,13 @@ export function renderCalendarPageHtml(
             if (!list.some(item => item.id === occasion.id)) list.push(occasion);
         }
     }
+    const lunarMode = scope.lunarDisplay === true && Boolean(lunarMonthRangeLabel(viewYear, viewMonth));
     const metas = monthCells.map(cell => cell.isPlaceholder ? null
         : dateMeta(scope, occasionsByDate, holidayCache, weatherStore, cycleScope, recipeScope, outfitProfile, cell.date));
     const bands = viewMode === 'cycle' ? metas.map(meta => meta ? cycleBand(meta.cycle.phase) : '') : [];
     const days = monthCells.map((cell, index) => cell.isPlaceholder
         ? '<span class="pm-calendar-day is-placeholder" aria-hidden="true"></span>'
-        : dayCell(metas[index], cell, { viewMode, viewMonth, todayKey, selectedDate, bands, index })).join('');
+        : dayCell(metas[index], cell, { viewMode, viewMonth, todayKey, selectedDate, bands, index, lunarMode })).join('');
     const legend = viewMode === 'cycle' ? '<div class="pm-calendar-legend" aria-hidden="true"><span class="is-period">经期</span><span class="is-ovulatory">易孕期</span></div>' : '';
 
     const relativeLabel = relativeCalendarLabel(today, selectedDate) || '';
@@ -168,7 +148,7 @@ export function renderCalendarPageHtml(
     const selectedDetail = renderSelectedDateDetail(
         scope, occasionsByDate, holidayCache, weatherStore, cycleScope, selectedDate, viewMode, relativeLabel, recipeScope,
         view.openEntryMenu || '', detailRegenerating, outfitProfile,
-        { canRegenerate: selectedDate >= todayKey, outfitSubjectLabel },
+        { canRegenerate: selectedDate >= todayKey, outfitSubjectLabel, lunarText: scope.lunarDisplay === true ? lunarFullLabel(parseCalendarDate(selectedDate)) : "" },
     );
     const headerAction = viewMode === 'weather' ? 'calendar-weather-refresh'
         : viewMode === 'schedule' ? 'calendar-batch-open'
@@ -177,13 +157,13 @@ export function renderCalendarPageHtml(
     const recipeWindow = calendarWindowDescription(today, 7);
     const headerActionLabel = viewMode === 'weather' ? '刷新天气'
         : viewMode === 'recipe' ? `AI生成${recipeWindow.label}菜谱`
-            : viewMode === 'outfit' ? `AI生成${recipeWindow.label}OOTD` : '安排日程';
+            : viewMode === 'outfit' ? `AI生成${recipeWindow.label}OOTD` : 'AI生成日程';
     const headerBusy = viewMode === 'weather' ? view.weatherRefreshing === true : viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'outfit' ? view.outfitGenerating === true : viewMode === 'schedule' && view.generating === true;
     const statusBusy = viewMode === 'recipe'
         ? view.recipeGenerating === true : viewMode === 'outfit' ? view.outfitGenerating === true : viewMode === 'schedule' && view.generating === true;
     const headerIcon = ['schedule', 'recipe', 'outfit'].includes(viewMode) ? SPARKLES_ICON_SVG : REFRESH_ICON_SVG;
-    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}" aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button></div>` : '';
+    const primary = headerAction ? `<div class="pm-calendar-dock"><button type="button" class="pm-calendar-primary-action${headerBusy ? ' is-loading' : ''}" data-action="${headerAction}"${viewMode === 'schedule' ? ' data-batch-mode="ai"' : ''} aria-busy="${headerBusy}" ${headerBusy ? 'disabled' : ''}>${headerIcon}<span>${escapeHtml(headerActionLabel)}</span></button></div>` : '';
     const statusClass = statusBusy ? 'pm-calendar-status is-generating' : 'pm-calendar-status';
     const statusLine = `<div class="${statusClass}" aria-live="polite">${escapeHtml(status)}</div>`;
 
@@ -206,11 +186,11 @@ export function renderCalendarPageHtml(
     const subtitle = headerSubtitle(viewMode, { today, scope, weatherStore, view, recipeScope, occasionsByDate, holidayCache });
     const segments = MODES.map(([mode, label, aria]) =>
         `<button type="button" data-action="calendar-mode-${mode}" aria-label="${aria}" aria-pressed="${viewMode === mode}">${label}</button>`).join('');
-    return `<div id="pm-calendar-app" class="pm-calendar-shell" data-calendar-view-mode="${viewMode}">
+    return `<div id="pm-calendar-app" class="pm-calendar-shell${lunarMode ? " is-lunar" : ""}" data-calendar-view-mode="${viewMode}">
         <header class="pm-calendar-header"><div class="pm-calendar-title"><h2>日历</h2><p>${escapeHtml(subtitle)}</p></div><button type="button" class="pm-calendar-icon-button" data-action="calendar-settings" aria-label="${MODE_SETTING_TITLES[viewMode]}" title="${MODE_SETTING_TITLES[viewMode]}">${SETTINGS_ICON_SVG}</button><button type="button" class="pm-calendar-icon-button" data-action="calendar-home" aria-label="返回桌面" title="返回桌面">${HOME_ICON_SVG}</button></header>
         <div class="pm-calendar-view-switch" role="group" aria-label="日历信息分类">${segments}</div>
         <section class="pm-calendar-month" data-calendar-month-navigation tabindex="0" aria-label="${viewYear}年${viewMonth}月月历，使用左右方向键切换月份">
-            <div class="pm-calendar-month-head"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="上个月" title="上个月" ${previousMonth ? '' : 'disabled'}>${BACK_ICON_SVG}</button><button type="button" class="pm-calendar-month-title" data-action="calendar-month-panel" aria-haspopup="dialog" aria-label="跳转日期"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b>${CHEVRON_DOWN_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="下个月" title="下个月" ${nextMonth ? '' : 'disabled'}>${FORWARD_ICON_SVG}</button></div>
+            <div class="pm-calendar-month-head"><button type="button" class="pm-calendar-month-nav" data-action="calendar-prev-month" aria-label="上个月" title="上个月" ${previousMonth ? '' : 'disabled'}>${BACK_ICON_SVG}</button><button type="button" class="pm-calendar-month-title" data-action="calendar-month-panel" aria-haspopup="dialog" aria-label="跳转日期"><b>${escapeHtml(monthTitle.format(createCalendarDate(viewYear, viewMonth, 1)))}</b>${lunarMode ? `<small>${escapeHtml(lunarMonthRangeLabel(viewYear, viewMonth))}</small>` : ""}${CHEVRON_DOWN_ICON_SVG}</button><button type="button" class="pm-calendar-month-nav" data-action="calendar-next-month" aria-label="下个月" title="下个月" ${nextMonth ? '' : 'disabled'}>${FORWARD_ICON_SVG}</button></div>
             <div class="pm-calendar-weekdays">${weekdays.map(day => `<span>${day}</span>`).join('')}</div>
             <div class="pm-calendar-month-grid">${days}</div>
             ${legend}

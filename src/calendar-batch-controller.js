@@ -41,10 +41,11 @@ export function createCalendarBatchController({
     const dayText = (storageId, batch, date) => batch.drafts[date]?.text ?? savedText(storageId, date);
     const weekDirty = (storageId, batch) => weekDates(batch).some(date => batch.drafts[date] && batch.drafts[date].text !== savedText(storageId, date));
 
-    const open = storageId => {
+    // mode：ai 为底部「AI生成日程」入口，只含 AI 排程与草稿；manual 为设置页「批量安排」入口，含重复日程、阶段与按周手填。
+    const open = (storageId, mode = 'ai') => {
         const reference = formatCalendarDate(calendarReferenceDate(getScope(storageId)));
         sessions.set(storageId, {
-            start: reference, drafts: {}, ruleDrafts: new Map(), adding: false, importPreview: null,
+            mode: mode === 'manual' ? 'manual' : 'ai', start: reference, drafts: {}, ruleDrafts: new Map(), adding: false, importPreview: null,
             rangeMode: 'week', customStart: reference, customEnd: calendarDateRangeKeys(reference, 13, 13)[0], plan: '',
             generationTask: null, importTask: null,
         });
@@ -101,7 +102,7 @@ export function createCalendarBatchController({
         const rules = occasionScope.occasions.filter(isBatchRule).map(occasion => ({ id: occasion.id, rule: batch.ruleDrafts.get(occasion.id) || ruleFromOccasion(occasion) }));
         if (batch.adding) rules.push({ id: 'new', rule: batch.ruleDrafts.get('new') || { title: '', time: '', repeat: 'weekly', weekdays: [], intervalDays: 1, start: batch.start, seasonOnly: false, note: '' } });
         return {
-            start: batch.start, dates, reference: calendarReferenceDate(scope), texts: Object.fromEntries(dates.map(date => [date, dayText(storageId, batch, date)])),
+            mode: batch.mode, start: batch.start, dates, reference: calendarReferenceDate(scope), texts: Object.fromEntries(dates.map(date => [date, dayText(storageId, batch, date)])),
             fixedByDate, rules, adding: batch.adding, season: occasionScope.season || null, seasonDraft: batch.seasonDraft || null,
             books: scope.batchWorldBooks || [], importPreview: batch.importPreview, importing: Boolean(batch.importTask),
             rangeMode: batch.rangeMode, customStart: batch.customStart, customEnd: batch.customEnd, plan: batch.plan,
@@ -253,7 +254,7 @@ export function createCalendarBatchController({
 
     async function handleAction(button, app, storageId) {
         const action = button.dataset.action;
-        if (action === 'calendar-batch-open') { open(storageId); rerender(storageId); return true; }
+        if (action === 'calendar-batch-open') { open(storageId, button.dataset?.batchMode); rerender(storageId); return true; }
         // 日历设置「数据来源」里的世界书选择：普通生成与安排日程共用。
         if (action === 'calendar-batch-worldbook-book' || action === 'calendar-batch-worldbook-auto') {
             try {
@@ -263,6 +264,12 @@ export function createCalendarBatchController({
                     return { ...current, batchWorldBooks: button.checked === true ? [...books, button.value] : books };
                 }, null, { refreshInjection: false });
             } catch (error) { errorStatus(storageId, error); }
+            rerender(storageId); return true;
+        }
+        // 日历设置「显示」里的农历开关（路由按 calendar-batch- 前缀进入本控制器，calendar.js 已到行数上限）。
+        if (action === 'calendar-batch-lunar') {
+            try { await commitScope(storageId, current => ({ ...current, lunarDisplay: current.lunarDisplay !== true }), null, { refreshInjection: false }); }
+            catch (error) { errorStatus(storageId, error); }
             rerender(storageId); return true;
         }
         if (!action.startsWith('calendar-batch-')) return false;
