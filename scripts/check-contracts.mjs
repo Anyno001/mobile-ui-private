@@ -3161,7 +3161,7 @@ for (const expected of [
 for (const expected of [
   'aria-label="安排名称"', 'aria-label="安排备注"', '<b>日程</b>',
   'name="periodStartDay"', 'data-action="calendar-cycle-subject"',
-  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周（同星期）', '每两周（同星期）', '每月（同日）', '自定义', '每年重复',
+  'name="repeat" data-calendar-repeat-select aria-label="日程重复规则"', '不重复', '每日重复', '每周', '每两周', '每月（同日）', '自定义', '每年重复',
   'data-calendar-interval-days', 'name="intervalDays"',
   'data-action="calendar-holiday-country"',
   'data-action="calendar-edit-entry"', 'data-action="calendar-delete-entry"', 'TRASH_ICON_SVG',
@@ -5086,7 +5086,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.22.3') failures.push('version: expected release version 1.22.3');
+if (packageJson.version !== '1.22.4') failures.push('version: expected release version 1.22.4');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

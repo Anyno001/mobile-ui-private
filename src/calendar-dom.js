@@ -10,7 +10,9 @@ const normalizedIntervalDays = value => {
 export function setCalendarEntryRepeat(root, repeat) {
     const normalized = applyRepeat(root, repeat);
     const toggle = (selector, show) => { const node = root?.querySelector?.(selector); if (node) node.hidden = !show; };
-    toggle('[data-calendar-weekdays]', normalized === 'weekly' || normalized === 'biweekly');
+    const weekly = normalized === 'weekly' || normalized === 'biweekly';
+    toggle('[data-calendar-weekdays]', weekly);
+    for (const node of root?.querySelectorAll?.('[data-row-weekdays]') || []) node.hidden = !weekly;
     toggle('[data-calendar-until]', normalized !== 'none' && normalized !== 'yearly');
     return normalized;
 }
@@ -58,7 +60,9 @@ export function fillCalendarEntryForm(root, entry = null, kind = 'event', { focu
 // 新增日程：每条一组名称与备注，「再加一条」在末尾追加一组，各条共用同一重复规则。
 export function bindCalendarEntryBulk(root) {
     root?.querySelector?.('[data-calendar-bulk-add]')?.addEventListener('click', event => {
-        event.currentTarget.insertAdjacentHTML('beforebegin', calendarBulkRow(root.querySelectorAll('[data-calendar-bulk-row]').length + 1));
+        const rows = root.querySelector('[data-calendar-bulk-rows]');
+        event.currentTarget.insertAdjacentHTML('beforebegin', calendarBulkRow(root.querySelectorAll('[data-calendar-bulk-row]').length + 1, Number(rows?.dataset?.defaultWeekday) || 0));
+        setCalendarEntryRepeat(root, root.querySelector('[data-calendar-repeat-select]')?.value);
         event.currentTarget.previousElementSibling?.querySelector?.('[data-bulk-title]')?.focus?.({ preventScroll: false });
     });
 }
@@ -67,7 +71,8 @@ export function bindCalendarEntryBulk(root) {
 function readBulkRows(root) {
     return [...(root.querySelectorAll?.('[data-calendar-bulk-row]') || [])].map(row => {
         const line = parseBatchDayLine(row.querySelector('[data-bulk-title]')?.value);
-        return line ? { title: line.title, time: line.time, note: row.querySelector('[data-bulk-note]')?.value || '' } : null;
+        const weekdays = [...row.querySelectorAll('[data-row-weekday]')].filter(box => box.checked).map(box => Number(box.value));
+        return line ? { title: line.title, time: line.time, note: row.querySelector('[data-bulk-note]')?.value || '', weekdays } : null;
     }).filter(Boolean);
 }
 
@@ -77,7 +82,7 @@ export function readCalendarEntryForm(root) {
     const repeat = REPEAT_VALUES.has(form.elements.repeat.value) ? form.elements.repeat.value : 'none';
     return {
         ...(root.querySelector?.('[data-calendar-bulk-rows]') ? { lines: readBulkRows(root) } : {}),
-        ...(repeat === 'weekly' || repeat === 'biweekly' ? { weekdays: [...form.querySelectorAll('[name="weekday"]')].filter(box => box.checked).map(box => Number(box.value)) } : {}),
+        ...((repeat === 'weekly' || repeat === 'biweekly') && form.querySelector('[name="weekday"]') ? { weekdays: [...form.querySelectorAll('[name="weekday"]')].filter(box => box.checked).map(box => Number(box.value)) } : {}),
         ...(repeat !== 'none' && repeat !== 'yearly' && form.elements.until?.value ? { until: form.elements.until.value } : {}),
         repeat,
         kind: repeat === 'none' ? 'event' : 'occasion',

@@ -491,7 +491,7 @@ export function installCalendar(state, deps) {
         form?.addEventListener('submit', async event => {
             event.preventDefault();
             try {
-                const base = readCalendarEntryForm(overlay), items = base.lines || [base]; if (!items[0]?.title) throw new Error('安排名称不能为空'); if (base.weekdays && !base.weekdays.length) throw new Error('请至少选择一天'); // 批量时每行一条，共用同一重复规则
+                const base = readCalendarEntryForm(overlay), items = base.lines || [base]; if (!items[0]?.title) throw new Error('安排名称不能为空'); if (['weekly', 'biweekly'].includes(base.repeat) && items.some(item => !(item.weekdays || base.weekdays)?.length)) throw new Error('每条至少选择一天'); // 批量时每行一条，共用同一重复规则
                 await commitSchedule(storageId, start => items.reduce((current, line) => { const value = { ...base, ...line };
                     const calendar = normalizedKind === 'event' && existingEntry
                         ? deleteCalendarEvent(current.calendar, existingEntry.id).scope : current.calendar;
@@ -514,7 +514,7 @@ export function installCalendar(state, deps) {
                         date: normalizedKind === 'occasion' ? existingEntry?.date || entries.date : entries.date,
                         month: normalizedKind === 'occasion' ? existingEntry?.month || parsed.getMonth() + 1 : parsed.getMonth() + 1,
                         day: normalizedKind === 'occasion' ? existingEntry?.day || parsed.getDate() : parsed.getDate(),
-                        ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}), time: normalizedKind === 'occasion' ? existingEntry?.time : value.time, weekdays: value.weekdays, until: value.until, ...(normalizedKind === 'occasion' ? { seasonOnly: existingEntry?.seasonOnly } : {}), repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
+                        ...(normalizedKind === 'occasion' && existingEntry?.excludedDates ? { excludedDates: existingEntry.excludedDates } : {}), time: normalizedKind === 'occasion' ? existingEntry?.time : value.time, weekdays: ['weekly', 'biweekly'].includes(value.repeat) ? value.weekdays : undefined, until: value.until, ...(normalizedKind === 'occasion' ? { seasonOnly: existingEntry?.seasonOnly } : {}), repeat: value.repeat, title: value.title, note: value.note, leapDayRule: value.leapDayRule,
                         ...(value.intervalDays === undefined ? {} : { intervalDays: value.intervalDays }),
                         createdAt: normalizedKind === 'occasion' ? existingEntry?.createdAt : undefined, updatedAt: Date.now(),
                     }),

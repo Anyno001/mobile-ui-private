@@ -1441,7 +1441,7 @@ assert.match(renderedEntryDialog, /class="pm-modal pm-calendar-entry-dialog"/);
 assert.match(renderedEntryDialog, /<b>日程<\/b>/);
 assert.match(renderedEntryDialog, /name="repeat" data-calendar-repeat-select aria-label="日程重复规则"/);
 assert.match(renderedEntryDialog, /<option value="none" selected>不重复<\/option>/);
-assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周（同星期）[\s\S]*?每两周（同星期）[\s\S]*?每月（同日）[\s\S]*?每年重复[\s\S]*?自定义/);
+assert.match(renderedEntryDialog, /每日重复[\s\S]*?每周[\s\S]*?每两周[\s\S]*?每月（同日）[\s\S]*?每年重复[\s\S]*?自定义/);
 assert.match(renderedEntryDialog, /data-calendar-interval-days hidden aria-hidden="true"[\s\S]*?name="intervalDays"[^>]*min="1"[^>]*max="9999"[^>]*disabled/,
     '非自定义重复不得暴露每N天输入框');
 assert.match(renderedEntryDialog, /data-calendar-occasion-fields hidden aria-hidden="true"[\s\S]*?name="occasionType" disabled[\s\S]*?name="leapDayRule" disabled/,
