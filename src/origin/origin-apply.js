@@ -1,17 +1,17 @@
 // Origin 系统核心 · 操作 → 状态。
 // 来源：vicliaaa/origin-sillytavern v1.5 的 completeTask / applyEffects / addItem / addPerk / addSkill / drawCore / 成就 / applyBlock（作者已授权移植）。
 // 所有函数就地改写传入的 st，调用方必须传「写时浅拷」出来的副本（见 origin-state 的 cloneForWrite）。
-// cx：{ turn, floor, s(设置), random, extra, events[], uses[], draws[], logged[], grantT{}, ptT[] }。本楼内的去重表在 cx 里，不进状态。
+// cx：{ turn, floor, s(设置), random, wallet, scale, economy, events[], uses[], draws[], logged[], grantT{}, ptT[] }。本楼内的去重表在 cx 里，不进状态。
 // cx.scale：记账当时的体系倍数（D&D 为 5，其余 1），属性奖励按它换成百分制再存。
-// cx.extra：战斗侧的原始积分（只读）。主角的积分余额 = st.points + cx.extra；判断够不够、对账按合计，扣款与奖励只改 st.points（可为负）。
 import { cleanNum, parseBlock } from './origin-parse.js';
 import { hostOf, statToPercent } from './origin-state.js';
+import { approveTask, chargeOrigin, creditOrigin, originSource, putOriginItem, takeOriginItem, withOriginSource } from './origin-economy.js';
 
 export function createCx(over = {}) {
-    return { turn: 0, floor: null, s: {}, random: Math.random, extra: 0, scale: 1, events: [], uses: [], draws: [], logged: [], grantT: {}, ptT: [], ...over };
+    return { turn: 0, floor: null, s: {}, random: Math.random, scale: 1, events: [], uses: [], draws: [], logged: [], grantT: {}, ptT: [], ...over };
 }
-// 积分合计：随身系统自己的积分 + 战斗侧原始积分。
-export const totalPoints = (st, cx) => st.points + ((cx && Number(cx.extra)) || 0);
+// points 保留 Origin 净流水，wallet 是操作开始时来自数据库的其他积分份额。
+export const pointBalance = (st, cx = {}) => st.points + (Number(cx.wallet) || 0);
 function stamp(cx, o) { return cx && cx.floor != null ? { ...o, floor: cx.floor } : o; }
 
 export function pushLog(st, text, mark, cx) {
@@ -40,8 +40,7 @@ export function addItem(st, name, count, src, cx) {
     if (!name || /积分|经验|等级|好感|回合/.test(name) || /^[+-]?\d+$/.test(name)) return false;
     if (src !== 'buy' && cx.grantT[name]) return false; // 同一楼已经发过这件了（完成发一次、发放句再说一次）
     cx.grantT[name] = true;
-    const ex = st.bag.find((b) => b.name === name);
-    if (ex) ex.count = (ex.count || 1) + count; else st.bag.push({ name, count, desc: '', effect: '' });
+    putOriginItem(st, { name, desc: '', effect: '' }, count, cx);
     pushLog(st, '获得物品「' + name + '」×' + count + (src ? '（' + src + '）' : ''), '·', cx);
     return true;
 }
@@ -105,7 +104,7 @@ export function applyEffects(st, str, sign, cx) {
     const reP = /积分\s*([+-]?\d+)/g;
     while ((m = reP.exec(str))) {
         const dv = cleanNum(m[1]) * (m[1].match(/^[+-]/) ? 1 : sign >= 0 ? 1 : -1);
-        st.points += dv;
+        creditOrigin(st, dv, cx);
         cx.ptT.push(dv);
     }
     const reS = /([一-龥A-Za-z·]{1,8}?)\s*([+-]\d+)/g;
@@ -122,7 +121,9 @@ export function completeTask(st, t, cx) {
     if (!t || t.status !== 'active') return;
     t.status = 'done';
     t.progress = 100;
-    applyEffects(st, t.reward, 1, cx);
+    withOriginSource(cx, { sourceId: t.pointSource || `task:${t.id}`, sourceType: 'origin-task' }, () => {
+        applyEffects(st, t.reward, 1, cx);
+    });
     const gain = t.type === '主线' ? 50 : t.type === '支线' ? 20 : 10;
     st.exp += gain;
     while (st.exp >= st.expMax) { st.exp -= st.expMax; st.level += 1; st.expMax = Math.round(st.expMax * 1.4); }
@@ -135,7 +136,7 @@ export const ACHIEVEMENTS = [
     { id: 'first', name: '初出茅庐', desc: '完成第一个任务', cond: (st) => doneCount(st) >= 1 },
     { id: 'five', name: '渐入佳境', desc: '完成5个任务', cond: (st) => doneCount(st) >= 5 },
     { id: 'fifteen', name: '任务达人', desc: '完成15个任务', cond: (st) => doneCount(st) >= 15 },
-    { id: 'rich', name: '腰缠万贯', desc: '积分累积到1000', cond: (st, cx) => totalPoints(st, cx) >= 1000 },
+    { id: 'rich', name: '腰缠万贯', desc: '积分累积到1000', cond: (st, cx) => pointBalance(st, cx) >= 1000 },
 ];
 const hasAch = (st, id) => st.achievements.some((a) => a.id === id);
 
@@ -143,10 +144,11 @@ export function unlockAch(st, id, name, desc, bonus, cx) {
     if (hasAch(st, id)) return false;
     if (st.achievements.some((a) => a.name === name)) return false;
     st.achievements.push(stamp(cx, { id, name, desc: desc || '' }));
-    if (bonus) st.points += bonus;
-    cx.events.push('宿主解锁成就「' + name + '」' + (desc ? '（' + desc + '）' : '') + (bonus ? '，奖励积分' + bonus : ''));
+    const granted = bonus ? withOriginSource(cx, { sourceId: `achievement:${id}`, sourceType: 'origin-achievement' },
+        () => creditOrigin(st, bonus, cx)) : 0;
+    cx.events.push('宿主解锁成就「' + name + '」' + (desc ? '（' + desc + '）' : '') + (bonus ? '，实发积分' + granted : ''));
     cx.notes = (cx.notes || []).concat([{ kind: 'achieve', name, desc: desc || '' }]);
-    pushLog(st, '解锁成就「' + name + '」' + (bonus ? '　+' + bonus : ''), '★', cx);
+    pushLog(st, '解锁成就「' + name + '」' + (bonus ? '　+' + granted : ''), '★', cx);
     return true;
 }
 export function checkAchievements(st, cx) {
@@ -176,15 +178,16 @@ export function checkExpiry(st, cx) {
 
 export function drawCore(st, free, cx) {
     if (!st.gachaPool || !st.gachaPool.length) return null;
-    if (!free) { if (totalPoints(st, cx) < cx.s.drawCost) return null; st.points -= cx.s.drawCost; }
+    let consumeId = null;
+    if (!free) { if (pointBalance(st, cx) < cx.s.drawCost) return null; consumeId = chargeOrigin(st, cx.s.drawCost, cx); }
     const tot = st.gachaPool.reduce((a, b) => a + (b.weight || 0), 0);
     let r = cx.random() * tot;
     let pick = st.gachaPool[0];
     for (const g of st.gachaPool) { r -= (g.weight || 0); if (r <= 0) { pick = g; break; } }
     if (/技能/.test(pick.effect || '') || /^技能/.test(pick.tier || '')) addSkill(st, pick.name, pick.desc || '', cx);
     else {
-        const ex = st.bag.find((b) => b.name === pick.name);
-        if (ex) ex.count = (ex.count || 1) + 1; else st.bag.push({ name: pick.name, count: 1, desc: pick.desc || '', effect: pick.effect || '' });
+        const source = consumeId ? { sourceId: consumeId, sourceType: 'origin-item', consumeId } : originSource(cx);
+        putOriginItem(st, { name: pick.name, desc: pick.desc || '', effect: pick.effect || '' }, 1, cx, source);
     }
     if (pick.tier === 'SSR' || pick.tier === 'UR') unlockAch(st, 'lucky', '欧皇附体', '抽到 SSR 及以上', 0, cx);
     pushLog(st, '抽奖 → ' + (pick.tier ? '[' + pick.tier + ']' : '') + pick.name + '（入背包）', '★', cx);
@@ -193,7 +196,7 @@ export function drawCore(st, free, cx) {
 }
 
 export function note(cx, o) { cx.notes = (cx.notes || []).concat([o]); }
-const newTaskOf = (st, cx, f) => ({ id: st.nextId++, type: f.type, owner: f.owner, title: f.title, desc: f.desc, cond: f.cond, reward: f.reward, penalty: f.penalty, limit: f.limit, progress: 0, status: 'active', turn: cx.turn, startTurn: cx.turn, ...(cx.floor != null ? { floor: cx.floor } : {}) });
+export const newTaskOf = (st, cx, f) => approveTask({ id: st.nextId++, type: f.type, owner: f.owner, title: f.title, desc: f.desc, cond: f.cond, reward: f.reward, penalty: f.penalty, limit: f.limit, progress: 0, status: 'active', turn: cx.turn, startTurn: cx.turn, ...(cx.floor != null ? { floor: cx.floor } : {}) }, cx);
 
 function opProgress(st, op, cx, ext) {
     let t = findTask(st, op.ref);
@@ -236,18 +239,24 @@ const fuzzy = (list, nm) => list.find((x) => x.name === nm) || list.find((x) => 
 
 function opBuy(st, op, cx) {
     const it = fuzzy(st.shop, op.name);
-    if (!it || totalPoints(st, cx) < it.price) return false;
-    st.points -= it.price;
-    const ex = st.bag.find((b) => b.name === it.name);
-    if (ex) ex.count = (ex.count || 1) + 1; else st.bag.push({ name: it.name, count: 1, desc: it.desc, effect: it.effect || '' });
+    if (!it || pointBalance(st, cx) < it.price) return false;
+    const consumeId = chargeOrigin(st, it.price, cx);
+    putOriginItem(st, { name: it.name, desc: it.desc, effect: it.effect || '' }, 1, cx,
+        consumeId ? { sourceId: consumeId, sourceType: 'origin-item', consumeId } : originSource(cx));
     pushLog(st, '（角色）购买「' + it.name + '」(-' + it.price + ')', '·', cx);
     return true;
 }
 function opUse(st, op, cx) {
     const b = fuzzy(st.bag, op.name);
     if (!b) return false;
-    b.count = (b.count || 1) - (op.n || 1);
-    if (b.count <= 0) st.bag.splice(st.bag.indexOf(b), 1);
+    if (cx.economy) {
+        for (const lot of takeOriginItem(st, b, op.n || 1)) for (let i = 0; i < lot.count; i += 1) {
+            useOriginLot(st, b, lot, cx);
+        }
+    } else {
+        b.count = (b.count || 1) - (op.n || 1);
+        if (b.count <= 0) st.bag.splice(st.bag.indexOf(b), 1);
+    }
     pushLog(st, '消耗物品「' + op.name + '」', '·', cx);
     return true;
 }
@@ -261,7 +270,6 @@ function opGet(st, op, cx) {
 
 // 数据块解析出的操作 → 状态。ext：{ proseTitle }。返回改动条数。
 export function applyOps(st, ops, cx, ext = {}) {
-    const prevP = totalPoints(st, cx);
     let changed = 0;
     const hit = (v) => { if (v) changed += 1; };
     for (const op of ops) {
@@ -270,7 +278,7 @@ export function applyOps(st, ops, cx, ext = {}) {
             case 'done': { const t = findTask(st, op.ref); if (t && t.status === 'active') { completeTask(st, t, cx); changed += 1; } break; }
             case 'fail': { const t = findTask(st, op.ref); if (t && t.status === 'active') { opFail(st, t, cx); changed += 1; } break; }
             case 'newTask': hit(opNewTask(st, op, cx, ext)); break;
-            case 'points': st.points += op.n; if (op.reason) pushLog(st, '积分' + op.raw + '（' + op.reason + '）', '', cx); changed += 1; break;
+            case 'points': { const amount = creditOrigin(st, op.n, cx); if (op.reason) pushLog(st, '积分' + (amount >= 0 ? '+' : '') + amount + '（' + op.reason + '）', '', cx); changed += 1; break; }
             case 'stat': {
                 let s2 = st.stats.find((x) => x.name === op.name);
                 if (!s2) { s2 = { name: op.name, val: 0 }; st.stats.push(s2); }
@@ -308,9 +316,6 @@ export function applyOps(st, ops, cx, ext = {}) {
         }
     }
     for (const op of ops) if (op.k === 'gachaSet') { st.gachaPool = op.items.map((x) => ({ ...x })); st.lastGachaTurn = cx.turn; changed += 1; }
-    for (const op of ops) {
-        if (op.k === 'balance' && op.v !== prevP && op.v !== totalPoints(st, cx)) { st.points = op.v - (Number(cx.extra) || 0); pushLog(st, '积分同步为 ' + op.v + '（按数据块余额）', '·', cx); changed += 1; }
-    }
     return changed;
 }
 
@@ -354,17 +359,36 @@ function mTask(st, op, cx) {
     const p = op.patch || {};
     if (typeof p.title === 'string' && p.title.trim()) t.title = p.title.trim();
     if (TYPES.includes(p.taskType)) t.type = p.taskType;
-    for (const k of ['desc', 'cond', 'reward', 'penalty']) if (typeof p[k] === 'string') t[k] = p[k];
+    for (const k of ['desc', 'cond', 'reward', 'penalty']) if (typeof p[k] === 'string') {
+        if (k === 'reward' && t.pointSource) continue;
+        t[k] = p[k];
+    }
     if (typeof p.owner === 'string' && p.owner.trim()) t.owner = p.owner.trim();
     if (p.limit != null && Number.isFinite(Number(p.limit))) { t.limit = Math.max(0, Math.round(Number(p.limit))); if (t.limit > 0 && !t.startTurn) t.startTurn = cx.turn; }
     if (p.progress != null && Number.isFinite(Number(p.progress))) t.progress = Math.max(0, Math.min(100, Math.round(Number(p.progress))));
     return OK;
 }
 
+function useOriginLot(st, item, lot, cx) {
+    const { sourceId = `${cx.economy.plan.id}:legacy:${item.name}`, sourceType = 'origin-item', consumeId } = lot;
+    return withOriginSource(cx, { sourceId, sourceType, ...(consumeId ? { consumeId } : {}) }, () => {
+        if (/签|抽奖/.test(item.name)) {
+            pushLog(st, '使用「' + item.name + '」抽奖', '·', cx);
+            return drawCore(st, true, cx);
+        }
+        if (lot.effect) applyEffects(st, lot.effect, 1, cx);
+        cx.uses.push({ name: item.name, desc: lot.effect || item.desc || '' });
+        pushLog(st, '使用道具「' + item.name + '」', '·', cx);
+    });
+}
 function mUse(st, op, cx) {
     const b = st.bag.find((x) => x.name === op.name);
     if (!b) return fail('no-item', '当前版本的背包里没有「' + op.name + '」');
     const isTicket = /签|抽奖/.test(b.name);
+    if (cx.economy) {
+        for (const lot of takeOriginItem(st, b, 1)) useOriginLot(st, b, lot, cx);
+        return OK;
+    }
     b.count = (b.count || 1) - 1;
     if (b.count <= 0) st.bag.splice(st.bag.indexOf(b), 1);
     if (isTicket) { pushLog(st, '使用「' + b.name + '」抽奖', '·', cx); drawCore(st, true, cx); return OK; }
@@ -376,10 +400,10 @@ function mUse(st, op, cx) {
 function mBuy(st, op, cx) {
     const it = st.shop.find((x) => x.name === op.name);
     if (!it) return fail('no-goods', '商城里没有「' + op.name + '」');
-    if (totalPoints(st, cx) < it.price) return fail('no-points', '积分不够购买「' + it.name + '」（需' + it.price + '，现有' + totalPoints(st, cx) + '）');
-    st.points -= it.price;
-    const ex = st.bag.find((b) => b.name === it.name);
-    if (ex) ex.count = (ex.count || 1) + 1; else st.bag.push({ name: it.name, count: 1, desc: it.desc, effect: it.effect || '' });
+    if (pointBalance(st, cx) < it.price) return fail('no-points', '积分不够购买「' + it.name + '」（需' + it.price + '，现有' + pointBalance(st, cx) + '）');
+    const consumeId = chargeOrigin(st, it.price, cx);
+    putOriginItem(st, { name: it.name, desc: it.desc, effect: it.effect || '' }, 1, cx,
+        consumeId ? { sourceId: consumeId, sourceType: 'origin-item', consumeId } : originSource(cx));
     pushLog(st, '购买「' + it.name + '」(-' + it.price + ')', '·', cx);
     return OK;
 }
@@ -391,8 +415,7 @@ function mList(st, op, cx) {
         case 'addItem': {
             if (!name) return fail('empty', '物品名为空');
             const c = Math.max(1, parseInt(op.count, 10) || 1);
-            const ex = st.bag.find((b) => b.name === name);
-            if (ex) ex.count = (ex.count || 1) + c; else st.bag.push({ name, count: c, desc: op.desc || '', effect: op.effect || '' });
+            putOriginItem(st, { name, desc: op.desc || '', effect: op.effect || '' }, c, cx);
             return OK;
         }
         case 'deleteItem': { const i = st.bag.findIndex((b) => b.name === name); if (i < 0) return fail('no-item', '背包里没有「' + name + '」'); st.bag.splice(i, 1); return OK; }
@@ -465,7 +488,7 @@ export function applyManual(st, op, cx) {
         case 'use': r = mUse(st, op, cx); break;
         case 'draw':
             if (!st.gachaPool.length) r = fail('empty-pool', '奖池是空的');
-            else if (!op.free && totalPoints(st, cx) < cx.s.drawCost) r = fail('no-points', '积分不够（需' + cx.s.drawCost + '）');
+            else if (!op.free && pointBalance(st, cx) < cx.s.drawCost) r = fail('no-points', '积分不够（需' + cx.s.drawCost + '）');
             else { drawCore(st, !!op.free, cx); r = OK; }
             break;
         case 'addTask': case 'editTask': case 'completeTask': case 'deleteTask': r = mTask(st, op, cx); break;

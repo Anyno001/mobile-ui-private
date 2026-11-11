@@ -1,10 +1,10 @@
 // Origin 系统核心 · 常量、默认值与状态工具。
 // 来源：vicliaaa/origin-sillytavern v1.5（作者已授权移植）；IGS 与天音共用，两份逐字相同。不碰 DOM、不碰酒馆全局。
-export const ORIGIN_CORE_VER = 'v1.5-core.2';
+export const ORIGIN_CORE_VER = 'v1.5-core.5';
 export const ORIGIN_META_KEY = 'origin_v2';
 export const ORIGIN_LEGACY_KEY = 'origin';
-// 2：加入楼层保留的底稿（base）。旧核心读到 2 会拒收而不是丢掉底稿。
-export const ORIGIN_SAVE_VERSION = 2;
+// 3：保留可按分支回放的经济归档；旧核心必须拒收，不能忽略凭据。
+export const ORIGIN_SAVE_VERSION = 3;
 
 export const DEFAULT_GACHA = [
     { name: '普通物资', tier: 'N', weight: 50, desc: '一点日常用度', effect: '积分+50' },
@@ -106,6 +106,12 @@ export function createInitialState() {
 export function cloneForWrite(st) {
     const out = { ...st };
     for (const k of LIST_KEYS) if (Array.isArray(st[k])) out[k] = st[k].map((x) => (x && typeof x === 'object' ? { ...x } : x));
+    if (out.bag) out.bag = out.bag.map(item => ({ ...item,
+        ...(Array.isArray(item.lots) ? { lots: item.lots.map(lot => ({ ...lot })) } : {}),
+    }));
+    if (st.economy) out.economy = {
+        grants: st.economy.grants.map(grant => ({ ...grant })), spends: st.economy.spends.map(spend => ({ ...spend })),
+    };
     return out;
 }
 

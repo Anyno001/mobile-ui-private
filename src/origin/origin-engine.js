@@ -10,8 +10,10 @@ import { createCx, applyManual } from './origin-apply.js';
 import { buildInjection, injectInto } from './origin-inject.js';
 import { flatChat, gachaPrompt, rpChatPrompt, shopPrompt, stripHtml, sysChatPrompt, taskPrompt } from './origin-gen.js';
 import {
-    bindPending, buildPath, compact, createLedger, removeFloors, deserializeLedger, dropFloor, getEntry, makeEntry, pendingFor, recordOp, relocateBase, replay, serializeLedger, setEntry, truncate,
+    bindPending, buildPath, compact, createLedger, removeFloors, deserializeLedger, dropFloor, getEntry, makeEntry, pendingFor, recordOp, relocateBase, replay, serializeLedger, setEntry, stepOnce, truncate,
 } from './origin-ledger.js';
+import { collectOriginGrants, economyContext, economyPlan, originCreditText } from './origin-economy.js';
+import { anchorKey, pointFloors } from '../points/points-policy.js';
 
 export const ORIGIN_ENGINE_SYMBOL = Symbol.for('origin.engine');
 const BUSY_MS = 60000;
@@ -31,7 +33,7 @@ export function getSharedOriginEngine(host) {
         const enabledOf = (h) => { try { return Boolean(h.settings() && h.settings().enabled); } catch (e) { return false; } };
         const pick = () => hosts.find(enabledOf) || hosts[0] || null;
         const call = (name) => (...args) => { const h = pick(); return h && typeof h[name] === 'function' ? h[name](...args) : undefined; };
-        // 可选字段（战斗积分、战斗流水、体系）：被选中的 host 自己提供就用它的，否则按登记顺序取第一个提供了的 host。
+        // 可选字段（体系）：被选中的 host 自己提供就用它的，否则按登记顺序取第一个提供了的 host。
         const callOpt = (name) => (...args) => {
             const h = pick();
             const t = h && typeof h[name] === 'function' ? h : hosts.find((x) => typeof x[name] === 'function');
@@ -39,7 +41,13 @@ export function getSharedOriginEngine(host) {
         };
         const proxy = {
             getContext: call('getContext'), settings: call('settings'), saveMetadata: call('saveMetadata'), saveSettings: call('saveSettings'),
-            generate: call('generate'), notify: call('notify'), legacyActive: call('legacyActive'), extraPoints: callOpt('extraPoints'), extraPointLog: callOpt('extraPointLog'), readRuleset: callOpt('readRuleset'),
+            database: call('database'), wallet: call('wallet'), walletSnapshot: call('walletSnapshot'), spendingGate: call('spendingGate'),
+            pointsEconomy: call('pointsEconomy'), ensurePointsFloor: call('ensurePointsFloor'),
+            withPointsLock: (task) => {
+                const h = pick();
+                return typeof h?.withPointsLock === 'function' ? h.withPointsLock(task) : task();
+            },
+            generate: call('generate'), notify: call('notify'), legacyActive: call('legacyActive'), readRuleset: callOpt('readRuleset'),
             // 任何一方在跑自己的后台请求时都不注入。
             isBackground: () => hosts.some((h) => { try { return typeof h.isBackground === 'function' && h.isBackground(); } catch (e) { return false; } }),
         };
@@ -65,39 +73,28 @@ export function createOriginEngine(host) {
     let warnedLegacy = false;
     let offs = [];
     const subs = new Set();
+    let database = null;
+    let databaseState = null;
+    let databaseTail = Promise.resolve();
+    let databaseEpoch = 0;
+    let pendingSave = null;
+    let deferredEvents = [];
+    let staging = null;
+    let walletValue = 0;
+    const databaseOf = () => typeof host.database === 'function' ? host.database() : null;
 
     const ctx = () => { try { return host.getContext(); } catch (e) { return null; } };
     const settings = () => fillSettings(host.settings());
-    // 战斗侧原始积分（只读，宿主注入；取不到按 0）。主角积分余额 = 本核心 st.points + 它。
-    // 宿主可返回 null 表示战斗数据还没载入（未知）：计算与显示按 0，记账时不写快照（见 snapNow）。
-    const extraRaw = () => { try { const v = typeof host.extraPoints === 'function' ? host.extraPoints() : 0; return v === null ? null : Number(v) || 0; } catch (e) { return null; } };
-    const extraPoints = () => extraRaw() || 0;
-    // 战斗侧主角积分流水 [{ floor, delta, reason }]（只读，宿主注入；没有为 null）。只用于展示，不进存档、不进回放。
-    const extraLog = () => { try { const l = typeof host.extraPointLog === 'function' ? host.extraPointLog() : null; return Array.isArray(l) && l.length ? l : null; } catch (e) { return null; } };
-    // 把战斗流水并进显示用记录：战斗行 mark 为「战斗」，按楼号与随身系统记录排在一起（同楼随身系统在前）；无楼号的记录沿用前一条的楼号。
-    const mergeLog = (own, combat) => {
-        if (!combat) return own;
-        const rows = combat.slice(-40).map((r) => ({ text: `${r.reason} ${r.delta > 0 ? '+' : ''}${r.delta}`, mark: '战斗', floor: r.floor, combat: true }));
-        let at = -1;
-        const base = (own || []).map((r) => { if (Number.isInteger(r.floor)) at = r.floor; return { r, f: at }; });
-        const all = base.concat(rows.map((r) => ({ r, f: r.floor }))).map((x, i) => ({ ...x, i }));
-        all.sort((a, b) => (a.f - b.f) || ((a.r.combat ? 1 : 0) - (b.r.combat ? 1 : 0)) || (a.i - b.i));
-        return all.map((x) => x.r);
-    };
-    // 回放、手动操作用的设置：带上战斗原始积分（进回放签名，变化时重算）；为 0 时与原设置一致。
     // 当前体系（宿主可选提供 readRuleset()，返回 coc7 或 dnd5e）；没提供、数值系统没开或读不到按 CoC。
     const ruleId = () => { try { return typeof host.readRuleset === 'function' && host.readRuleset() === 'dnd5e' ? 'dnd5e' : 'coc7'; } catch (e) { return 'coc7'; } };
-    // 同时带上体系 id 与倍数：倍数进回放签名，旧档没有倍数快照的记录按它重放。
-    const calcSettings = () => { const s = settings(); const x = extraPoints(); const id = ruleId(); return { ...s, ruleId: id, ruleScale: scaleOfRuleset(id), ...(x ? { extraPoints: x } : {}) }; };
-    // 记账时的快照：战斗侧原始积分与体系倍数。
-    // 战斗份未知时不带 extra：setEntry / recordOp 只收有限数，记录就没有快照，重放退回当时的当前值，之后可自愈。
-    const snapNow = () => { const x = extraRaw(); return { ...(x === null ? {} : { extra: x }), scale: scaleOfRuleset(ruleId()) }; };
-    // 展示用状态：积分换成合计（rawPoints 留本核心自己的原始值）；属性加成按当前体系显示（D&D 为属性点，CoC 为百分制）。
-    const shown = (st, x, k = 1) => {
-        if (!x && k === 1) return st;
-        const out = x ? { ...st, points: st.points + x, rawPoints: st.points } : { ...st };
-        if (k > 1) out.stats = (st.stats || []).map((r) => ({ ...r, val: statFromPercent(r.name, r.val, k) }));
-        return out;
+    // 回放、手动操作用的设置：带上体系 id 与倍数；倍数进回放签名，旧档没有倍数快照的记录按它重放。
+    const calcSettings = () => { const s = settings(); const id = ruleId(); return { ...s, ruleId: id, ruleScale: scaleOfRuleset(id) }; };
+    // 记账时的体系倍数快照。
+    const snapNow = () => ({ scale: scaleOfRuleset(ruleId()) });
+    // 展示用状态：属性加成按当前体系显示（D&D 为属性点，CoC 为百分制）。
+    const shown = (st, k = 1) => {
+        if (k === 1) return st;
+        return { ...st, stats: (st.stats || []).map((r) => ({ ...r, val: statFromPercent(r.name, r.val, k) })) };
     };
     const idOf = (c) => {
         if (!c) return '';
@@ -110,11 +107,23 @@ export function createOriginEngine(host) {
         return m && typeof m === 'object' ? m : null;
     };
     // extra：结构化字段（抽奖带 tier / name / desc，给翻牌演出用）；只认 text 的宿主照旧。
-    const notify = (kind, text, extra) => { try { if (host.notify) host.notify({ kind, text, ...(extra || {}) }); } catch (e) { /* */ } };
+    const notify = (kind, text, extra) => {
+        if (staging) { staging.notifications.push([kind, text, extra]); return; }
+        try { if (host.notify) host.notify({ kind, text, ...(extra || {}) }); } catch (e) { /* */ }
+    };
     // 宿主插件自己发起的后台请求（写词、副模型等）也会触发全局生成事件，不注入、不记生成类型。
     const isBackground = () => { try { return typeof host.isBackground === 'function' && Boolean(host.isBackground()); } catch (e) { return false; } };
 
     function load() {
+        databaseEpoch += 1;
+        database = databaseOf();
+        pendingSave = null;
+        deferredEvents = [];
+        databaseState = null;
+        if (database) return loadDatabase();
+        return loadMetadata();
+    }
+    function loadMetadata() {
         cache = null;
         blocked = null;
         const c = ctx();
@@ -139,6 +148,7 @@ export function createOriginEngine(host) {
     }
     // 不主动 saveChat：只把账本写进 chatMetadata，落盘交给宿主的防抖保存。
     function persist() {
+        if (staging) { staging.dirty = true; return true; }
         if (blocked || !ledger) return false;
         const md = metaOf(ctx());
         if (!md) return false;
@@ -152,15 +162,16 @@ export function createOriginEngine(host) {
     }
     function current() {
         ensure();
-        const x = extraPoints();
-        const xl = extraLog();
+        if (database && typeof host.walletSnapshot === 'function') {
+            const read = host.walletSnapshot();
+            if (read?.ok && Number.isSafeInteger(read.balance)) walletValue = read.balance;
+        }
+        const wallet = database ? walletValue : 0;
         const k = scaleOfRuleset(ruleId());
-        if (cache && (cache.extra !== x || cache.xl !== xl || cache.k !== k)) cache = null;
-        if (!cache) {
+        if (!cache || cache.wallet !== wallet || cache.k !== k) {
             const rep = compute(false);
-            const shownSt = shown(rep.state, x, k);
-            const view = deepFreeze({ ...shownSt, ...(xl ? { log: mergeLog(shownSt.log, xl) } : {}), world: meta.world, direction: meta.direction, turn: rep.turn, skipped: rep.skipped });
-            cache = { rep, view, extra: x, xl, k };
+            const view = deepFreeze({ ...shown(rep.state, k), points: rep.state.points + wallet, world: meta.world, direction: meta.direction, turn: rep.turn, skipped: rep.skipped });
+            cache = { rep, view, wallet, k };
         }
         return cache;
     }
@@ -175,21 +186,264 @@ export function createOriginEngine(host) {
             return current().rep.state.stats || EMPTY_STATS;
         } catch (e) { return EMPTY_STATS; }
     };
-    // 本核心自己的原始积分（不含战斗侧）；未启用、没存档、读档被拒时为 0。供战斗侧当钱包读，不能读合计，否则两边互相叠加。
-    const rawPoints = () => {
-        try {
-            if (!settings().enabled) return 0;
-            ensure();
-            if (blocked) return 0;
-            return Number(current().rep.state.points) || 0;
-        } catch (e) { return 0; }
-    };
     function emit(type, extra) {
+        if (staging) { staging.events.push([type, extra]); cache = null; return; }
         cache = null;
         const st = getState();
         for (const fn of [...subs]) { try { fn(st, { type, ...(extra || {}) }); } catch (e) { /* 订阅者出错不影响核心 */ } }
     }
     function subscribe(fn) { subs.add(fn); return () => subs.delete(fn); }
+
+    function adoptDatabase(raw) {
+        const restored = deserializeLedger(raw, chatId);
+        if (!restored.ok || restored.dropped.length) return { ok: false, reason: restored.reason || 'origin-database-invalid' };
+        ledger = restored.ledger;
+        meta = { world: restored.world, direction: restored.direction };
+        cache = null;
+        return { ok: true };
+    }
+    function databaseRaw() {
+        const s = settings();
+        const rules = Object.fromEntries(['bindTo', 'punishEvent', 'penaltyPref', 'achieveOn', 'drawCost'].map((key) => [key, s[key]]));
+        return serializeLedger(ledger, { ...meta, rules });
+    }
+    function databaseLease() {
+        const owner = ctx();
+        const id = idOf(owner);
+        const messages = owner?.chat;
+        const metadata = metaOf(owner);
+        const epoch = databaseEpoch;
+        const store = database;
+        return () => {
+            const current = ctx();
+            return Boolean(id) && settings().enabled && idOf(current) === id && current?.chat === messages
+                && metaOf(current) === metadata && databaseEpoch === epoch && databaseOf() === store;
+        };
+    }
+    function pathLease(allowAppend = false) {
+        const chat = (ctx() || {}).chat || [];
+        const path = chat.map((message) => {
+            const text = String(message?.mes || '');
+            return { message, swipe: swipeOf(message), text, split: splitBlock(text) };
+        });
+        return () => {
+            const currentChat = (ctx() || {}).chat || [];
+            return (allowAppend ? currentChat.length >= path.length : currentChat.length === path.length)
+                && path.every(({ message, swipe, text, split }, i) => currentChat[i] === message && swipeOf(message) === swipe
+                    && (String(message?.mes || '') === text || (split.block != null && message?.mes === split.text
+                        && (blocksOf(message, false)[swipe] === split.block || (ledger?.base && i <= ledger.base.floor)))));
+        };
+    }
+    async function readWallet(options) {
+        let value;
+        try { value = await host.wallet(options); } catch { return { ok: false, reason: 'origin-wallet-unavailable' }; }
+        if (value?.ok === false) return value;
+        const amount = typeof value === 'number' ? value : value?.balance;
+        if (!Number.isSafeInteger(amount)) return { ok: false, reason: 'origin-wallet-unavailable' };
+        walletValue = amount;
+        return { ok: true, balance: amount };
+    }
+    function databaseFailure(result) {
+        blocked = result?.reason || 'origin-database-write-failed';
+        notify('warn', `随身系统保存未完成：${blocked}`);
+        return { ok: false, reason: blocked, text: `随身系统保存未完成：${blocked}` };
+    }
+    function loadDatabase() {
+        chatId = idOf(ctx());
+        ledger = createLedger(chatId);
+        meta = { world: '', direction: '' };
+        cache = null;
+        blocked = 'origin-database-loading';
+        remember();
+        const alive = databaseLease();
+        const store = database;
+        const run = async () => {
+            if (!alive()) return { ok: false, reason: 'request-stale' };
+            let read = await store.load({ shouldStart: alive });
+            if (!alive()) return { ok: false, reason: 'request-stale' };
+            if (!read.ok) return databaseFailure(read);
+            if (!read.raw) {
+                const old = metaOf(ctx())?.[ORIGIN_META_KEY];
+                const raw = old == null ? databaseRaw() : old;
+                const restored = adoptDatabase(raw);
+                if (!restored.ok) return databaseFailure(restored);
+                const intent = store.prepare(read, databaseRaw());
+                read = await store.commit(intent, { shouldStart: alive });
+                if (!alive()) return { ok: false, reason: 'request-stale' };
+                if (!read.ok) { ledger = createLedger(chatId); cache = null; return databaseFailure(read); }
+            }
+            const restored = adoptDatabase(read.raw);
+            if (!restored.ok) return databaseFailure(restored);
+            databaseState = read;
+            const wallet = await readWallet();
+            if (!alive()) return { ok: false, reason: 'request-stale' };
+            if (!wallet.ok) return databaseFailure(wallet);
+            blocked = null;
+            remember();
+            emit('load');
+            return { ok: true };
+        };
+        databaseTail = databaseTail.then(run, run).catch((error) => alive()
+            ? databaseFailure({ reason: 'origin-database-load-failed' }) : { ok: false, reason: 'request-stale' });
+        return databaseTail;
+    }
+    function publishDatabase(job, verified) {
+        if (job.published) return job.result || { ok: true };
+        job.published = true;
+        ledger = job.ledger;
+        meta = job.meta;
+        known = job.known;
+        cache = null;
+        databaseState = verified;
+        pendingSave = null;
+        blocked = null;
+        for (const [type, extra] of job.events) emit(type, extra);
+        if (!job.events.length) emit('saved');
+        for (const args of job.notifications) notify(...args);
+        for (const action of job.afterCommit) action();
+        drainDatabaseEvents();
+        return job.result || { ok: true };
+    }
+    async function saveDatabase(job) {
+        let verified;
+        try { verified = await database.commit(job.intent, { shouldStart: job.alive }); }
+        catch { verified = { ok: false, reason: 'origin-database-write-failed' }; }
+        if (!job.ownerAlive()) return { ok: false, reason: 'request-stale' };
+        if (!job.alive()) { pendingSave = job; return databaseFailure({ reason: 'origin-database-path-changed' }); }
+        if (!verified.ok) { pendingSave = job; return databaseFailure(verified); }
+        return publishDatabase(job, verified);
+    }
+    async function recoverDatabaseBranch(job) {
+        if (!job.ownerAlive()) return { ok: false, reason: 'request-stale' };
+        const requestedPath = pathLease(true);
+        const alive = () => job.ownerAlive() && requestedPath();
+        let present = database.read({ intent: job.intent, fresh: true });
+        if (!present.ok) return databaseFailure(present);
+        const parent = job.intent.record?.payload.parent ?? job.intent.revision;
+        if (present.revision !== job.intent.revision && present.revision !== parent) {
+            return databaseFailure({ reason: 'origin-database-conflict' });
+        }
+        if (present.incomplete) {
+            present = await database.commit(job.intent, { shouldStart: alive });
+            if (!present.ok) return databaseFailure(present);
+        }
+        const wallet = await readWallet({ intent: job.intent });
+        if (!alive()) return databaseFailure({ reason: 'origin-database-path-changed' });
+        if (!wallet.ok) return databaseFailure(wallet);
+        const previous = { ledger, meta, cache, known, blocked };
+        const effects = { events: [], notifications: [], afterCommit: [], dirty: false };
+        let recovered;
+        try {
+            const restored = adoptDatabase(present.raw);
+            if (!restored.ok) return databaseFailure(restored);
+            known = present.revision === job.intent.revision ? job.known : job.beforeKnown;
+            blocked = null;
+            staging = effects;
+            onDeleted();
+            recalcAll();
+            const intent = database.prepare(present, databaseRaw());
+            if (!intent.ok) return intent;
+            const writtenPath = pathLease(true);
+            recovered = { ...effects, events: [['recover']], notifications: [], intent, ledger, meta, known,
+                beforeKnown: previous.known, wallet: wallet.balance, result: { ok: true, recovered: true },
+                alive: () => job.ownerAlive() && writtenPath() };
+        } finally {
+            staging = null;
+            ({ ledger, meta, cache, known, blocked } = previous);
+        }
+        Object.assign(job, recovered);
+        return saveDatabase(job);
+    }
+    function drainDatabaseEvents() {
+        if (blocked || pendingSave || !deferredEvents.length) return;
+        const waiting = deferredEvents;
+        deferredEvents = [];
+        for (const event of waiting) queueDatabase(event.fn, event);
+    }
+    function queueDatabase(fn, event = null) {
+        ensure();
+        const ownerAlive = event?.ownerAlive || databaseLease();
+        const requestedPath = event?.requestedPath || pathLease(Boolean(event));
+        const run = async () => {
+            if (!ownerAlive() || !requestedPath()) return { ok: false, reason: 'request-stale' };
+            if (blocked || pendingSave || !databaseState) {
+                if (event) deferredEvents.push({ fn, ownerAlive, requestedPath });
+                return { ok: false, reason: blocked || 'origin-database-unavailable', ...(event ? { deferred: true } : {}) };
+            }
+            const read = database.read();
+            if (!read.ok) return databaseFailure(read);
+            if (read.revision !== databaseState.revision) return databaseFailure({ reason: 'origin-database-conflict' });
+            const wallet = await readWallet();
+            if (!ownerAlive() || !requestedPath()) return { ok: false, reason: 'request-stale' };
+            if (!wallet.ok) return databaseFailure(wallet);
+            if (host.pointsEconomy?.() === true) {
+                const messages = (ctx() || {}).chat || [];
+                for (const floor of pointFloors(messages).filter(f => !f.floorId)) {
+                    const saved = await host.ensurePointsFloor(floor.messageId);
+                    if (!ownerAlive() || !requestedPath()) return { ok: false, reason: 'request-stale' };
+                    if (!saved?.ok) return databaseFailure(saved || { reason: 'points-floor-save-failed' });
+                }
+            }
+            const pointsBefore = current().rep.state.points;
+            const previous = { ledger, meta, cache, known };
+            const copy = deserializeLedger(databaseRaw(), chatId);
+            if (!copy.ok) return databaseFailure(copy);
+            ledger = copy.ledger;
+            meta = { ...meta };
+            cache = null;
+            const effects = { events: [], notifications: [], afterCommit: [], dirty: false };
+            let job;
+            try {
+                staging = effects;
+                const result = fn();
+                if (result?.ok === false) return result;
+                if (current().rep.state.points < pointsBefore && typeof host.spendingGate === 'function') {
+                    const allowed = host.spendingGate();
+                    if (allowed?.ok === false) return allowed;
+                }
+                const intent = database.prepare(databaseState, databaseRaw());
+                if (!intent.ok) return intent;
+                const writtenPath = pathLease(true);
+                job = { ...effects, intent, result, ledger, meta, known, beforeKnown: previous.known,
+                    wallet: wallet.balance, ownerAlive, alive: () => ownerAlive() && writtenPath() };
+            } finally {
+                staging = null;
+                ({ ledger, meta, cache, known } = previous);
+            }
+            return saveDatabase(job);
+        };
+        const locked = () => typeof host.withPointsLock === 'function' ? host.withPointsLock(run) : run();
+        databaseTail = databaseTail.then(locked, locked).catch(() => ownerAlive()
+            ? databaseFailure({ reason: 'origin-database-write-failed' }) : { ok: false, reason: 'request-stale' });
+        return databaseTail;
+    }
+    function retrySave() {
+        if (!database) return Promise.resolve({ ok: true, skipped: true });
+        const job = pendingSave;
+        if (!job) return load();
+        const run = async () => {
+            if (job.published) return job.result || { ok: true };
+            if (!job.alive()) return recoverDatabaseBranch(job);
+            const present = database.read({ intent: job.intent, fresh: true });
+            if (!present.ok) return databaseFailure(present);
+            if (present.revision !== job.intent.revision) {
+                const wallet = await readWallet({ intent: job.intent });
+                if (!job.alive()) return { ok: false, reason: 'request-stale' };
+                if (!wallet.ok || wallet.balance !== job.wallet) return databaseFailure({ reason: wallet.reason || 'origin-wallet-changed' });
+            }
+            return saveDatabase(job);
+        };
+        const locked = () => typeof host.withPointsLock === 'function' ? host.withPointsLock(run) : run();
+        databaseTail = databaseTail.then(locked, locked);
+        return databaseTail;
+    }
+    const savedAction = (fn) => (...args) => databaseOf() ? queueDatabase(() => fn(...args)) : fn(...args);
+    const savedEvent = (fn) => (...args) => databaseOf() ? queueDatabase(() => fn(...args), {}) : fn(...args);
+    const commitSaved = (op) => databaseOf() ? queueDatabase(() => commit(op)) : commit(op);
+    async function whenSaved() {
+        let pending;
+        do { pending = databaseTail; await pending; } while (pending !== databaseTail);
+    }
 
     function blocksOf(m, create) {
         const o = m && m.extra && m.extra.origin;
@@ -207,6 +461,7 @@ export function createOriginEngine(host) {
         for (const n of res.notes || []) {
             if (n.kind === 'new') notify('task-new', '新任务：' + n.title);
             else if (n.kind === 'done') notify('task-done', '任务完成：' + n.title + (n.reward ? '（奖励：' + n.reward + '）' : ''));
+            else if (n.kind === 'points') notify('info', originCreditText(n));
             else if (n.kind === 'fail') notify('task-fail', '任务失败：' + n.title);
             else if (n.kind === 'broadcast') notify('broadcast', n.text);
             else if (n.kind === 'achieve') notify('achieve', '解锁成就：' + n.name + (n.desc ? '（' + n.desc + '）' : ''));
@@ -222,7 +477,7 @@ export function createOriginEngine(host) {
 
     // ---------- 收块：结算一个 AI 楼的当前 swipe ----------
     // 数据块原文存 message.extra.origin.blocks[swipe]，正文剪掉块；同一 swipe 重算复用种子，抽奖结果不变。
-    function settleAt(idx) {
+    function settleAt(idx, { legacy = false } = {}) {
         const c = ctx();
         const chat = c && c.chat;
         const m = Array.isArray(chat) ? chat[idx] : null;
@@ -248,6 +503,16 @@ export function createOriginEngine(host) {
         }
         const entry = makeEntry(block, prose, existing ? existing.seed : newSeed());
         if (existing && existing.h === entry.h) return { changed: false, entry: existing };
+        if (existing?.economy) return { changed: false, entry: existing };
+        if (database) entry.wallet = existing?.wallet ?? walletValue;
+        if (!existing && !legacy && staging && host.pointsEconomy?.() === true) {
+            const anchor = pointFloors(chat).find(f => f.messageId === idx);
+            if (!anchor?.floorId) throw new Error('origin-no-anchor');
+            entry.economy = economyPlan(`origin:${chatId}:${anchorKey(anchor)}`, { floorId: anchor.floorId, swipeId: anchor.swipeId });
+            const before = replay(ledger, buildPath(chat.slice(0, idx), isAiMsg), calcSettings());
+            const grants = collectOriginGrants(ledger, chat, entry.economy.id);
+            stepOnce(before.state, { type: 'floor', id: idx, turn: before.turn + 1, entry }, calcSettings(), { chat, grants });
+        }
         return { changed: true, entry: setEntry(ledger, idx, sw, entry, snapNow()) };
     }
 
@@ -271,11 +536,27 @@ export function createOriginEngine(host) {
             const dropLast = Boolean(generating && (generating.type === 'swipe' || generating.type === 'regenerate') && last && !last.is_user);
             const path = buildPath(chat, isAiMsg, dropLast);
             const target = path.length ? path[path.length - 1].id : -1;
-            if (bindPending(ledger, target)) persist();
+            if (!database && bindPending(ledger, target)) persist();
+            if (database) current();
             const cs = calcSettings();
             const rep = replay(ledger, path, cs);
-            const text = buildInjection({ st: shown(rep.state, extraPoints(), cs.ruleScale), world: meta.world, direction: meta.direction, ...pendingFor(rep, target) }, { ...s, ruleId: cs.ruleId }, rep.turn);
-            injectInto(ev.chat, text); // 永远放在提示词最后一条，输入不在此清空（治 D1）
+            const st = shown(database ? { ...rep.state, points: rep.state.points + walletValue } : rep.state, cs.ruleScale);
+            const text = buildInjection({ st, world: meta.world, direction: meta.direction, ...pendingFor(rep, target) }, { ...s, ruleId: cs.ruleId }, rep.turn);
+            injectInto(ev.chat, text);
+            if (database) {
+                const ids = new Set(ledger.ops.filter((rec) => rec.boundTo == null && rec.after <= target).map((rec) => rec.id));
+                if (ids.size) queueDatabase(() => {
+                    let changed = false;
+                    for (const rec of ledger.ops) {
+                        if (ids.has(rec.id) && rec.boundTo == null && rec.after <= target) {
+                            rec.boundTo = target;
+                            changed = true;
+                        }
+                    }
+                    if (changed) persist();
+                    return { ok: true };
+                });
+            }
         } catch (e) { try { console.error('[Origin] 注入失败', e); } catch (_) { /* */ } }
     }
     function onStarted(type, params, dryRun) {
@@ -295,7 +576,7 @@ export function createOriginEngine(host) {
         if (!r || !r.changed) return;
         emit('settle', { messageId: idx });
         notifyFloor(idx);
-        compactOld();
+        compactOld(idx);
         persist();
     }
     // 正文指纹（与 makeEntry 的 fp 同算法），给底稿当锚点。
@@ -306,15 +587,20 @@ export function createOriginEngine(host) {
         return hash53(String(sp.block != null ? sp.text : (m.mes || '')).trim());
     }
     // 楼层保留：超出的旧楼并进底稿，消息里存的数据块原文一并清掉（聊天文件变小）。
-    function compactOld() {
+    function compactOld(through) {
         const c = ctx();
-        const chat = (c && c.chat) || [];
+        const messages = (c && c.chat) || [];
+        const chat = Number.isInteger(through) ? messages.slice(0, through + 1) : messages;
         const cut = compact(ledger, buildPath(chat, isAiMsg, false), settings(), settings().keepFloors, fpAt);
         if (cut < 0) return;
-        for (let i = 0; i <= cut; i += 1) {
-            const m = chat[i];
-            if (m && m.extra && m.extra.origin) delete m.extra.origin;
-        }
+        const cleanup = () => {
+            for (let i = 0; i <= cut; i += 1) {
+                const m = chat[i];
+                if (m && m.extra && m.extra.origin) delete m.extra.origin;
+            }
+        };
+        if (staging) staging.afterCommit.push(cleanup);
+        else cleanup();
         cache = null;
     }
     function onSwiped(messageId) {
@@ -387,11 +673,13 @@ export function createOriginEngine(host) {
     }
     function onChatChanged() {
         generating = null;
-        load();
-        emit('load');
+        const loaded = load();
+        if (!database) emit('load');
+        return loaded;
     }
 
     function detach() {
+        databaseEpoch += 1;
         for (const off of offs) { try { off(); } catch (e) { /* */ } }
         offs = [];
         generating = null;
@@ -410,11 +698,11 @@ export function createOriginEngine(host) {
         bind(types.GENERATION_STARTED, onStarted);
         bind(types.GENERATION_ENDED, onEnded);
         bind(types.GENERATION_STOPPED, onEnded);
-        bind(types.MESSAGE_RECEIVED, onReceived);
-        bind(types.MESSAGE_SWIPED, onSwiped);
-        bind(types.MESSAGE_DELETED, onDeleted);
-        bind(types.MESSAGE_UPDATED, onUpdated);
-        bind(types.MESSAGE_EDITED, onUpdated);
+        bind(types.MESSAGE_RECEIVED, savedEvent(onReceived));
+        bind(types.MESSAGE_SWIPED, savedEvent(onSwiped));
+        bind(types.MESSAGE_DELETED, savedEvent(onDeleted));
+        bind(types.MESSAGE_UPDATED, savedEvent(onUpdated));
+        bind(types.MESSAGE_EDITED, savedEvent(onUpdated));
         bind(types.CHAT_CHANGED, onChatChanged);
         return true;
     }
@@ -435,10 +723,16 @@ export function createOriginEngine(host) {
         const chat = (ctx() || {}).chat || [];
         const after = chat.length - 1;
         const seed = newSeed();
-        const cx = createCx({ turn: rep.turn, floor: after >= 0 ? after : null, s: calcSettings(), extra: extraPoints(), scale: scaleOfRuleset(ruleId()), random: seededRandom(seed) });
+        const wallet = database ? walletValue : undefined;
+        const anchor = pointFloors(chat).at(-1);
+        if (staging && host.pointsEconomy?.() === true && !anchor?.floorId) return { ok: false, reason: 'origin-no-anchor' };
+        const economy = staging && host.pointsEconomy?.() === true
+            ? economyPlan(`origin:${chatId}:op:${ledger.nextOpId}`, { floorId: anchor.floorId, swipeId: anchor.swipeId }) : null;
+        const cx = createCx({ turn: rep.turn, floor: after >= 0 ? after : null, s: calcSettings(), scale: scaleOfRuleset(ruleId()), random: seededRandom(seed), wallet,
+            economy: economyContext(economy, economy ? { chat, grants: collectOriginGrants(ledger, chat) } : undefined) });
         const r = applyManual(cloneForWrite(rep.state), op, cx);
         if (!r.ok) return { ok: false, reason: r.reason, text: r.text };
-        const rec = recordOp(ledger, op, after, seed, snapNow());
+        const rec = recordOp(ledger, op, after, seed, wallet, economy, snapNow());
         persist();
         emit('op', { opId: rec.id, op: op.type });
         const rep2 = current().rep;
@@ -520,7 +814,7 @@ export function createOriginEngine(host) {
             const r = await runGen('task', taskPrompt({ ...v, cd: mt.cd.slice(0, 400), recent: mt.recent.slice(-900) }));
             const line = r.out ? pickTaskLine(r.out) : '';
             if (!line) { notify('warn', '没生成出来，再点一次或手动添加'); return { ok: false, reason: r.err || 'no-result' }; }
-            const res = commit({ type: 'applyBlock', block: line });
+            const res = await commitSaved({ type: 'applyBlock', block: line });
             if (res.ok) notify('info', '任务已派发');
             return res;
         });
@@ -532,7 +826,7 @@ export function createOriginEngine(host) {
             const r = await runGen('shop', shopPrompt({ ...v, cd: material(1, 0).cd.slice(0, 300) }));
             const items = parseShopLines(r.out);
             if (!items.length) { notify('warn', '刷新失败，重试'); return { ok: false, reason: r.err || 'no-result' }; }
-            const res = commit({ type: 'setShop', items });
+            const res = await commitSaved({ type: 'setShop', items });
             if (res.ok) notify('info', '商城已刷新');
             return res;
         });
@@ -544,7 +838,7 @@ export function createOriginEngine(host) {
             const r = await runGen('gacha', gachaPrompt({ ...v, cd: material(1, 0).cd.slice(0, 300) }));
             const items = parseGachaLines(r.out);
             if (!items.length) { notify('warn', '重出失败，重试'); return { ok: false, reason: r.err || 'no-result' }; }
-            const res = commit({ type: 'setGacha', items });
+            const res = await commitSaved({ type: 'setGacha', items });
             if (res.ok) notify('info', '奖池已刷新');
             return res;
         });
@@ -554,14 +848,15 @@ export function createOriginEngine(host) {
         const ask = String(text || '').trim();
         if (!ask) return Promise.resolve({ ok: false, reason: 'empty' });
         return guarded(async () => {
-            commit({ type: 'chatMe', text: ask });
+            const asked = await commitSaved({ type: 'chatMe', text: ask });
+            if (!asked.ok) return asked;
             const v = view();
             const mt = material(2, 350);
             const p = sysChatPrompt({ st: v.st, world: v.world, s: v.s, turn: v.turn, recent: mt.recent });
             const r = await runGen('sysChat', flatChat(p.system, p.msgs));
-            if (r.err !== undefined) return commit({ type: 'chatSys', text: '（连接失败：' + r.err + '）', block: null, toStory: false, ask });
+            if (r.err !== undefined) return commitSaved({ type: 'chatSys', text: '（连接失败：' + r.err + '）', block: null, toStory: false, ask });
             const sp = splitReplyBlock(r.out);
-            return commit({ type: 'chatSys', text: sp.text, block: sp.block && sp.block !== '无' ? sp.block : null, toStory: v.s.chatToStory !== false, ask });
+            return commitSaved({ type: 'chatSys', text: sp.text, block: sp.block && sp.block !== '无' ? sp.block : null, toStory: v.s.chatToStory !== false, ask });
         });
     }
     function rpChatGen() {
@@ -573,7 +868,7 @@ export function createOriginEngine(host) {
             const r = await runGen('rpChat', rpChatPrompt({ st: v.st, world: v.world, s: v.s, cd: mt.cd, recent: mt.recent }));
             const lines = parseRpChatLines(r.out);
             if (!lines.length) { notify('warn', '没生成出来，再试一次'); return { ok: false, reason: r.err || 'no-result' }; }
-            return commit({ type: 'chatRp', lines });
+            return commitSaved({ type: 'chatRp', lines });
         });
     }
     // 系统对角色喊话：下回合他会听到（事件挂在这条操作上，随下一个用户楼发出）。
@@ -581,7 +876,7 @@ export function createOriginEngine(host) {
         const t = String(text || '').trim();
         if (!t) return Promise.resolve({ ok: false, reason: 'empty' });
         if (!settings().enabled) return Promise.resolve({ ok: false, reason: 'disabled' });
-        return Promise.resolve(commit({ type: 'chatCall', text: t }));
+        return Promise.resolve(commitSaved({ type: 'chatCall', text: t }));
     }
 
     // ---------- 全楼重算：按当前规则重解析每一楼（含已有存档的其他 swipe），种子沿用，手动操作保留并重新校验 ----------
@@ -602,7 +897,8 @@ export function createOriginEngine(host) {
                 const raw = Array.isArray(m.swipes) ? m.swipes[e.swipeId] : null;
                 if (raw == null) continue;
                 const sp = splitBlock(raw);
-                setEntry(ledger, i, e.swipeId, makeEntry(sp.block != null ? sp.block : e.block, sp.block != null ? sp.text : String(raw), e.seed), snapNow());
+                if (e.economy) continue;
+                setEntry(ledger, i, e.swipeId, { ...makeEntry(sp.block != null ? sp.block : e.block, sp.block != null ? sp.text : String(raw), e.seed), ...(e.wallet === undefined ? {} : { wallet: e.wallet }) }, snapNow());
             }
             settleAt(i);
         }
@@ -657,7 +953,7 @@ export function createOriginEngine(host) {
             const ids = new Set([cur, ...Object.keys(ob).map(Number).filter(Number.isInteger)]);
             for (const sw of ids) {
                 if (getEntry(ledger, i, sw)) continue;
-                if (sw === cur) { settleAt(i); if (ob[sw] != null && getEntry(ledger, i, sw) && getEntry(ledger, i, sw).block == null) setEntry(ledger, i, sw, makeEntry(ob[sw], splitBlock(m.mes).text, getEntry(ledger, i, sw).seed), snapNow()); continue; }
+                if (sw === cur) { settleAt(i, { legacy: true }); if (ob[sw] != null && getEntry(ledger, i, sw) && getEntry(ledger, i, sw).block == null) setEntry(ledger, i, sw, makeEntry(ob[sw], splitBlock(m.mes).text, getEntry(ledger, i, sw).seed), snapNow()); continue; }
                 const raw = Array.isArray(m.swipes) ? String(m.swipes[sw] || '') : '';
                 const sp = splitBlock(raw);
                 setEntry(ledger, i, sw, makeEntry(ob[sw] != null ? ob[sw] : sp.block, sp.block != null ? sp.text : raw, newSeed()), snapNow());
@@ -694,9 +990,12 @@ export function createOriginEngine(host) {
     }
 
     return {
-        getState, rawPoints, rawStats, subscribe, dispatch, genTask, genShop, genGacha, sysChat, rpChatGen, rpChatCall,
-        recalcAll, importLegacy, legacyDetected, dismissLegacy, lastFloorStatus,
-        start: sync, sync, stop: detach, reload: () => { load(); emit('load'); },
+        getState, rawStats, subscribe, dispatch: savedAction(dispatch), genTask, genShop, genGacha, sysChat, rpChatGen, rpChatCall,
+        recalcAll: savedAction(recalcAll), importLegacy: savedAction(importLegacy), legacyDetected,
+        dismissLegacy: savedAction(dismissLegacy), lastFloorStatus, whenSaved, retrySave,
+        start: sync, sync, stop: detach, reload: () => {
+            const loaded = load(); if (!database) emit('load'); return loaded;
+        },
         isBlocked: () => blocked,
     };
 }

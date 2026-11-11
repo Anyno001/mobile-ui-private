@@ -2296,6 +2296,7 @@ verifyCallAiOptionsDetector();
 // Keep this exception file-specific: every other source module remains subject to the limit.
 const MODULE_LINE_LIMIT_EXCEPTIONS = new Set([
   'src/interactive-scene-model.js',
+  'src/origin/origin-engine.js', // 逐字拷自 IGS 的金手指内核，只能在 IGS 改
   'src/today-trend-v2-model.js',
 ]);
 const MAX_SOURCE_MODULE_LINES = 800;
@@ -5086,7 +5087,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.22.5') failures.push('version: expected release version 1.22.5');
+if (packageJson.version !== '1.22.6') failures.push('version: expected release version 1.22.5');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

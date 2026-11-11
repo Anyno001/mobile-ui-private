@@ -88,21 +88,15 @@ function parseNewTask(p, line) {
     return { k: 'newTask', ty, title, desc, cond, reward, penalty, limit: lim, owner: fields['对象'] || fields['归属'] || '' };
 }
 
-// 数据块 → { ops, balance }。ops 顺序与块内顺序一致；新奖品/块内余额按原插件放在循环之后。
+// 数据块 → { ops }。积分只解析增减指令；新奖品在循环后替换奖池。
 export function parseBlock(memo) {
     const lines = String(memo || '').split('\n')
         .map((l) => l.trim().replace(/^[-•·*＊]\s*|^\d+[.、)）]\s*/, ''))
         .filter((l) => l && l !== '无' && !(/^系统\s*[：:]/.test(l) && l.indexOf('|') < 0));
     const ops = [];
     const newG = [];
-    let balance = null;
     for (const line of lines) {
         let p = line.split('|').map((x) => x.trim());
-        if (/^积分\s*[：:]\s*\d+/.test(line)) {
-            const bv = parseInt(line.replace(/^积分\s*[：:]\s*/, ''), 10);
-            if (!Number.isNaN(bv)) balance = bv;
-            continue;
-        }
         p = normalizeParts(line, p);
         let progressAlt = null;
         if (p.length >= 3 && !TAGS_KNOWN.test(p[0]) && /^\d+$/.test(p[1]) && /^\d{1,3}\s*%?$/.test(p[2])) {
@@ -141,8 +135,7 @@ export function parseBlock(memo) {
         else if (tag === '成就') ops.push({ k: 'achieve', name: p[1] || '成就', desc: p[2] || '', key: 'm_' + (p[1] || '') });
     }
     if (newG.length) ops.push({ k: 'gachaSet', items: newG });
-    if (balance != null) ops.push({ k: 'balance', v: balance });
-    return { ops, balance };
+    return { ops };
 }
 
 // ---------- 宿主生成结果的解析（商城 / 奖池 / 私聊 / 任务） ----------
