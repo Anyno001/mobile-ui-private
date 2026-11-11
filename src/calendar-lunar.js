@@ -111,7 +111,8 @@ const parseLunarDay = text => {
 };
 
 const LUNAR_DATE_PATTERN = /(?:(\d{4})\s*年|([甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥])\s*年)?\s*(闰)?\s*(正|冬|腊|十[一二]|[一二三四五六七八九十]|\d{1,2})\s*月\s*(初[一二三四五六七八九十]|廿[一二三四五六七八九]|卅|[一二三]?十[一二三四五六七八九]?|[一二三四五六七八九]|\d{1,2})(?![\d十一二三四五六七八九])\s*([日号])?/;
-const LUNAR_MARK = /农历|阴历|旧历|[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]年/;
+// 年号纪年（永乐十二年、建安元年）也算农历标记；用后顾排除「一九九九年」这类汉字公历年。
+const LUNAR_MARK = /农历|阴历|旧历|[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]年|(?<![〇零一二三四五六七八九十\d])(?:元|[一二三四五六七八九十]{1,3})年/;
 const LUNAR_DAY_WORD = /月\s*(?:初|廿|卅)|正月|冬月|腊月/;
 
 /** 正文是否按农历书写：有「农历/干支年」字样，或出现「初三、廿八、正月、腊月」这类只属于农历的写法。 */
@@ -130,8 +131,9 @@ export function extractLunarDate(text, hint = '') {
     const match = source.match(LUNAR_DATE_PATTERN);
     if (!match) return null;
     const explicitLunar = looksLunar(source) || mark >= 0;
-    // 「三月十五日」这类无农历标记、带日/号的写法属于公历，交给公历识别。
-    if (!explicitLunar && (match[6] || !/[初廿卅]/.test(match[5]))) return null;
+    // 「三月十五日」「3月15」这类无农历标记、带日/号或用阿拉伯数字写日的属于公历，交给公历识别；
+    // 「八月十六」这种汉字写日、不带日/号的按农历。
+    if (!explicitLunar && (match[6] || /\d/.test(match[5]))) return null;
     const month = numberOf(match[4]), day = parseLunarDay(match[5]), leap = Boolean(match[3]);
     if (!month || month > 12 || !day || day > 30) return null;
     const reference = parseCalendarDate(hint) || new Date();

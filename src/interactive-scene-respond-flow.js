@@ -103,9 +103,11 @@ export function createRespondFlow({
                 if (!generated.length) throw new Error('AI未返回有效内容');
                 // 用户评论从原位取出，随机放进这一批里；位置只在这里决定一次，写进数组顺序，之后渲染不再变。
                 const mine = kind === 'comment' ? currentPost.comments.find(item => item.id === commentId) || null : null;
+                // 虎扑回帖是平铺楼层，接话要排在用户那条下面，所以用户那条固定在这一批最前。
+                const slot = mine && platformOf(resolved.scene) === 'hupu' ? 0 : pickSlot(generated.length, randomSource);
                 const merged = mergeRespondComments({
                     existing: currentPost.comments.filter(item => item !== mine), userComment: mine, generated,
-                    slot: pickSlot(generated.length, randomSource), now: now(), after: currentPost.createdAt,
+                    slot, now: now(), after: currentPost.createdAt,
                     limit: INTERACTIVE_LIMITS.comments,
                 });
                 currentPost.comments = merged.comments;
