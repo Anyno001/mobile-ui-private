@@ -203,6 +203,7 @@ function renderSceneMenu(scene, uiScope, autoActive) {
         <div class="pm-control-menu pm-scene-menu" role="menu" aria-label="社区工具" hidden>
             <button type="button" role="menuitem" data-action="tab" data-tab="prompt">${BOOK_ICON_SVG}<span>风格提示词</span></button>
             <button type="button" role="menuitem" data-action="context-inject">${INJECTION_ICON_SVG}<span>上下文注入</span></button>
+            <button type="button" role="menuitem" data-action="toggle-community-auto" aria-pressed="${autoActive}">${SPARKLES_ICON_SVG}<span>${autoActive ? '按楼自动生成：开' : '按楼自动生成：关'}</span></button>
             <button type="button" role="menuitem" data-action="toggle-scene-pin" data-scene-id="${escapeAttr(scene.id)}" aria-pressed="${pinned}">${COMMUNITY_ICON_SVG}<span>${pinned ? '取消固定' : '固定社区'}</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="clear-scene-posts">${REFRESH_ICON_SVG}<span>清空帖子</span></button>
             <button type="button" role="menuitem" class="pm-scene-danger" data-action="delete-scene" data-scene-id="${escapeAttr(scene.id)}">${TRASH_ICON_SVG}<span>删除社区</span></button>

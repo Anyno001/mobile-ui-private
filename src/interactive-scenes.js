@@ -14,7 +14,8 @@ import { buildDesktopPins } from './interactive-scene-global-pins.js';
 import { createCommunityFileSync } from './community-file-sync.js';
 import { communityFloorMark, createCommunityRollbackRunner, withoutFloorMarks } from './community-floor-rollback.js';
 import { bindPhonePageActions, dispatchCalendarAppAction, getCommunityInjectionState, handleCommunityInjectionUiAction, handleSceneAccentAction, persistCurrentPhoneUiSnapshot, resolvePhoneChatTarget, runCalendarPageTransition, runDeleteSceneAction, runDesktopPageTransition, toggleSceneMenu, toggleScenePostActions, toggleSceneReplyComposer } from './interactive-scene-phone.js';
-import { createCommunityGenerationRunner, createCommunityTaskController } from './interactive-scene-scheduler.js';
+import { appNameOf } from './app-names.js'; import { createFeedNotifier } from './igs-notify-bridge.js';
+import { createCommunityGenerationRunner, createCommunityTaskController, isBackgroundCommunityTarget, keepBackgroundFeed, resolveBackgroundCommunityTarget } from './interactive-scene-scheduler.js';
 import { installLiveApp } from './live-app.js';
 import { VIEW_ACTIONS, applyViewAction, composePostFields, insertTopicMark, pickMood, pickPlatform, pickRating, readComposeUi, resetViewAfterPublish, toggleNsfwSwitch } from './community-views/view-actions.js';
 import { COMMUNITY_PLATFORM_ACCENTS, platformOf } from './community-views/view-shared.js';
@@ -60,14 +61,10 @@ export function installInteractiveScenes(_state, deps) {
     const resolveTarget = target => {
         const scope = runtime.store?.scopes?.[target?.storageId];
         return { scopeId: target?.storageId, scope, scene: scope?.scenes?.[target?.sceneId] || null }; };
-    const getCommunityTarget = () => {
-        const scopeId = runtime.openSceneStorageId || getStorageId();
-        const scene = runtime.store?.scopes?.[scopeId]?.scenes?.[runtime.openSceneId];
-        return runtime.openSceneId && scene ? { storageId: scopeId, sceneId: scene.id } : null;
-    };
-    const isTargetActive = target => (runtime.openSceneStorageId || getStorageId()) === target?.storageId
-        && runtime.openSceneId === target?.sceneId
-        && !!resolveTarget(target).scene && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
+    const getCommunityTarget = () => resolveBackgroundCommunityTarget(runtime, getStorageId);
+    // 后台自动热场的目标：最后打开的社区（没有就用该聊天的 activeSceneId），不要求手机展开或停在社区页。
+    const isTargetActive = target => isBackgroundCommunityTarget(runtime, getStorageId, target);
+    const isTargetShown = target => isTargetActive(target) && document.querySelector('#pm-iphone .pm-main-ui')?.dataset.page === 'community';
     const operationGuard = (storageId, sceneId = () => runtime.openSceneId) => createInteractiveOperationGuard({ getEpoch: () => runtime.contextEpoch, getStorageId: () => runtime.openSceneStorageId || getStorageId(),
         getOpenSceneId: () => runtime.openSceneId,
         isMounted: () => !!document.getElementById('pm-scene-app'),
@@ -77,8 +74,7 @@ export function installInteractiveScenes(_state, deps) {
         runtime,
         isTargetActive,
         isLiveTargetActive: task => liveApp?.isTargetActive(task) === true,
-        isAllowed: target => _state.phoneActive && !_state.isMinimized && document.visibilityState !== 'hidden'
-            && !runtime.busy && isTargetActive(target) });
+        isAllowed: target => !runtime.busy && isTargetActive(target) });
     let communityRunner = null; let igsSync = null;
     const queuedCommit = createInteractiveCommitQueue({
         getStore: () => runtime.store,
@@ -88,6 +84,7 @@ export function installInteractiveScenes(_state, deps) {
     // 当前打开的是别的聊天的社区时，这次写入不记楼层（见 community-floor-rollback.js）。
     const commit = (mutator, isValid, context) => queuedCommit(() => (runtime.openSceneStorageId && runtime.openSceneStorageId !== getStorageId() ? withoutFloorMarks(mutator) : mutator()), isValid, context);
     const invalidate = (reason = 'community-context-invalidated') => {
+        if (keepBackgroundFeed(communityTasks, reason, isTargetActive)) return;
         runtime.contextEpoch += 1;
         communityRunner?.cancel(reason, true);
         runtime.requestController?.abort(reason);
@@ -227,7 +224,7 @@ export function installInteractiveScenes(_state, deps) {
                 isolated: true, module: 'community',
                 signal: controller.signal,
             });
-            if (requestId !== runtime.requestId || !document.getElementById('pm-scene-app')) throw new Error('生成已取消');
+            if (requestId !== runtime.requestId || (!document.getElementById('pm-scene-app') && communityTasks.state().task?.kind !== 'auto-feed')) throw new Error('生成已取消');
             const { items, meta } = parseCommunityResponse(raw, kind, platform);
             Object.defineProperty(items, 'meta', { value: meta, enumerable: false });
             return items;
@@ -338,9 +335,9 @@ export function installInteractiveScenes(_state, deps) {
                 if (!scene) throw new Error('生成已取消'); added = appendPosts(scopeId, scope, scene, items); applyFeedMeta(scene, items.meta); await onComplete?.();
             }, isValid);
             // 落库成功后才排配图任务（开了社区自动生成才会出图）。
-            deps.notePhoneImagePosts?.(added, { storageId: target?.storageId, sceneId: target?.sceneId });
+            deps.notePhoneImagePosts?.(added, { storageId: target?.storageId, sceneId: target?.sceneId }); return added;
         },
-        onRender: rerender, onStatus: setStatus,
+        onRender: rerender, onStatus: setStatus, onAutoFeedCommitted: createFeedNotifier({ getConfig: () => deps.igsLink?.getConfig?.(), isViewing: t => _state.phoneActive && !_state.isMinimized && isTargetShown(t), appNameOf: t => appNameOf(platformOf(resolveTarget(t).scene)) }),
     });
     async function generateComments(postId) {
         const { scopeId, scene } = current();
@@ -401,6 +398,7 @@ export function installInteractiveScenes(_state, deps) {
         if (action === 'pick-platform') { pickPlatform(app, button); return; }
         if (action === 'toggle-nsfw') { toggleNsfwSwitch(button); return; }
         if (action === 'toggle-auto-respond' || action === 'toggle-igs-sync') { toggleNsfwSwitch(button); return; }
+        if (action === 'toggle-community-auto') { communityTasks.setMode(communityTasks.state().mode === 'auto' ? 'remind' : 'auto'); rerender('feed', { preserveFeedScroll: true }); return; }
         if (action === 'igs-import') { await igsSync?.handleAction(action, { setStatus }); return; }
         if (action === 'pick-rating') { pickRating(app, button); return; }
         if (action === 'pick-mood') { pickMood(app, button); return; }
@@ -694,7 +692,7 @@ export function installInteractiveScenes(_state, deps) {
     };
     Object.assign(deps, {
         getInteractiveStore: loadStore,
-        observeCommunityTurn: chat => communityRunner.observe(chat),
+        observeCommunityTurn: chat => (runtime.store ? communityRunner.observe(chat) : loadStore().then(() => communityRunner.observe(chat))),
         cancelCommunityGeneration: invalidate,
         bindPhonePageUi,
         refreshPhoneDesktop: () => refreshDesktop(),

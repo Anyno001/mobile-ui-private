@@ -270,7 +270,7 @@
 .pm-control-toggle.is-checked::after{transform:translateX(var(--pm-size-switch-travel));}
 .pm-control-menu button:hover,.pm-control-menu button:focus-visible{background:var(--pm-color-fill);outline:none;}
 .pm-control-menu .pm-control-menu-danger{color:var(--pm-color-danger);}
-.pm-control-menu button:not(.pm-control-menu-danger) svg{color:var(--pm-color-label-2);}
+.pm-control-menu button:not(.pm-control-menu-danger):not(.pm-scene-danger):not(.is-danger) svg{color:var(--pm-color-label-2);}
 .pm-pending-manager{min-height:180px;}
 .pm-pending-list{padding:var(--pm-space-3) var(--pm-space-3);overflow-y:auto;max-height:320px;display:flex;flex-direction:column;gap:var(--pm-space-2);}
 .pm-pending-row{display:flex;align-items:center;gap:var(--pm-space-1-5);padding:var(--pm-space-2);border-radius:var(--pm-radius-panel);background:var(--pm-color-fill);}

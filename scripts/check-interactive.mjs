@@ -29,6 +29,7 @@ import {
 import {
     COMMUNITY_TASK_PHASES, createCommunityGenerationRunner, createCommunityTaskController,
     createCommunityTurnSnapshot, registerResolvedHostEvent, resolveCommunityMessageEvents, resolveHostEvent, runLiveWarmup,
+    isBackgroundCommunityTarget, keepBackgroundFeed, resolveBackgroundCommunityTarget,
 } from '../src/interactive-scene-scheduler.js';
 
 const presets = getInteractivePresets();
@@ -3696,6 +3697,32 @@ const { renderCommunityWorkspace: renderRespondWorkspace } = await import('../sr
     } finally {
         for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
     }
+}
+
+// 后台热场目标：最后打开的社区，没有就用 activeSceneId；不依赖手机展开或当前页面。
+{
+    const bgRuntime = { openSceneId: null, openSceneStorageId: null, store: { scopes: { chatA: { activeSceneId: 'scene-b', scenes: { 'scene-a': { id: 'scene-a' }, 'scene-b': { id: 'scene-b' } } } } } };
+    assert.deepEqual(resolveBackgroundCommunityTarget(bgRuntime, () => 'chatA'), { storageId: 'chatA', sceneId: 'scene-b' }, '没打开过社区时退回 activeSceneId');
+    bgRuntime.openSceneId = 'scene-a'; bgRuntime.openSceneStorageId = 'chatA';
+    assert.deepEqual(resolveBackgroundCommunityTarget(bgRuntime, () => 'chatA'), { storageId: 'chatA', sceneId: 'scene-a' }, '最后打开的社区优先');
+    assert.equal(isBackgroundCommunityTarget(bgRuntime, () => 'chatA', { storageId: 'chatA', sceneId: 'scene-a' }), true, '最小化/不在社区页也算目标有效');
+    assert.equal(isBackgroundCommunityTarget(bgRuntime, () => 'chatA', { storageId: 'chatA', sceneId: 'scene-b' }), false, '切到别的社区后任务失效');
+    assert.equal(resolveBackgroundCommunityTarget({ ...bgRuntime, openSceneId: null, openSceneStorageId: null }, () => 'chatB'), null, '切换聊天后目标失效');
+    const task = Object.freeze({ kind: 'auto-feed', storageId: 'chatA', sceneId: 'scene-a' });
+    const holder = { state: () => ({ task }) };
+    const stillCurrent = t => isBackgroundCommunityTarget(bgRuntime, () => 'chatA', t);
+    assert.equal(keepBackgroundFeed(holder, 'community-context-invalidated', stillCurrent), true, '切页不取消后台自动热场');
+    assert.equal(keepBackgroundFeed(holder, 'phone-closed', stillCurrent), true, '关闭手机不取消后台自动热场');
+    assert.equal(keepBackgroundFeed(holder, 'host-chat-changed', stillCurrent), false, '切聊天必须取消');
+    assert.equal(keepBackgroundFeed({ state: () => ({ task: { ...task, kind: 'manual-feed' } }) }, 'phone-closed', stillCurrent), false, '手动生成照旧取消');
+    // auto 模式到 N 楼：isAllowed 不再要求手机展开，最小化时也生成。
+    const autoRuntime = {};
+    const autoController = createCommunityTaskController({ runtime: autoRuntime, isAllowed: () => true, isTargetActive: stillCurrent });
+    autoController.setMode('auto');
+    const target = { storageId: 'chatA', sceneId: 'scene-a' };
+    autoController.baseline({ assistantCount: 0 });
+    const mkTurn = n => createCommunityTurnSnapshot(Array.from({ length: n }, (_, i) => [{ is_user: true, mes: `u${i}` }, { mes: `a${i}` }]).flat());
+    assert.ok(autoController.observe(mkTurn(3), target), '最小化时 auto 模式到 3 楼仍启动生成');
 }
 
 console.log('interactive scene checks passed');

@@ -38,6 +38,9 @@ export function renderIgsLinkSettings(status) {
         ${check('pm-igs-link-read-dna', '生图读取角色形象与衣装', '出图时优先使用gal前端的角色形象与衣装，只读不写', config.readDna)}
       </div>
       <div class="pm-settings-section">
+        ${check('pm-igs-link-notify', '新消息时播放提醒演出', '手机后台自动产生新消息或新帖时，由gal前端播放提醒，不写入正文', config.notifyOnNew)}
+      </div>
+      <div class="pm-settings-section">
         <div class="pm-cfg-label">状态</div>
         ${lines.map((line, index) => `<div class="pm-cfg-tip${index === 1 && status.lastError ? ' is-warning' : ''}" aria-live="polite">${escapeHtml(line)}</div>`).join('')}
         <button type="button" class="pm-action-button is-full" onclick="window.__pmImportIgsFeeds(this)">从正文导入全部楼层</button>
@@ -48,7 +51,7 @@ export function renderIgsLinkSettings(status) {
 
 const FIELD_BY_ID = Object.freeze({
     'pm-igs-link-enabled': 'enabled', 'pm-igs-link-auto-sync': 'autoSync', 'pm-igs-link-auto-continue': 'autoContinue', 'pm-igs-link-sync-live': 'syncLive',
-    'pm-igs-link-sync-chats': 'syncChats', 'pm-igs-link-auto-contacts': 'autoCreateContacts', 'pm-igs-link-read-dna': 'readDna',
+    'pm-igs-link-sync-chats': 'syncChats', 'pm-igs-link-auto-contacts': 'autoCreateContacts', 'pm-igs-link-read-dna': 'readDna', 'pm-igs-link-notify': 'notifyOnNew',
 });
 
 export function installIgsLinkSettings({ makeOverlay, getIgsLink }) {

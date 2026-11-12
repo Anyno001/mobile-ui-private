@@ -4880,8 +4880,10 @@ for (const expected of ["disarmAutoPoke?.('host-chat-changed')", 'updatePhonePag
   requireText('phone-foundation.js', foundationCode, expected);
 }
 for (const expected of [
-  "disarmAutoPoke('phone-minimized')", "disarmAutoPoke('phone-closed')",
 ]) requireText('phone-lifecycle.js', lifecycleCode, expected);
+for (const forbidden of ["disarmAutoPoke('phone-minimized')", "disarmAutoPoke('phone-closed')"]) {
+  if (lifecycleCode.includes(forbidden)) failures.push(`phone-lifecycle.js: 最小化/关闭手机不得取消后台自动消息: ${forbidden}`);
+}
 for (const expected of [
   'runAutoPokeCounterCycle({',
   'run: contactName => window.__pmAutoPoke(contactName)',
@@ -5087,7 +5089,7 @@ if (packageLock.version !== packageJson.version
     || packageLock.packages?.['']?.version !== packageJson.version) {
   failures.push('version: package-lock.json root versions must match package.json');
 }
-if (packageJson.version !== '1.22.7') failures.push('version: expected release version 1.22.7');
+if (packageJson.version !== '1.22.8') failures.push('version: expected release version 1.22.8');
 
 const readmeLines = readme.split(/\r?\n/);
 if (readmeLines[0] !== '# 天音小笺') failures.push('README: title must be 天音小笺');

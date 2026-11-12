@@ -401,7 +401,6 @@ export function installPhoneLifecycle(state, deps) {
                 persistTheme: saveTheme,
                 notify: message => alert(message),
             });
-            disarmAutoPoke('phone-minimized');
             deps.clearCalendarRuntime?.();
         }
         state.phoneWindow.classList.toggle('is-min', state.isMinimized);
@@ -435,7 +434,6 @@ export function installPhoneLifecycle(state, deps) {
         }
         runtime.galBubbleReconcilePending = false;
         runtime.galBubbleReconcileAttempt = 0;
-        deps.cancelCommunityGeneration?.('phone-closed');
         deps.cancelCalendarTasks?.('phone-closed');
         deps.destroyTodayTrendPhoneUi?.();
         deps.destroyStoryOraclePhoneUi?.();
@@ -446,8 +444,9 @@ export function installPhoneLifecycle(state, deps) {
         deps.cancelTodayTrendInitialization?.('phone-closed');
         deps.cancelTodayTrendRuleRegeneration?.('phone-closed');
         deps.cancelTodayTrendGeneration?.('phone-closed', true);
-        disarmAutoPoke('phone-closed');
-        invalidateGeneration();
+        deps.cancelCommunityGeneration?.('phone-closed'); // 按楼自动热场不受影响（见 keepBackgroundFeed）
+        // 后台自动消息不随关闭手机取消；只在没有自动任务时才作废手动生成。
+        if (!runtime.automaticTasks.size) invalidateGeneration();
         ambientStatus.stop();
         unbindSendGesture?.();
         unbindSendGesture = null;
@@ -675,6 +674,16 @@ export function installPhoneLifecycle(state, deps) {
     try { window.__pmHistories = window.__pmHistories || {}; } catch (e) {}
     loadBidirectional(); loadInjectionConfig(); loadPokeConfig(); loadCharacterBehavior(); loadWordyLimit(); loadGalBubbleEnabled();
     loadBudgetConfig(); loadWorldBookConfig();
+    // 后台自动消息不等打开手机：API 配置、档案与表情包在启动时就要就绪。
+    try {
+        const savedConfig = JSON.parse(localStorage.getItem('ST_SMS_CONFIG'));
+        if (savedConfig) {
+            window.__pmConfig = savedConfig;
+            if (typeof savedConfig.useIndependent === 'undefined') savedConfig.useIndependent = !!(savedConfig.apiUrl && savedConfig.apiKey);
+        }
+    } catch (e) {}
+    try { loadProfiles(); } catch (e) {}
+    try { Promise.resolve(loadEmojis()).catch(() => {}); } catch (e) {}
     const reconcileGal = () => {
         if (runtime.galBubbleReconcileTimer !== null || runtime.galBubbleReconcilePending !== true) {
             if (runtime.galBubbleReconcilePending !== true) return;

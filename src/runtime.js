@@ -28,15 +28,12 @@ export function createRuntimeState() {
 }
 
 export function createAutomaticTaskController({ runtime, state, getStorageId, isDocumentVisible }) {
-    const isAllowed = () => state.phoneActive
-        && !state.isMinimized
-        && runtime.autoPokeArmed
-        && isDocumentVisible();
+    // 自动消息只看联系人配置是否启用（由 advanceAutoPokeCounters 过滤），不再要求手机展开、手动启用或页面可见；
+    // 只有切换酒馆聊天（disarm）才会让进行中的任务失效。
+    const isAllowed = () => Boolean(getStorageId());
 
+    // 兼容旧入口 __pmArmAutoPoke：不再有「未启用」状态，保持返回 true。
     const arm = () => {
-        if (!state.phoneActive || state.isMinimized || !isDocumentVisible()) return false;
-        runtime.automaticEpoch += 1;
-        runtime.automaticTasks.clear();
         runtime.autoPokeArmed = true;
         return true;
     };

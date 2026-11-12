@@ -51,12 +51,13 @@ export function handlePhonePageSuspension(deps, reason, {
     save();
     try { deps.flushChatMetadata?.(); deps.flushCommunityFiles?.(); deps.plotInjector?.flush?.(); }
     catch (error) { console.warn('[phone-mode] 页面挂起前写入聊天元数据失败', error?.name || 'Error'); }
-    deps.cancelCommunityGeneration?.(reason);
+    // 切到别的浏览器标签不取消后台自动任务（自动消息、社区自动热场）。
+    if (reason !== 'document-hidden') deps.cancelCommunityGeneration?.(reason);
     deps.cancelCalendarTasks?.(reason);
     deps.cancelTodayTrendInitialization?.(reason);
     deps.cancelTodayTrendRuleRegeneration?.(reason);
     deps.cancelTodayTrendGeneration?.(reason, true);
-    disarm(reason);
+    if (reason !== 'document-hidden') disarm(reason);
 }
 
 export function handleHostChatChanged({

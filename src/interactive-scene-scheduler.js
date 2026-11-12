@@ -74,13 +74,39 @@ export function resolveCommunityMessageEvents(eventTypes) {
 }
 
 
+// 后台热场目标：优先用最后打开的社区，没有就退回该聊天的 activeSceneId。
+export function resolveBackgroundCommunityTarget(runtime, getStorageId) {
+    const storageId = runtime.openSceneStorageId || getStorageId();
+    const scope = runtime.store?.scopes?.[storageId];
+    const scene = scope?.scenes?.[runtime.openSceneId || scope?.activeSceneId];
+    return scene ? { storageId, sceneId: scene.id } : null;
+}
+export function isBackgroundCommunityTarget(runtime, getStorageId, target) {
+    const current = resolveBackgroundCommunityTarget(runtime, getStorageId);
+    return !!current && current.storageId === target?.storageId && current.sceneId === target?.sceneId;
+}
+// 页面切换触发的默认失效不打断正在进行的按楼自动热场；切聊天等带原因的失效照常取消。
+export function keepBackgroundFeed(controller, reason, isCurrent) {
+    const task = controller.state().task;
+    return (reason === 'community-context-invalidated' || reason === 'phone-closed') && task?.kind === 'auto-feed' && isCurrent(task);
+}
+
+// 社区「按楼自动生成」开关：全局一份，存 localStorage；读写失败按默认「只提醒」处理。
+export const COMMUNITY_MODE_KEY = 'ST_SMS_COMMUNITY_MODE';
+const loadCommunityMode = () => {
+    try { return globalThis.localStorage?.getItem(COMMUNITY_MODE_KEY) === 'auto' ? 'auto' : 'remind'; } catch { return 'remind'; }
+};
+const saveCommunityMode = mode => {
+    try { globalThis.localStorage?.setItem(COMMUNITY_MODE_KEY, mode); } catch { /* 存不下时本次会话仍生效 */ }
+};
+
 export function createCommunityTaskController({ runtime, isAllowed, isTargetActive, isLiveTargetActive = () => false }) {
     if (!runtime || typeof isAllowed !== 'function' || typeof isTargetActive !== 'function' || typeof isLiveTargetActive !== 'function') {
         throw new TypeError('社区任务控制器依赖无效');
     }
     runtime.communityGeneration = Number.isInteger(runtime.communityGeneration) ? runtime.communityGeneration : 0;
     runtime.communityTask = runtime.communityTask || null;
-    runtime.communityMode = ['remind', 'auto'].includes(runtime.communityMode) ? runtime.communityMode : 'remind';
+    runtime.communityMode = ['remind', 'auto'].includes(runtime.communityMode) ? runtime.communityMode : loadCommunityMode();
     runtime.communityTurnThreshold = Number.isInteger(runtime.communityTurnThreshold) ? runtime.communityTurnThreshold : 3;
     runtime.communityBaselineAssistantCount = Number.isInteger(runtime.communityBaselineAssistantCount)
         ? runtime.communityBaselineAssistantCount : null;
@@ -111,6 +137,7 @@ export function createCommunityTaskController({ runtime, isAllowed, isTargetActi
     const setMode = mode => {
         if (!['remind', 'auto'].includes(mode)) throw new Error('社区热场模式无效');
         runtime.communityMode = mode;
+        saveCommunityMode(mode);
         return mode;
     };
     const baseline = snapshot => {
@@ -195,7 +222,7 @@ export async function runLiveWarmup({
 
 export function createCommunityGenerationRunner({
     controller, getTarget, request, commitFeed, commitDanmaku,
-    onRender = () => {}, onStatus = () => {},
+    onRender = () => {}, onStatus = () => {}, onAutoFeedCommitted = null,
 }) {
     if (!controller || typeof getTarget !== 'function' || typeof request !== 'function'
         || typeof commitFeed !== 'function') {
@@ -223,9 +250,11 @@ export function createCommunityGenerationRunner({
         try {
             const items = await request('feed_batch', {}, target);
             if (!controller.isActive(task)) throw new Error('生成已取消');
-            await commitFeed(target, items, () => controller.isActive(task), onComplete);
+            const committed = await commitFeed(target, items, () => controller.isActive(task), onComplete);
             if (!controller.isActive(task)) throw new Error('生成已取消');
             controller.finish(task);
+            // 只有按楼自动生成才回调；手动生成与直播热场不触发。回调出错不影响生成结果。
+            if (scheduledTask && task.kind === 'auto-feed') { try { onAutoFeedCommitted?.(target, committed); } catch { /* 提醒不阻断生成 */ } }
             onRender(renderTab);
             return true;
         } catch (error) {

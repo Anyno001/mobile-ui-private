@@ -26,6 +26,8 @@ import {
     replaceConversationHistory, restoreConversationHistory,
 } from './conversation-persistence.js';
 
+import { buildChatNotice, notifyIgs } from './igs-notify-bridge.js';
+
 export function installPhoneChatPoke(state, deps) {
     const {
         getStorageId, gatherContext, callAI, applyBidirectionalInjection,
@@ -74,6 +76,8 @@ export function installPhoneChatPoke(state, deps) {
     }
 
     window.__pmAutoPoke = async (contactName) => {
+        // 手机没打开时历史可能还在启动恢复中；未读完就写库会覆盖旧记录。
+        if (!state.phoneActive && await deps.runtime?.historyLoadPromise?.catch?.(() => false) === false) return false;
         if (state.isGenerating || !isAutoPokeAllowed()) return false;
         const id = getStorageId();
         if (!id || id === 'sms_unknown__default') return false;
@@ -179,6 +183,13 @@ export function installPhoneChatPoke(state, deps) {
                 persistCounter: savePokeConfig,
             });
             if (!committed) return false;
+            try {
+                notifyIgs({
+                    config: deps.igsLink?.getConfig?.(),
+                    viewing: isStillActiveView() && state.phoneActive && !state.isMinimized,
+                    notice: buildChatNotice({ isGroup, contactName, groupName: groupMeta?.name, sentences: renderSentences, blocks: renderBlocks }),
+                });
+            } catch { /* 提醒出错不得影响自动发消息 */ }
             applyBidirectionalInjection();
             if (isStillActiveView()) {
                 hideTyping();

@@ -609,8 +609,9 @@ pageDocument.visibilityState = 'hidden';
 pageDocumentListeners.get('visibilitychange')();
 assert.deepEqual(pageHandlerCalls, [
     ['current-save'], ['current-community', 'beforeunload'], ['current-calendar', 'beforeunload'], ['current-disarm', 'beforeunload'],
-    ['current-save'], ['current-community', 'document-hidden'], ['current-calendar', 'document-hidden'], ['current-disarm', 'document-hidden'],
-]);
+    ['current-save'], ['current-calendar', 'document-hidden'],
+]); // 新行为：切到别的标签页不再取消后台社区热场与自动消息
+
 assert.equal(pageWindowListeners.size, 1);
 assert.equal(pageDocumentListeners.size, 1);
 
@@ -1193,8 +1194,8 @@ const automaticController = createAutomaticTaskController({
     getStorageId: () => automaticStorageId,
     isDocumentVisible: () => documentVisible,
 });
-assert.equal(automaticController.isAllowed(), false);
-assert.equal(automaticController.arm(), false);
+assert.equal(automaticController.isAllowed(), true, "无需手动启用、手机未打开也允许");
+assert.equal(automaticController.arm(), true);
 automaticState.phoneActive = true;
 assert.equal(automaticController.arm(), true);
 assert.equal(automaticController.isAllowed(), true);
@@ -1211,20 +1212,29 @@ assert.equal(automaticController.isActive(sameContactOtherStorageTask), true);
 assert.equal(automaticController.finish(sameContactOtherStorageTask), true);
 automaticStorageId = 'story-a';
 documentVisible = false;
-assert.equal(automaticController.isAllowed(), false);
-assert.equal(automaticController.arm(), false);
+assert.equal(automaticController.isAllowed(), true, '页面不可见不再限制自动消息');
+assert.equal(automaticController.arm(), true);
 documentVisible = true;
 assert.equal(automaticController.arm(), true);
 const staleTask = automaticController.begin('story-a', 'Bob');
 assert.ok(staleTask);
 assert.equal(automaticController.disarm('test-hidden'), 'test-hidden');
-assert.equal(automaticController.isAllowed(), false);
+assert.equal(automaticController.isAllowed(), true, "disarm 只作废任务，不再关掉自动消息");
 assert.equal(automaticController.isActive(staleTask), false);
 assert.equal(automaticController.finish(staleTask), false);
 assert.equal(automaticController.arm(), true);
 automaticState.isMinimized = true;
-assert.equal(automaticController.isAllowed(), false);
-assert.equal(automaticController.arm(), false);
+assert.equal(automaticController.isAllowed(), true, '最小化时自动消息照常运行');
+const minimizedTask = automaticController.begin('story-a', 'Carol');
+assert.ok(minimizedTask, '最小化时可以开始自动任务');
+assert.equal(automaticController.isActive(minimizedTask), true);
+automaticState.phoneActive = false;
+assert.equal(automaticController.isActive(minimizedTask), true, '手机关闭（__pmEnd）后自动任务照常运行');
+automaticStorageId = 'story-z';
+assert.equal(automaticController.isActive(minimizedTask), false, '切换聊天后自动任务失效');
+automaticStorageId = 'story-a';
+automaticController.finish(minimizedTask);
+automaticState.phoneActive = true;
 automaticState.isMinimized = false;
 
 const counterConfigs = {
@@ -3816,7 +3826,7 @@ try {
     assert.equal(activeLifecycleTimers(30000).length, 1, '启用状态栏必须只启动一个 30 秒时钟');
     const firstAmbientTimer = activeLifecycleTimers(30000)[0];
     window.__pmToggleMin();
-    assert.ok(lifecycleDisarmReasons.includes('phone-minimized'), '最小化必须解除自动戳一戳');
+    assert.ok(!lifecycleDisarmReasons.includes('phone-minimized'), '最小化不再解除自动消息');
     assert.equal(activeLifecycleTimers(30000).length, 0, '最小化必须清理环境状态时钟');
     assert.equal(activeLifecycleTimers(2000).length, 1, '最小化不得停止可见性巡检');
     window.__pmToggleMin();
@@ -3824,7 +3834,7 @@ try {
     assert.notEqual(activeLifecycleTimers(30000)[0], firstAmbientTimer,
         '从最小化恢复必须创建新的环境状态时钟');
     window.__pmEnd(true);
-    assert.ok(lifecycleDisarmReasons.includes('phone-closed'), '关闭手机必须解除自动戳一戳');
+    assert.ok(!lifecycleDisarmReasons.includes('phone-closed'), '关闭手机不再解除自动消息（切聊天才解除）');
     assert.equal(lifecycleTimers.size, 0, '关闭手机必须清理所有本轮创建的定时器');
     assert.equal(lifecycleFixtureDeps.runtime.visibilityTimer, null, '关闭手机后可见性巡检状态必须恢复为空');
 } finally {
