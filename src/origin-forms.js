@@ -38,7 +38,7 @@ export const ORIGIN_FORMS = Object.freeze({
     ] },
     addShop: { title: '添加商品', submit: '添加', fields: [
         { name: 'name', label: '商品名', required: true },
-        { name: 'price', label: '价格（积分）', number: [0, 99999], value: '300' },
+        { name: 'price', label: '价格（积分）', number: [0, 99999], value: '60' },
         { name: 'desc', label: '说明' },
         { name: 'effect', label: '数值效果', placeholder: '可留空，例如：魅力+10' },
     ] },

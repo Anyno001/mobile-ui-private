@@ -186,7 +186,7 @@ await check('假聊天完整流程：手动加任务、结算数据块、注入�
     ctx.chat.push({ is_user: true, mes: '你好' });
     ctx.chat.push({ is_user: false, name: '林', mes: '她笑了。\n<origin>\n积分|+500|初见\n</origin>', swipe_id: 0, swipes: ['x'], extra: {} });
     ctx.emit('received', 1);
-    assert.equal(engine.getState().points, afterDone + 500, '楼层数据块结算');
+    assert.equal(engine.getState().points, afterDone + 500 + 20, '楼层数据块结算（跨过 300 另得「腰缠万贯」20）');
     assert.doesNotMatch(ctx.chat[1].mes, /<origin>/, '正文剪掉数据块');
     const prompt = [{ role: 'user', content: 'hi' }];
     ctx.emit('prompt', { chat: prompt, dryRun: false });
@@ -243,7 +243,7 @@ await check('页面渲染：冻结状态下各页不原地改；主线大卡、�
     assert.match(filtered, /role="menuitemradio" aria-checked="true"[^>]*>给角色/);
     assert.equal((task.match(/role="tab"/g) || []).length, 5);
     assert.match(renderOriginPage(st, s, { ...base, menuOpen: true }), /data-origin-action="disable"[^>]*>关闭金手指/, '⋯ 菜单里一键关闭');
-    assert.match(renderOriginPage(st, s, { ...base, tab: 'gacha' }), /抽一次 · 300积分/);
+    assert.match(renderOriginPage(st, s, { ...base, tab: 'gacha' }), /抽一次 · 60积分/);
     const chat = renderOriginPage(st, s, { ...base, tab: 'chat' });
     assert.match(chat, /data-origin-form="chat"/);
     for (const page of ['stat', 'ach', 'log']) assert.match(renderOriginPage(st, s, { ...base, page }), /pm-origin-header is-sub/);

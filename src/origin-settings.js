@@ -1,5 +1,5 @@
 // 金手指（Origin 系统 原作 vicliaaa，经授权移植）的全局设置：存 localStorage，规范化只读入参、返回新对象。
-// 字段与核心 origin-state.js 的 SETTING_DEFAULTS + mods 一致；原插件的独立 API、日夜、主色、悬浮球不做。
+// 字段与核心 origin-state.js 的 SETTING_DEFAULTS + mods 一致；priceVer 为物价版本，读入旧设置时把旧默认抽奖价 300 迁到 60；原插件的独立 API、日夜、主色、悬浮球不做。
 export const ORIGIN_SETTINGS_KEY = 'ST_SMS_ORIGIN';
 export const ORIGIN_CREDIT = 'Origin 系统 原作 vicliaaa，经授权移植';
 export const ORIGIN_REPO_URL = 'https://github.com/vicliaaa/origin-sillytavern';
@@ -8,11 +8,19 @@ export const ORIGIN_PERSONALITIES = Object.freeze(['冷澈', '毒舌', '傲娇',
 export const ORIGIN_MODS = Object.freeze(['stat', 'bag', 'shop', 'gacha', 'ach', 'chat']);
 export const ORIGIN_MOD_LABELS = Object.freeze({ stat: '属性', bag: '背包', shop: '商城', gacha: '抽奖', ach: '成就', chat: '对话' });
 
+// 角色动用系统的策略；空 = 沿用旧开关 autoEcon（打开为按需使用）。
+export const ORIGIN_ECON_STYLES = Object.freeze([['off', '不主动使用'], ['thrifty', '精打细算'], ['normal', '按需使用'], ['lavish', '花钱大方']]);
+export function originEconStyle(settings) {
+    const s = settings || {};
+    if (ORIGIN_ECON_STYLES.some(([id]) => id === s.econStyle)) return s.econStyle;
+    return s.autoEcon || originBoundRole(s) ? 'normal' : 'off';
+}
+
 export const ORIGIN_SETTINGS_DEFAULTS = Object.freeze({
     enabled: false, sysName: ORIGIN_DEFAULT_NAME, personality: '冷澈', personaText: '', bindTo: '宿主',
     freq: 3, blockWhenUnfinished: true, taskSource: 'auto', limitMin: 0, limitMax: 0,
     punishEvent: true, achieveOn: true, shopRefresh: 0, gachaRefresh: 0, rewardPref: '', penaltyPref: '',
-    fourthWall: 0, drawCost: 300, autoEcon: false, chatToStory: true, rpChat: 'auto', budget: 1400, judgeMode: 'A',
+    fourthWall: 0, drawCost: 60, priceVer: 2, autoEcon: false, econStyle: '', econText: '', chatToStory: true, rpChat: 'auto', budget: 1400, judgeMode: 'A',
     mods: Object.freeze({ stat: true, bag: true, shop: true, gacha: true, ach: true, chat: true }),
 });
 
@@ -49,8 +57,11 @@ export function normalizeOriginSettings(raw) {
         rewardPref: text(src.rewardPref, d.rewardPref),
         penaltyPref: text(src.penaltyPref, d.penaltyPref),
         fourthWall: int(src.fourthWall, 0, 100, d.fourthWall),
-        drawCost: int(src.drawCost, 0, 99999, d.drawCost),
+        drawCost: src.priceVer !== d.priceVer && Number(src.drawCost) === 300 ? d.drawCost : int(src.drawCost, 0, 99999, d.drawCost),
+        priceVer: d.priceVer,
         autoEcon: bool(src.autoEcon, d.autoEcon),
+        econStyle: ORIGIN_ECON_STYLES.some(([id]) => id === src.econStyle) ? src.econStyle : d.econStyle,
+        econText: text(src.econText, d.econText, 600),
         chatToStory: bool(src.chatToStory, d.chatToStory),
         rpChat: RP_CHAT.has(src.rpChat) ? src.rpChat : d.rpChat,
         budget: int(src.budget, 400, 6000, d.budget),

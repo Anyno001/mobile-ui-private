@@ -2,7 +2,7 @@
 // 来源：vicliaaa/origin-sillytavern v1.5 的 buildInjection / onPromptReady（作者已授权移植）。提示词原文逐字照搬，作者调过服从率。
 // 与原插件的唯一差别：到期判定与成就检查已在回放里做完，这里只读；pendingUse / pendingEvent 由账本按「本轮输入」算出后传入。
 import { allowNewTask, tRemain } from './origin-apply.js';
-import { personaOf, statUnitHint } from './origin-state.js';
+import { econStrategyOf, personaOf, statUnitHint } from './origin-state.js';
 
 // view：{ st(回放状态), world, direction, pendingUse[], pendingEvent[] }；turn：提示词生成时已有的 AI 楼数。
 export function buildInjection(view, s, turn) {
@@ -16,7 +16,8 @@ export function buildInjection(view, s, turn) {
     const active = st.tasks.filter((t) => t.status === 'active');
     let out = '【Origin 状态】' + (s.sysName && s.sysName !== 'Origin' ? '（系统名：' + s.sysName + '）' : '') + '\n';
     const _host = (s.bindTo && s.bindTo !== '宿主') ? s.bindTo : '';
-    const _autoEcon = s.autoEcon || !!_host;
+    const _econ = econStrategyOf(s);
+    const _autoEcon = !!_econ;
     if (_host) out += '★本系统绑定的是角色【' + _host + '】，不是宿主(user)。任务/积分/属性/成就都属于 ' + _host + '；请让 ' + _host + ' 像突然获得金手指系统的主角那样思考、并主动完成系统任务。宿主(user)是旁观者或其他在场角色，系统不向 user 派任务、也不对 user 说话（除非 user 正在扮演 ' + _host + '）。\n';
     out += '世界：' + (world || '未设定') + '\n';
     out += '积分：' + st.points + ' ｜ 等级 Lv.' + st.level + '\n';
@@ -58,7 +59,7 @@ export function buildInjection(view, s, turn) {
     if (s.fourthWall > 0) out += '3. 第四面墙：有约 ' + s.fourthWall + '% 的概率，系统可短暂打破第四面墙做一句元叙事吐槽，其余时候照常演，不要每次都破。\n';
     else out += '3. 不要打破第四面墙。\n';
     out += '4. 系统说话风格：' + personaOf(s) + '\n';
-    if (_autoEcon) out += '· ' + (_host || '宿主') + '手里有系统就要用起来：积分充裕时，主动在合适时机花积分买道具（尤其能助攻当前任务的）、抽奖、或用背包里的道具，别一直攒着不花——金手指就是拿来用的。大约每 3-5 回合至少体现一次他在动用系统（买／抽／用其一），但要有动机、结合剧情，别每回合乱刷。积分不够就不买。要做时在数据块报告：买|商品名 ／ 抽奖 ／ 用道具|名称。\n';
+    if (_autoEcon) out += '· ' + (_host || '宿主') + '动用系统的策略：' + _econ + '积分不够就不买。要做时在数据块报告：买|商品名 ／ 抽奖 ／ 用道具|名称。\n';
     out += '5. 若' + (_host || '宿主(user)') + '在正文里直接对系统说话或提问（如『系统，…』），系统要用上面的说话风格回应；可以解释任务、给提示、调侃、回应请求或商量；但不得替其做决定，任何积分/属性/任务的实际变动仍必须走下面的数据块。\n';
     out += '6. 奖励是对宿主有利的（加积分/加属性/加好感/给道具/给技能/开权限等，技能奖励写成 技能：名称、权限写成 权限：名称）；失败惩罚才是不利的。禁止把不利内容写进奖励栏。\n';
     out += statUnitHint(s) + '\n';
@@ -84,8 +85,8 @@ export function buildInjection(view, s, turn) {
     if (s.mods.bag) { out += '获得|名称|数量　（在剧情里得到某个物品时）\n'; out += '用道具|名称　（在剧情里用掉或消耗了背包里的某个物品时，我会从背包扣掉）\n'; }
     if (_autoEcon) { out += '买|商品名　（角色花积分从商城购买，自动进背包）\n'; if (s.mods.gacha) out += '抽奖　（角色花积分抽一次，结果自动进背包）\n'; }
     if (s.mods.ach) out += '成就|名称|一句描述（仅当剧情里真正达成了值得纪念的高光时才发，罕见，别滥发）\n';
-    out += '新商品|名称|价格(整数)|说明|数值效果(可空)　（仅在收到『商城可更新』指令时才用）\n';
-    if (s.mods.gacha) out += '新奖品|名称|稀有度(N/R/SR/SSR/UR)|权重(整数)|说明|数值效果(可空)　（仅在收到『奖池可更新』指令时才用，一次给全套3-5个）\n';
+    out += '新商品|名称|价格(整数)|说明|数值效果(可空)　（仅在收到『商城可更新』指令时才用；价位参考：日常小物 20-60，稀有 100-200，特权类 200-400）\n';
+    if (s.mods.gacha) out += '新奖品|名称|稀有度(N/R/SR/SSR/UR)|权重(整数)|说明|数值效果(可空)　（仅在收到『奖池可更新』指令时才用，一次给全套3-5个；积分类奖品不超过抽奖价 ' + s.drawCost + ' 的两倍）\n';
     out += '</origin>\n';
     out += '（标签必须原样写 <origin> 与 </origin>，不许改成「数据板」「数据块」或别的名字；块里不要加「系统：……」之类的小标题、不要加项目符号，每一行只能是上面列出的某一种格式，第一个字段必须是 进度／完成／新任务 这类标签名。）\n';
     out += '规则：任务id用上面列出的数字；没有对应内容就不写该行；完全无变化则输出 <origin>无</origin>。新任务的各字段请用「标签:值」写（如 奖励:积分100' + (s.limitMax > 0 ? '、时限:' + s.limitMax : '') + '）；描述与条件里不得出现竖线 |。\n';

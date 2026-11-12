@@ -12,6 +12,8 @@ export function createCx(over = {}) {
 }
 // points 保留 Origin 净流水，wallet 是操作开始时来自数据库的其他积分份额。
 export const pointBalance = (st, cx = {}) => st.points + (Number(cx.wallet) || 0);
+// 单次抽奖价格：回放时取记账快照（cx.drawCost），手动操作时取当前设置。
+const drawCostOf = (cx) => (Number.isFinite(cx.drawCost) ? cx.drawCost : cx.s.drawCost);
 function stamp(cx, o) { return cx && cx.floor != null ? { ...o, floor: cx.floor } : o; }
 
 export function pushLog(st, text, mark, cx) {
@@ -136,7 +138,7 @@ export const ACHIEVEMENTS = [
     { id: 'first', name: '初出茅庐', desc: '完成第一个任务', cond: (st) => doneCount(st) >= 1 },
     { id: 'five', name: '渐入佳境', desc: '完成5个任务', cond: (st) => doneCount(st) >= 5 },
     { id: 'fifteen', name: '任务达人', desc: '完成15个任务', cond: (st) => doneCount(st) >= 15 },
-    { id: 'rich', name: '腰缠万贯', desc: '积分累积到1000', cond: (st, cx) => pointBalance(st, cx) >= 1000 },
+    { id: 'rich', name: '腰缠万贯', desc: '积分累积到300', legacyDesc: '积分累积到1000', cond: (st, cx) => pointBalance(st, cx) >= (cx.s.legacyPrice ? 1000 : 300) },
 ];
 const hasAch = (st, id) => st.achievements.some((a) => a.id === id);
 
@@ -154,7 +156,7 @@ export function unlockAch(st, id, name, desc, bonus, cx) {
 export function checkAchievements(st, cx) {
     if (!cx.s.achieveOn) return false;
     let ch = false;
-    for (const a of ACHIEVEMENTS) if (!hasAch(st, a.id) && a.cond(st, cx)) { unlockAch(st, a.id, a.name, a.desc, 50, cx); ch = true; }
+    for (const a of ACHIEVEMENTS) if (!hasAch(st, a.id) && a.cond(st, cx)) { unlockAch(st, a.id, a.name, (cx.s.legacyPrice && a.legacyDesc) || a.desc, cx.s.legacyPrice ? 50 : 20, cx); ch = true; }
     return ch;
 }
 
@@ -179,7 +181,7 @@ export function checkExpiry(st, cx) {
 export function drawCore(st, free, cx) {
     if (!st.gachaPool || !st.gachaPool.length) return null;
     let consumeId = null;
-    if (!free) { if (pointBalance(st, cx) < cx.s.drawCost) return null; consumeId = chargeOrigin(st, cx.s.drawCost, cx); }
+    if (!free) { const cost = drawCostOf(cx); if (pointBalance(st, cx) < cost) return null; consumeId = chargeOrigin(st, cost, cx); }
     const tot = st.gachaPool.reduce((a, b) => a + (b.weight || 0), 0);
     let r = cx.random() * tot;
     let pick = st.gachaPool[0];
@@ -278,7 +280,7 @@ export function applyOps(st, ops, cx, ext = {}) {
             case 'done': { const t = findTask(st, op.ref); if (t && t.status === 'active') { completeTask(st, t, cx); changed += 1; } break; }
             case 'fail': { const t = findTask(st, op.ref); if (t && t.status === 'active') { opFail(st, t, cx); changed += 1; } break; }
             case 'newTask': hit(opNewTask(st, op, cx, ext)); break;
-            case 'points': { const amount = creditOrigin(st, op.n, cx); if (op.reason) pushLog(st, '积分' + (amount >= 0 ? '+' : '') + amount + '（' + op.reason + '）', '', cx); changed += 1; break; }
+            case 'points': { const amount = creditOrigin(st, op.n, cx); cx.ptT.push(op.n); if (op.reason) pushLog(st, '积分' + (amount >= 0 ? '+' : '') + amount + '（' + op.reason + '）', '', cx); changed += 1; break; }
             case 'stat': {
                 let s2 = st.stats.find((x) => x.name === op.name);
                 if (!s2) { s2 = { name: op.name, val: 0 }; st.stats.push(s2); }
@@ -311,7 +313,7 @@ export function applyOps(st, ops, cx, ext = {}) {
                 if (t && t.status === 'active' && op.n > 0 && cx.s.limitMax > 0) { t.limit = op.n; t.startTurn = cx.turn; pushLog(st, t.title + '：时限改为 ' + op.n + ' 回合', '·', cx); changed += 1; }
                 break;
             }
-            case 'achieve': hit(unlockAch(st, op.key, op.name, op.desc, 100, cx)); break;
+            case 'achieve': hit(unlockAch(st, op.key, op.name, op.desc, cx.s.legacyPrice ? 100 : 40, cx)); break;
             default: break;
         }
     }
@@ -419,7 +421,7 @@ function mList(st, op, cx) {
             return OK;
         }
         case 'deleteItem': { const i = st.bag.findIndex((b) => b.name === name); if (i < 0) return fail('no-item', '背包里没有「' + name + '」'); st.bag.splice(i, 1); return OK; }
-        case 'addShop': if (!name) return fail('empty', '商品名为空'); st.shop.push({ name, price: parseInt(op.price, 10) || 300, desc: op.desc || '', effect: String(op.effect || '').trim() }); return OK;
+        case 'addShop': if (!name) return fail('empty', '商品名为空'); st.shop.push({ name, price: parseInt(op.price, 10) || 60, desc: op.desc || '', effect: String(op.effect || '').trim() }); return OK;
         case 'deleteShop': { const i = st.shop.findIndex((b) => b.name === name); if (i < 0) return fail('no-goods', '商城里没有「' + name + '」'); st.shop.splice(i, 1); return OK; }
         case 'addGacha': if (!name) return fail('empty', '奖品名为空'); st.gachaPool.push({ name, tier: String(op.tier || 'R').trim(), weight: parseInt(op.weight, 10) || 20, desc: op.desc || '', effect: String(op.effect || '').trim() }); return OK;
         case 'deleteGacha': { const i = st.gachaPool.findIndex((b) => b.name === name); if (i < 0) return fail('no-prize', '奖池里没有「' + name + '」'); st.gachaPool.splice(i, 1); return OK; }
@@ -488,7 +490,7 @@ export function applyManual(st, op, cx) {
         case 'use': r = mUse(st, op, cx); break;
         case 'draw':
             if (!st.gachaPool.length) r = fail('empty-pool', '奖池是空的');
-            else if (!op.free && pointBalance(st, cx) < cx.s.drawCost) r = fail('no-points', '积分不够（需' + cx.s.drawCost + '）');
+            else if (!op.free && pointBalance(st, cx) < drawCostOf(cx)) r = fail('no-points', '积分不够（需' + drawCostOf(cx) + '）');
             else { drawCore(st, !!op.free, cx); r = OK; }
             break;
         case 'addTask': case 'editTask': case 'completeTask': case 'deleteTask': r = mTask(st, op, cx); break;

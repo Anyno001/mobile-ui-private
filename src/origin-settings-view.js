@@ -1,7 +1,7 @@
 // 金手指设置页（App 内二级页）：只输出 HTML。开关点按即存（data-origin-action="setting-toggle"），
 // 选项胶囊点按即存（setting-pick），数字与文字框失焦即存（data-origin-setting，由 origin-app.js 的 change 监听处理）。
 import {
-    ORIGIN_CREDIT, ORIGIN_MOD_LABELS, ORIGIN_MODS, ORIGIN_PERSONALITIES, ORIGIN_REPO_URL, originBoundRole,
+    ORIGIN_CREDIT, ORIGIN_ECON_STYLES, ORIGIN_MOD_LABELS, ORIGIN_MODS, ORIGIN_PERSONALITIES, ORIGIN_REPO_URL, originBoundRole, originEconStyle,
 } from './origin-settings.js';
 import { escapeAttr as rawAttr, escapeHtml as rawHtml } from './ui.js';
 
@@ -63,7 +63,8 @@ export function renderOriginSettings(s, chat = {}) {
         numberRow('抽奖价格', '积分', 'drawCost', s.drawCost, [0, 99999]),
         numberRow('商城刷新间隔', '每隔几回合由正文上新，0为不自动', 'shopRefresh', s.shopRefresh, [0, 99]),
         numberRow('奖池刷新间隔', '0为不自动', 'gachaRefresh', s.gachaRefresh, [0, 99]),
-        switchRow('角色自主使用系统', '积分充裕时，剧情里的角色会主动购买、抽奖或使用道具', 'autoEcon', s.autoEcon),
+        pickRow('使用策略', 'econStyle', ORIGIN_ECON_STYLES, originEconStyle(s)),
+        textRow('自定义策略', '填写后代替上面的使用策略', 'econText', s.econText, { multiline: true, placeholder: '例如：只在任务卡住时买道具，抽奖留到剧情转折' }),
     ]));
     groups.push(group('对话', [
         switchRow('对话结果进剧情', '和系统谈成的交易、拿到的东西随下一轮正文生效', 'chatToStory', s.chatToStory),

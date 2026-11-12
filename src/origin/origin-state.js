@@ -6,14 +6,31 @@ export const ORIGIN_LEGACY_KEY = 'origin';
 // 3：保留可按分支回放的经济归档；旧核心必须拒收，不能忽略凭据。
 export const ORIGIN_SAVE_VERSION = 3;
 
+// 物价第 2 版（11-12）：配合积分收入额度降到约五分之一。旧存档的初始商城与奖池仍按第 1 版回放（LEGACY_*）。
+export const PRICE_VERSION = 2;
 export const DEFAULT_GACHA = [
+    { name: '普通物资', tier: 'N', weight: 50, desc: '一点日常用度', effect: '积分+10' },
+    { name: '灵石一袋', tier: 'R', weight: 28, desc: '', effect: '积分+40' },
+    { name: '属性丹', tier: 'SR', weight: 15, desc: '魅力+5', effect: '魅力+5' },
+    { name: '心意符', tier: 'SSR', weight: 6, desc: '指定对象好感+30', effect: '好感+30' },
+    { name: '逆天改命券', tier: 'UR', weight: 1, desc: '一次改写命运的机会', effect: '' },
+];
+export const DEFAULT_SHOP = [
+    { name: '凝神丹', price: 40, desc: '服下立刻恢复精神、驱散疲惫', effect: '' },
+    { name: '易容面具', price: 80, desc: '短时间改变容貌，不被认出', effect: '' },
+    { name: '魅力之种', price: 160, desc: '使用后 魅力+10（永久）', effect: '魅力+10' },
+    { name: '心意催化', price: 120, desc: '【干涉】指定对象对你好感+20', effect: '好感+20' },
+    { name: '回溯券', price: 240, desc: '【特权】回溯本回合，重来一次', effect: '' },
+    { name: '问天签', price: 60, desc: '随机抽取一次（抽奖·第3期开放）', effect: '' },
+];
+export const LEGACY_GACHA = [
     { name: '普通物资', tier: 'N', weight: 50, desc: '一点日常用度', effect: '积分+50' },
     { name: '灵石一袋', tier: 'R', weight: 28, desc: '', effect: '积分+200' },
     { name: '属性丹', tier: 'SR', weight: 15, desc: '魅力+5', effect: '魅力+5' },
     { name: '心意符', tier: 'SSR', weight: 6, desc: '指定对象好感+30', effect: '好感+30' },
     { name: '逆天改命券', tier: 'UR', weight: 1, desc: '一次改写命运的机会', effect: '' },
 ];
-export const DEFAULT_SHOP = [
+export const LEGACY_SHOP = [
     { name: '凝神丹', price: 200, desc: '服下立刻恢复精神、驱散疲惫', effect: '' },
     { name: '易容面具', price: 400, desc: '短时间改变容貌，不被认出', effect: '' },
     { name: '魅力之种', price: 800, desc: '使用后 魅力+10（永久）', effect: '魅力+10' },
@@ -48,7 +65,7 @@ export function statUnitHint(s) {
 export const SETTING_DEFAULTS = {
     enabled: false, judgeMode: 'A', freq: 3, blockWhenUnfinished: true, taskSource: 'auto', fourthWall: 0,
     sysName: 'Origin', personality: '冷澈', personaText: '', rewardPref: '', penaltyPref: '', bindTo: '宿主',
-    autoEcon: false, budget: 1400, drawCost: 300, limitMin: 0, limitMax: 0, punishEvent: true, achieveOn: true,
+    autoEcon: false, econStyle: '', econText: '', budget: 1400, drawCost: 60, limitMin: 0, limitMax: 0, punishEvent: true, achieveOn: true,
     shopRefresh: 0, gachaRefresh: 0, chatToStory: true, rpChat: 'auto',
     // 逐楼存档只留最近几个 AI 楼（原插件 keepAll 关闭时留 15 楼）；0 = 全部保留。
     keepFloors: 30,
@@ -81,6 +98,21 @@ export function personaOf(s) {
     const t = s && s.personaText && String(s.personaText).trim();
     return t || PERSONA[s && s.personality] || PERSONA['冷澈'];
 }
+// 角色动用系统（买、抽、用道具）的策略。econText 写了就用它；econStyle 为空时沿用旧开关 autoEcon，反串时没选过按「按需使用」。
+export const ECON_STYLES = ['off', 'thrifty', 'normal', 'lavish'];
+const ECON_TEXT = {
+    thrifty: '精打细算：积分先攒着，只在任务卡住、处境危急或买到正好能解决眼前难题的东西时才花；抽奖很少碰，背包里的道具留到关键时刻再用。',
+    normal: '积分充裕时，主动在合适时机花积分买道具（尤其能助攻当前任务的）、抽奖、或用背包里的道具，别一直攒着不花——金手指就是拿来用的。大约每 3-5 回合至少体现一次动用系统（买／抽／用其一），但要有动机、结合剧情，别每回合乱刷。',
+    lavish: '花钱大方：有积分就想花，常常顺手买东西、抽奖碰运气，道具到手就想试试；大约每 1-2 回合动用一次系统，但仍要贴合剧情、说得出动机。',
+};
+export function econStrategyOf(s) {
+    if (!s) return '';
+    const custom = String(s.econText || '').trim();
+    if (custom) return /[。！？.!?]$/.test(custom) ? custom : custom + '。';
+    let pick = ECON_STYLES.includes(s.econStyle) ? s.econStyle : (s.autoEcon ? 'normal' : 'off');
+    if (pick === 'off' && hostOf(s) && !s.econStyle) pick = 'normal';
+    return pick === 'off' ? '' : ECON_TEXT[pick];
+}
 export function hostOf(s) {
     return s && s.bindTo && s.bindTo !== '宿主' ? s.bindTo : '';
 }
@@ -90,12 +122,13 @@ export function isAiMsg(m) {
     return !!(m && !m.is_user && !(m.is_system && (m.name === 'System' || (m.extra && m.extra.type))));
 }
 
-export function createInitialState() {
+// legacy：按第 1 版物价建初始状态，给没有记录物价版本的旧存档用。
+export function createInitialState(legacy = false) {
     return {
         points: 0, level: 1, exp: 0, expMax: 100,
         stats: [], tasks: [], log: [], bag: [],
-        shop: DEFAULT_SHOP.map((x) => ({ ...x })),
-        gachaPool: DEFAULT_GACHA.map((x) => ({ ...x })),
+        shop: (legacy ? LEGACY_SHOP : DEFAULT_SHOP).map((x) => ({ ...x })),
+        gachaPool: (legacy ? LEGACY_GACHA : DEFAULT_GACHA).map((x) => ({ ...x })),
         achievements: [], chat: [], skills: [], perks: [], rewardsLog: [],
         lastTaskTurn: -99, lastShopTurn: -99, lastGachaTurn: -99, nextId: 1,
         paused: false, pausedAt: null,

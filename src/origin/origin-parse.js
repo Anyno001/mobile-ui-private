@@ -111,7 +111,7 @@ export function parseBlock(memo) {
         else if (tag === '积分') ops.push({ k: 'points', raw: p[1], n: cleanNum(p[1]), reason: p[2] || '' });
         else if (tag === '属性') { if (p[1]) ops.push({ k: 'stat', name: p[1], n: cleanNum(p[2]) }); }
         else if (tag === '新奖品') { if (p[1]) newG.push({ name: p[1], tier: (p[2] || 'R'), weight: cleanNum(p[3]) || 10, desc: p[4] || '', effect: (p[5] || '') }); }
-        else if (tag === '新商品') { if (p[1]) ops.push({ k: 'shopItem', name: p[1], price: cleanNum(p[2]) || 300, desc: p[3] || '', effect: (p[4] || '') }); }
+        else if (tag === '新商品') { if (p[1]) ops.push({ k: 'shopItem', name: p[1], price: cleanNum(p[2]) || 60, desc: p[3] || '', effect: (p[4] || '') }); }
         else if (tag === '获得') {
             const nm = p[1];
             if (nm) {
@@ -149,7 +149,7 @@ export function parseShopLines(out) {
         l = GEN_LINE(l);
         if (l.indexOf('商品|') === 0) {
             const p = l.split('|').map((x) => x.trim());
-            if (p[1]) items.push({ name: sl(p[1]), price: parseInt(sl(p[2]), 10) || 300, desc: sl(p[3]), effect: (sl(p[4]) && sl(p[4]) !== '无') ? sl(p[4]) : '' });
+            if (p[1]) items.push({ name: sl(p[1]), price: parseInt(sl(p[2]), 10) || 60, desc: sl(p[3]), effect: (sl(p[4]) && sl(p[4]) !== '无') ? sl(p[4]) : '' });
         }
     });
     return items;

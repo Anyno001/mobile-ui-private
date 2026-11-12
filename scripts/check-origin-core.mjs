@@ -5,19 +5,19 @@ import { fileURLToPath } from 'node:url';
 
 // 金手指核心（src/origin/）逐字拷自 IGS app/src/scene/origin/，只在 IGS 改。这里比对哈希：不一致就失败。
 // IGS 那边改了核心后：把核心文件重新拷过来，用本脚本打印的实际哈希更新下表（node scripts/check-origin-core.mjs --print）。
-// 当前对应 IGS 版本：v0.40.3。
+// 当前对应 IGS 版本：v0.40.10。
 const EXPECTED = Object.freeze({
-    'origin-apply.js': '7ba4cf1af6f5a8bf21af34ac97fae00cc1ba14c904c59beac556296a18578350',
+    'origin-apply.js': '2bd8fee602e348185f12b192d7dcd73e8564632b44a2f5443d982cba31323073',
     'origin-economy-schema.js': '22564523c3198f9c33ba1234b6b01ade1b16d8f37f5760e2155b03bb175b2fc1',
     'origin-economy.js': 'e114d04e28d0ca0d407407d13de33df312822cd43ff45e9c3393c83f7d3df0a3',
-    'origin-engine.js': '90a9838fdfc232ad0b3990aff90eedf7a5e7fd90574f359bbba410fa74fb576c',
-    'origin-gen.js': '2644a6377dece5e3e53d4c807ea664d50dcc2eeef5fffaac809c9addfc531800',
-    'origin-inject.js': 'b0c68d9e09fddf87a25b2213304eb298802c8540c151aabd9aa477beac6e2b46',
-    'origin-ledger.js': '525327867694981a52a0aea338fe9cf7de0caa861adcb1c756b4a8b2c17052aa',
+    'origin-engine.js': '761650caf055db3c15af6fc9c7d1c482c156f27f66198e30343b3009313bb09d',
+    'origin-gen.js': '1b9c8a05f8cc8b2f1ca9e99631bcb5ea23ac7c5ffcaf0765cff988cc8c3f2ed5',
+    'origin-inject.js': 'c341490c2e53e8ab579dd82214dde81ceae169fd07af7de7d05196e03bf4a618',
+    'origin-ledger.js': 'fb9f4d29b5e777ecbbdae194a917c8e8c86fdddd5b4150e05f672ed90c61b699',
     'origin-log.js': '42eb8dd7d20d3baa476ad40a0edaabe2273eaeff7b87327e91c1cb1f40a678fd',
-    'origin-parse.js': '7522c1165ac7a9cbb657c2608f42c02b06c898d561ce85793d16012b2e31be7a',
-    'origin-prose.js': 'e2828145a12ae96097f47c5a370a4378f32ee7d7e89157c7cefdc16b76dae0f6',
-    'origin-state.js': '7bde31b1f02f16a39eaaa4ff3a9f2eb729b51e2f74e6f85666466f8f94e2c076',
+    'origin-parse.js': '9150c97d23e36f2a579dc0d300e53663db2b71d46563875b4509456cbd095cf7',
+    'origin-prose.js': '88bd8a8d7cf18eaa1649b31efb9620d2ef92bc908925ad08301ec1db29030152',
+    'origin-state.js': '17b37d38045fcf1a0f058c5e47d969c37222bf8f2d9d9ed722a36e982c8c8487',
 });
 
 // 核心依赖的 IGS 积分策略模块（src/points/points-policy.js），同样逐字拷自 IGS app/src/scene/points/，只校验哈希。

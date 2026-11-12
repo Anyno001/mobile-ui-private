@@ -60,6 +60,48 @@ function pointFacts(prose) {
     return { deltas };
 }
 
+// 第二版正文积分（facts.pv = 2）：认「奖励积分 100 点」「获得 50 积分」「积分增加了 30」「积分+50」；
+// 发布任务、列奖励栏、余额与价格不算。旧楼按存档时的版本回放，不重算。
+const PT_RE = /积分\s*(增加了?|提升了?|上涨了?|增长了?|减少了?|扣除了?|扣减了?|降低了?)?\s*([+＋\-－])?\s*(\d{1,6})(?!\s*[%％])|(\d{1,6})\s*(?:点|个)?\s*积分/g;
+const PT_GAIN = /(奖励|获得|得到|到账|发放|入账|存入|结算|赠送|嘉奖|奖赏|领取|收获|进账|返还)/;
+// 不在完成句里时，光写「奖励」不算到账，要有实际收付的动词。
+const PT_SETTLE = /(获得|得到|到账|发放|入账|存入|领取|进账|返还|扣除|扣减|没收|失去|损失)/;
+const PT_LOSS =/(扣除|扣减|扣|惩罚|罚|失去|损失|减少|没收)/;
+const PT_DONE = /(任务完成(?!后|时|即|则)|已完成|顺利完成|完成了|已达成|达成(?!后|时|即|则)|已发放|发放完毕|奖励发放|到账|已获得|入账|已存入|结算|任务失败|已扣除)/;
+const PT_PREVIEW = /(发布|新任务|任务内容|任务目标|任务要求|完成条件|完成后|达成后|若|如果|可获得|将获得|即可|将会|将扣除|有机会|最高)/;
+const PT_LABEL = /^\s*[【\[（(]?\s*(?:任务)?(?:奖励|失败惩罚|惩罚)\s*[】\]）)]?\s*[：:]/;
+const PT_SKIP_BEFORE = /(当前|剩余|现有|余额|共有|累计|总计|合计|现为|变为|达到|需要?|花费|消耗|花了|价格|售价|价值|标价|需)\s*$/;
+const PT_TASK_DONE = /任务[^。，,]{0,16}?(?:完成|达成)(?!后|时|即|则)/;
+function pointFactsV2(prose) {
+    const deltas = [];
+    const taskDone = [];
+    // 「任务完成！奖励：积分100」：同一行里紧跟在完成句后面、本身不是发布或预告的半句，算作已结算。
+    let prev = null;
+    for (const seg of prose.split(/(?<=[。！!？?\n])/)) {
+        if (!seg.trim()) continue;
+        const carried = prev && !PT_PREVIEW.test(seg) ? prev : null;
+        const own = PT_DONE.test(seg) || (PT_TASK_DONE.test(seg) && !PT_PREVIEW.test(seg));
+        prev = own && /[！!？?]$/.test(seg) ? seg : null;
+        if (!seg.includes('积分') || /(不足|不够)/.test(seg)) continue;
+        const done = own || !!carried;
+        const taskSeg = PT_TASK_DONE.test(seg) || (carried && PT_TASK_DONE.test(carried));
+        if (!done && (PT_PREVIEW.test(seg) || PT_LABEL.test(seg))) continue;
+        for (const r of seg.matchAll(PT_RE)) {
+            if (PT_SKIP_BEFORE.test(seg.slice(Math.max(0, r.index - 6), r.index))) continue;
+            const verb = r[1] || '';
+            const sign = r[2] || '';
+            const v = parseInt(r[3] || r[4], 10);
+            if (!v) continue;
+            const neg = /^[-－]/.test(sign) || /(减少|扣除|扣减|降低)/.test(verb);
+            if (!verb && !sign && !(done ? PT_GAIN.test(seg) || PT_LOSS.test(seg) : PT_SETTLE.test(seg))) continue;
+            const loss = neg || (!verb && !sign && PT_LOSS.test(seg) && !/奖励/.test(seg));
+            deltas.push(loss ? -v : v);
+            if (!loss && taskSeg) taskDone.push(v);
+        }
+    }
+    return { deltas, taskDone };
+}
+
 function bagFacts(prose) {
     const out = [];
     for (const seg of prose.split(/[。\n]/)) {
@@ -106,8 +148,10 @@ export function extractProseFacts(text, block) {
     if (b && /(^|\n)\s*获得\|/.test(b)) f.hg = 1;
     if (b && /新任务\|/.test(b)) f.hn = 1;
     const prose = stripTags(text);
-    const pf = pointFacts(prose);
+    f.pv = 2;
+    const pf = pointFactsV2(prose);
     if (pf.deltas.length) f.deltas = pf.deltas;
+    if (pf.taskDone.length) f.td = pf.taskDone;
     const rf = rewardFacts(prose);
     if (rf.rewards.length) f.rewards = rf.rewards;
     if (rf.perks.length) f.perks = rf.perks;
@@ -122,7 +166,28 @@ export function extractProseFacts(text, block) {
     return f;
 }
 
+// 第二版：正文写「任务完成，奖励积分 N」而数据块漏了完成行时，奖励正好是 N 的进行中任务只有一个就按完成结算（走任务奖励）。
+// 数据块里的积分行与任务奖励已记进 cx.ptT，正文同号的一笔先抵一笔（数额对不上也抵），多出来的才补记。
+const rewardPoints = (t) => (Number.isSafeInteger(t.approvedPoints) ? t.approvedPoints
+    : [...String(t.reward || '').matchAll(/积分\s*\+?(\d+)/g)].reduce((n, m) => n + Number(m[1]), 0));
+function syncPointsV2(st, f, cx) {
+    for (const v of f.td || []) {
+        if (cx.ptT.includes(v)) continue;
+        const hit = st.tasks.filter((t) => t.status === 'active' && rewardPoints(t) === v);
+        if (hit.length !== 1) continue;
+        completeTask(st, hit[0], cx);
+        pushLog(st, '（按正文判定完成）' + hit[0].title, '·', cx);
+    }
+    for (const v of f.deltas || []) {
+        let ix = cx.ptT.indexOf(v);
+        if (ix < 0) ix = cx.ptT.findIndex((x) => Math.sign(x) === Math.sign(v));
+        if (ix >= 0) { cx.ptT.splice(ix, 1); continue; }
+        const amount = creditOrigin(st, v, cx);
+        pushLog(st, '积分' + (amount >= 0 ? '+' : '') + amount + '（按正文补记）', '·', cx);
+    }
+}
 function syncPoints(st, f, cx) {
+    if (f.pv === 2) return syncPointsV2(st, f, cx);
     if (f.hp) return;
     let ch = false;
     for (const v of f.deltas || []) {

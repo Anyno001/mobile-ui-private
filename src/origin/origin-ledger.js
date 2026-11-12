@@ -2,7 +2,7 @@
 // 每个 messageId|swipeId 只存本楼数据块原文、解析出的操作、正文事实与随机种子；状态 = 初始状态 + 当前路径上每楼操作依次回放。
 // 手动操作单独成条（after = 当时最后一楼的 id），叠在当前选中的 swipe 之上回放；回放逐条校验，不成立的跳过并写记录。
 // 回放结果按「签名链」缓存：签名 = 初始状态 + 设置 + 路径上每一步的标识依次哈希，路径任一步不同则后续全部重算。
-import { ORIGIN_CORE_VER, ORIGIN_SAVE_VERSION, cloneForWrite, createInitialState, deepFreeze, hash53, seededRandom } from './origin-state.js';
+import { ORIGIN_CORE_VER, ORIGIN_SAVE_VERSION, PRICE_VERSION, cloneForWrite, createInitialState, deepFreeze, hash53, seededRandom } from './origin-state.js';
 import { parseBlock } from './origin-parse.js';
 import { applyFloor, extractProseFacts } from './origin-prose.js';
 import { applyManual, checkAchievements, checkExpiry, createCx, pushLog } from './origin-apply.js';
@@ -20,9 +20,10 @@ export function floorKey(chatId, messageId, swipeId) {
 }
 
 // base：保留楼数之外的楼合成的底稿 { floor, turn, state, anchor }。floor 及之前的楼不再回放，状态从 base.state 起算；anchor = 该楼正文指纹，删楼后据此找回位置。
-export function createLedger(chatId, initial) {
+// legacyPrice：存档没写物价版本（第 1 版物价时期的存档），初始商城、奖池、成就奖励和没有价格快照的抽奖按旧价回放。
+export function createLedger(chatId, initial, legacyPrice = false) {
     return {
-        chatId, initial: deepFreeze(initial || createInitialState()), initialCustom: Boolean(initial),
+        chatId, initial: deepFreeze(initial || createInitialState(legacyPrice)), initialCustom: Boolean(initial), legacyPrice,
         entries: new Map(), ops: [], nextOpId: 1, memo: new Map(), checkpoints: [], rev: 0, legacyDone: false, base: null, policy: null,
     };
 }
@@ -35,11 +36,11 @@ export function makeEntry(block, prose, seed) {
     const fp = hash53(String(prose || '').trim());
     return { seed, block: b, ops, facts, fp, h: hash53(JSON.stringify([b, ops, facts, seed])) };
 }
-// snap：{ scale }，记账当时的体系倍数（D&D 5 / 其余 1）。同一楼同一 swipe 重算时沿用旧快照，不覆盖；旧档没有时回放按当前体系。
+// snap：{ scale, cost }，记账当时的体系倍数（D&D 5 / 其余 1）与单次抽奖价格。同一楼同一 swipe 重算时沿用旧快照，不覆盖；旧档没有时回放按当前体系。
 export function setEntry(ledger, messageId, swipeId, entry, snap) {
     const e = { messageId, swipeId: Number(swipeId) || 0, ...entry };
     const prev = ledger.entries.get(floorKey(ledger.chatId, e.messageId, e.swipeId));
-    for (const k of ['scale']) {
+    for (const k of ['scale', 'cost']) {
         const keep = prev && Number.isFinite(prev[k]) ? prev[k] : (snap && Number.isFinite(snap[k]) ? snap[k] : undefined);
         if (keep !== undefined) e[k] = keep; else delete e[k];
     }
@@ -56,6 +57,7 @@ export function recordOp(ledger, op, after, seed, wallet, economy, snap) {
     const rec = { id: ledger.nextOpId, after, seed, boundTo: null, op, ...(Number.isSafeInteger(wallet) ? { wallet } : {}),
         ...(economy ? { economy } : {}) };
     if (snap && Number.isFinite(snap.scale)) rec.scale = snap.scale; // 记账当时的体系倍数快照
+    if (snap && Number.isFinite(snap.cost)) rec.cost = snap.cost;
     ledger.nextOpId += 1;
     ledger.ops.push(rec);
     ledger.rev += 1;
@@ -191,6 +193,8 @@ export function settingsKey(s) {
 // 体系倍数取记账快照，旧档没有快照时按当前体系 s.ruleScale；倍数为 1 时签名不变。
 const scaleOf = (snap, s) => (Number.isFinite(snap) ? snap : Number(s && s.ruleScale) || 1);
 const kTok = (k) => (k && k !== 1 ? ':k' + k : '');
+// 抽奖价格取记账快照；没有快照的旧记录按当前设置，旧物价存档里设置已从 300 迁到 60 的仍按 300。
+const costOf = (snap, s) => (Number.isFinite(snap) ? snap : s.legacyPrice && s.drawCost === 60 ? 300 : s.drawCost);
 function buildSteps(ledger, path, s) {
     const anchors = new Set(path.filter(it => it.kind === 'ai' && it.pointsAnchor?.floorId).map(it => anchorKey(it.pointsAnchor)));
     const active = row => !row.economy || anchors.has(anchorKey(row.economy.anchor));
@@ -251,7 +255,7 @@ export function stepOnce(prev, step, s, approval) {
 
 function applyStep(prev, step, s, approval) {
     if (step.type === 'floor') {
-        const cx = createCx({ turn: step.turn, floor: step.id, s, scale: scaleOf(step.entry.scale, s), random: seededRandom(step.entry.seed), wallet: step.entry.wallet, economy: economyContext(step.entry.economy, approval) });
+        const cx = createCx({ turn: step.turn, floor: step.id, s, scale: scaleOf(step.entry.scale, s), random: seededRandom(step.entry.seed), drawCost: costOf(step.entry.cost, s), wallet: step.entry.wallet, economy: economyContext(step.entry.economy, approval) });
         const st = cloneForWrite(prev);
         applyFloor(st, step.entry, cx);
         checkExpiry(st, cx);
@@ -259,7 +263,7 @@ function applyStep(prev, step, s, approval) {
         return finish(st, cx);
     }
     const rec = step.rec;
-    const cx = createCx({ turn: step.turn, floor: rec.after >= 0 ? rec.after : null, s, scale: scaleOf(rec.scale, s), random: seededRandom(rec.seed), wallet: rec.wallet,
+    const cx = createCx({ turn: step.turn, floor: rec.after >= 0 ? rec.after : null, s, scale: scaleOf(rec.scale, s), random: seededRandom(rec.seed), drawCost: costOf(rec.cost, s), wallet: rec.wallet,
         economy: economyContext(rec.economy, approval) });
     const st = cloneForWrite(prev);
     const r = applyManual(st, rec.op, cx);
@@ -287,6 +291,7 @@ function saveCheckpoint(ledger, sig, turn, state) {
 
 // 回放当前路径。命中缓存的前缀直接复用，只算后面的。返回 { state, turn, lastAi, steps, results, skipped }。
 export function replay(ledger, path, s) {
+    if (ledger.legacyPrice) s = { ...s, legacyPrice: true };
     const { steps, turn } = buildSteps(ledger, path, s);
     const start = rootOf(ledger);
     const baseSig = hash53(ORIGIN_CORE_VER + settingsKey(s) + start.json);
@@ -338,9 +343,11 @@ export function serializeLedger(ledger, meta = {}) {
         ...(Number.isSafeInteger(e.wallet) ? { wallet: e.wallet } : {}),
         ...(e.economy ? { economy: e.economy } : {}),
         ...(Number.isFinite(e.scale) ? { scale: e.scale } : {}),
+        ...(Number.isFinite(e.cost) ? { cost: e.cost } : {}),
     }));
     return {
         version: ORIGIN_SAVE_VERSION, core: ORIGIN_CORE_VER, chatId: ledger.chatId,
+        ...(ledger.legacyPrice ? {} : { pv: PRICE_VERSION }),
         initial: ledger.initialCustom ? ledger.initial : null,
         entries, ops: ledger.ops, nextOpId: ledger.nextOpId,
         checkpoints: ledger.checkpoints, legacyDone: ledger.legacyDone,
@@ -372,7 +379,7 @@ export function deserializeLedger(raw, chatId) {
     for (const row of [...raw.entries, ...raw.ops, ...(raw.policy?.entries || []), ...(raw.policy?.ops || [])]) {
         if (row && Object.hasOwn(row, 'economy') && !validOriginEconomy(row.economy)) return { ok: false, reason: 'origin-economy-invalid' };
     }
-    const ledger = createLedger(chatId, raw.initial && typeof raw.initial === 'object' ? raw.initial : null);
+    const ledger = createLedger(chatId, raw.initial && typeof raw.initial === 'object' ? raw.initial : null, raw.pv !== PRICE_VERSION);
     const b = raw.base;
     if (b && typeof b === 'object' && Number.isInteger(b.floor) && Number.isInteger(b.turn) && b.state && typeof b.state === 'object') {
         ledger.base = { floor: b.floor, turn: b.turn, state: deepFreeze(b.state), anchor: typeof b.anchor === 'string' ? b.anchor : '' };
@@ -398,13 +405,14 @@ export function deserializeLedger(raw, chatId) {
         const entry = { seed: e.seed, block: e.block == null ? null : String(e.block), ops: e.ops, facts: e.facts, fp: e.fp,
             ...(e.economy ? { economy: e.economy } : {}), ...(Number.isSafeInteger(e.wallet) ? { wallet: e.wallet } : {}) };
         if (isNum(e.scale)) entry.scale = e.scale; // 旧档没有倍数快照，回放时按当前体系
+        if (isNum(e.cost)) entry.cost = e.cost;
         entry.h = hash53(JSON.stringify([entry.block, entry.ops, entry.facts, entry.seed]));
         ledger.entries.set(floorKey(chatId, e.messageId, e.swipeId), { messageId: e.messageId, swipeId: e.swipeId, ...entry });
     }
     for (const o of raw.ops) {
         if (!validOp(o)) continue;
         ledger.ops.push({ id: o.id, after: o.after, seed: isNum(o.seed) ? o.seed : 0, boundTo: Number.isInteger(o.boundTo) ? o.boundTo : null, op: o.op,
-            ...(o.economy ? { economy: o.economy } : {}), ...(Number.isSafeInteger(o.wallet) ? { wallet: o.wallet } : {}), ...(isNum(o.scale) ? { scale: o.scale } : {}) });
+            ...(o.economy ? { economy: o.economy } : {}), ...(Number.isSafeInteger(o.wallet) ? { wallet: o.wallet } : {}), ...(isNum(o.scale) ? { scale: o.scale } : {}), ...(isNum(o.cost) ? { cost: o.cost } : {}) });
     }
     ledger.nextOpId = Math.max(Number(raw.nextOpId) || 1, ...[...(ledger.policy?.ops || []), ...ledger.ops].map((o) => o.id + 1), 1);
     // 检查点的签名已含核心版本、设置、初始状态与整条路径前缀；版本不同时签名对不上，自然不命中。

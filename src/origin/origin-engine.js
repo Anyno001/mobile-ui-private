@@ -90,7 +90,7 @@ export function createOriginEngine(host) {
     // 回放、手动操作用的设置：带上体系 id 与倍数；倍数进回放签名，旧档没有倍数快照的记录按它重放。
     const calcSettings = () => { const s = settings(); const id = ruleId(); return { ...s, ruleId: id, ruleScale: scaleOfRuleset(id) }; };
     // 记账时的体系倍数快照。
-    const snapNow = () => ({ scale: scaleOfRuleset(ruleId()) });
+    const snapNow = () => ({ scale: scaleOfRuleset(ruleId()), cost: settings().drawCost });
     // 展示用状态：属性加成按当前体系显示（D&D 为属性点，CoC 为百分制）。
     const shown = (st, k = 1) => {
         if (k === 1) return st;
