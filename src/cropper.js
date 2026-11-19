@@ -1,6 +1,7 @@
 import { POPOVER_SUPPORTED } from './constants.js';
 import { escapeAttr } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
+import { isBackdropClick } from './press-origin.js';
 
 const DEFAULT_CROPPER_OPTIONS = Object.freeze({
     title: '裁剪图片',
@@ -200,7 +201,7 @@ export function openCropper(imgDataUrl, options = {}) {
     overlay.__pmOnClose = dispose;
     overlay.querySelector('#pm-crop-close').addEventListener('click', cancel);
     overlay.querySelector('#pm-crop-cancel').addEventListener('click', cancel);
-    overlay.addEventListener('click', event => { if (event.target === overlay) cancel(); });
+    overlay.addEventListener('click', event => { if (isBackdropClick(event, overlay)) cancel(); });
     document.body.appendChild(overlay);
     if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}
 

@@ -1,6 +1,7 @@
 import { MODEL_VISIBLE_ROWS, POPOVER_SUPPORTED } from './constants.js';
 import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { escapeAttr, escapeHtml } from './ui.js';
+import { pressStartedInside } from './press-origin.js';
 
 export function showModelPicker(runtime) {
     const existing = document.getElementById('pm-model-dropdown');
@@ -73,7 +74,7 @@ export function showModelPicker(runtime) {
     setTimeout(() => {
         if (closed) return;
         closer = event => {
-            if (!dropdown.contains(event.target) && event.target.id !== 'pm-model-arrow') closeDropdown();
+            if (!dropdown.contains(event.target) && event.target.id !== 'pm-model-arrow' && !pressStartedInside(event, dropdown)) closeDropdown();
         };
         document.addEventListener('click', closer, true);
     }, 0);

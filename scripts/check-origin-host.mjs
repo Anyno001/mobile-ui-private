@@ -216,6 +216,45 @@ function sampleState(engine) {
     return engine.getState();
 }
 
+await check('系统对话撤回：连接失败的一轮整组删除，存档与检查点不留残留，可重新发送', async () => {
+    const { findRetractableSysChat, retractOriginSysChat } = await import('../src/origin-chat-retract.js');
+    freshEngine();
+    enable();
+    const ctx = fakeContext();
+    const runtime = startOriginHost({ getCtx: () => ctx });
+    const { engine } = runtime;
+    ctx.generateQuietPrompt = async () => '好的，记下了。';
+    assert.equal((await engine.sysChat('第一句')).ok, true);
+    ctx.generateQuietPrompt = async () => { throw new Error('HTTP 503: 浏览器执行器连接已断开'); };
+    assert.equal((await engine.sysChat('雪烧开了就能喝')).ok, true);
+    assert.match(engine.getState().chat.at(-1).text, /连接失败/);
+    const savesBefore = ctx.saves;
+    const result = retractOriginSysChat({ getCtx: () => ctx, engine, saveMetadata: () => ctx.saveMetadataDebounced() });
+    assert.deepEqual(result, { ok: true, text: '雪烧开了就能喝' });
+    assert.ok(ctx.saves > savesBefore, '撤回后走宿主防抖保存');
+    const saved = JSON.stringify(ctx.chatMetadata.origin_v2);
+    assert.doesNotMatch(saved, /雪烧开了就能喝|连接失败/, '存档里不留被撤回的问答');
+    assert.deepEqual(engine.getState().chat.map(entry => entry.text), ['第一句', '好的，记下了。'], '界面只剩上一轮');
+    assert.equal(retractOriginSysChat({ getCtx: () => ctx, engine }).ok, true, '上一轮成功的问答也能撤回');
+    assert.equal(engine.getState().chat.length, 0);
+    assert.equal(retractOriginSysChat({ getCtx: () => ctx, engine }).reason, 'origin-retract-none', '没有可撤回的轮次');
+    ctx.generateQuietPrompt = async () => '重来一次。';
+    assert.equal((await engine.sysChat('雪烧开了就能喝')).ok, true, '撤回后可重新发送');
+    assert.deepEqual(engine.getState().chat.map(entry => entry.text), ['雪烧开了就能喝', '重来一次。']);
+    const s = loadOriginSettings();
+    const chatHtml = renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', busy: '', chatRetract: true });
+    assert.match(chatHtml, /pm-origin-bubble-row"><button[^>]*data-origin-action="chat-retract"[^>]*>.*?<\/button><div class="pm-origin-bubble is-me"><span>雪烧开了就能喝/s, '重来键在最后一条用户气泡左侧');
+    assert.equal((chatHtml.match(/chat-retract/g) || []).length, 1, '只出现一个重来键');
+    assert.doesNotMatch(renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', busy: 'chat', chatRetract: true }), /chat-retract/, '生成中不显示重来键');
+    engine.dispatch({ type: 'addTask', title: '别的操作', taskType: '支线' });
+    assert.ok(findRetractableSysChat(ctx.chatMetadata.origin_v2), '非对话操作不挡住撤回');
+    ctx.chatMetadata.origin_v2.ops.at(-2).boundTo = 0;
+    assert.equal(findRetractableSysChat(ctx.chatMetadata.origin_v2), null, '已随正文发出的问答不撤回');
+    runtime.release();
+    disable();
+    freshEngine();
+});
+
 await check('页面渲染：冻结状态下各页不原地改；主线大卡、组头下拉、按钮右对齐主操作最右、底栏五页签', () => {
     freshEngine();
     enable();

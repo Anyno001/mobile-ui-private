@@ -1,6 +1,7 @@
 import { generationErrorMessage } from './ai.js';
 import { CLOSE_ICON_SVG } from './icons.js';
 import { escapeHtml } from './ui.js';
+import { pressStartedInside } from './press-origin.js';
 import {
     appendStoryOracleTurn, clearStoryOraclePlans, clearStoryOracleScope, normalizeStoryOracleStore,
     buildStoryOraclePlanDefaultInjection, parseStoryPlans, parseUserGenerationResponse, removeStoryOraclePlan, resetStoryOraclePlanInjection,
@@ -486,6 +487,7 @@ export function installStoryOracle(_state, deps = {}) {
     const onDocumentClick = event => {
         if (!openMenuId) return;
         if (event.target?.closest?.('.pm-story-oracle-more-wrap')) return;
+        if (pressStartedInside(event, ...document.querySelectorAll('.pm-story-oracle-more-wrap'))) return;
         closeStoryOracleMenus();
     };
     const onDocumentKeyDown = event => {

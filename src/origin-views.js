@@ -3,7 +3,7 @@
 // 任务页：主线置顶大卡 + 组头下拉筛选 + 每条两行、点开原位展开（按钮右对齐、主操作最右），同时只开一行。
 import { appNameOf, appSloganOf } from './app-names.js';
 import {
-    BACK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, ORIGIN_APP_ICON_SVG, SEND_ICON_SVG,
+    BACK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, ORIGIN_APP_ICON_SVG, REFRESH_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
 import { tRemain } from './origin/origin-apply.js';
 import { originBoundRole } from './origin-settings.js';
@@ -183,11 +183,16 @@ ${groupHead(filter === 'all' ? '奖池' : `${filter}奖品`, shown.length, tiers
 function chatPage(state, settings, ui) {
     const role = originBoundRole(settings);
     const list = state.chat.slice(-60);
-    const bubbles = list.map(entry => {
+    const bubbles = list.map((entry, i) => {
         if (entry.who === 'call') return `<p class="pm-origin-call">以系统身份喊话 · 下回合生效<br>${esc(entry.text)}</p>`;
         const side = entry.who === 'me' ? 'is-me' : 'is-sys';
         const name = entry.who === 'char' ? `<small>${esc(entry.name || role)}</small>` : '';
-        return `<div class="pm-origin-bubble ${side}">${name}<span>${esc(entry.text)}</span>${entry.note ? `<em>${esc(entry.note)}</em>` : ''}</div>`;
+        const bubble = `<div class="pm-origin-bubble ${side}">${name}<span>${esc(entry.text)}</span>${entry.note ? `<em>${esc(entry.note)}</em>` : ''}</div>`;
+        // 最后一轮提问左侧的重来键：撤回这句和随后的系统回复，原话放回输入框。
+        if (ui.chatRetract && !ui.busy && entry.who === 'me' && i === list.length - 2 && list[i + 1]?.who === 'sys') {
+            return `<div class="pm-origin-bubble-row">${iconButton('chat-retract', '撤回这一轮重新发送', REFRESH_ICON_SVG)}${bubble}</div>`;
+        }
+        return bubble;
     }).join('');
     const hint = role ? `暂无${role}与系统的私聊。${settings.rpChat === 'manual' ? '' : '私聊随正文生成。'}` : '可以向系统询问提示、讨价还价或闲聊。';
     const gen = role && settings.rpChat === 'manual' ? `<div class="pm-origin-tail">${link('chat-gen', ui.busy === 'chat' ? '正在生成…' : '生成一段私聊')}</div>` : '';

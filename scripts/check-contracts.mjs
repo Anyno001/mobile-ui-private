@@ -5229,6 +5229,42 @@ for (const [label, , result] of analyzedFiles) {
 }
 
 const entries = await readdir(root, { recursive: true });
+
+// 拖选松手：遮罩与外部点击关闭必须先确认按下位置，否则从面板里拖选文字移到外面松开会误关。
+{
+  const pressOrigin = await import('../src/press-origin.js');
+  const listeners = new Map();
+  const fakeDocument = { addEventListener: (type, fn, capture) => { if (capture === true) listeners.set(type, fn); } };
+  const previousDocument = globalThis.document;
+  globalThis.document = fakeDocument;
+  try {
+    const inside = { id: 'inside' };
+    const backdrop = { contains: node => node === backdrop || node === inside };
+    const panel = { contains: node => node === inside };
+    pressOrigin.installPressOriginTracker();
+    if (typeof listeners.get('pointerdown') !== 'function') failures.push('press-origin.js: must track pointerdown in capture phase');
+    listeners.get('pointerdown')?.({ target: inside });
+    if (pressOrigin.isBackdropClick({ target: backdrop, detail: 1 }, backdrop)) failures.push('press-origin.js: drag from panel released on backdrop must not close');
+    if (!pressOrigin.pressStartedInside({ target: {}, detail: 1 }, panel)) failures.push('press-origin.js: drag from menu released outside must not count as outside click');
+    listeners.get('pointerdown')?.({ target: backdrop });
+    if (!pressOrigin.isBackdropClick({ target: backdrop, detail: 1 }, backdrop)) failures.push('press-origin.js: real backdrop click must close');
+    if (!pressOrigin.isBackdropClick({ target: backdrop, detail: 0 }, backdrop)) failures.push('press-origin.js: keyboard click must keep original behavior');
+  } finally {
+    globalThis.document = previousDocument;
+  }
+  for (const [file, expected] of [
+    ['phone-overlay.js', "isBackdropClick(event, overlay)) closeOverlay('backdrop')"],
+    ['emoji-ui.js', 'isBackdropClick(event, overlay)) overlay.remove()'],
+    ['cropper.js', 'isBackdropClick(event, overlay)) cancel()'],
+    ['phone-control-center.js', 'pressStartedInside(event, menu, anchor)'],
+    ['phone-directory.js', 'pressStartedInside(event, switcher, trigger)'],
+    ['settings-model-picker.js', '!pressStartedInside(event, dropdown)'],
+    ['story-oracle.js', "pressStartedInside(event, ...document.querySelectorAll('.pm-story-oracle-more-wrap'))"],
+  ]) requireText(`${file} press origin`, await readFile(path.join(srcRoot, file), 'utf8'), expected);
+  const originViews = await readFile(path.join(srcRoot, 'origin-views.js'), 'utf8');
+  requireText('origin-views.js chat retract', originViews, "iconButton('chat-retract', '撤回这一轮重新发送', REFRESH_ICON_SVG)");
+}
+
 for (const entry of entries) {
   const normalized = entry.replaceAll('\\', '/');
   const segments = normalized.split('/');

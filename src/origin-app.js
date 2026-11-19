@@ -5,12 +5,16 @@ import { readOriginSheet, renderOriginSheet } from './origin-forms.js';
 import { loadOriginSettings, originBoundRole, saveOriginSettings } from './origin-settings.js';
 import { renderOriginSettings } from './origin-settings-view.js';
 import { renderOriginPage, visibleOriginSubpages, visibleOriginTabs } from './origin-views.js';
+import { findRetractableSysChat, retractOriginSysChat } from './origin-chat-retract.js';
+import { ORIGIN_META_KEY } from './origin/origin-state.js';
 
 const REASON_TEXT = Object.freeze({
     'no-points': '积分不足', 'no-item': '该物品已不存在', 'no-goods': '该商品已不存在', 'no-target': '该项已不存在',
     'no-task': '该任务已不存在', 'task-changed': '任务已变化，请重试', 'empty-pool': '奖池为空', busy: '上一项请求仍在处理',
     paused: '系统已暂停', disabled: '金手指未开启', 'no-result': '没有生成出结果，请重试或手动添加', 'no-host': '未绑定角色',
     'origin-save-newer': '本聊天的存档来自更新的版本，无法读取', 'origin-save-invalid': '本聊天的存档格式不合法，无法读取', 'no-legacy': '没有找到旧存档',
+    'origin-retract-none': '没有可撤回的对话', 'origin-retract-unsupported': '当前存档由 IGS 管理，无法在这里撤回',
+    'origin-retract-blocked': '本聊天的存档无法读取，不能撤回', 'origin-retract-failed': '撤回失败，记录未改动',
 });
 const reasonText = result => (typeof result?.text === 'string' && result.text.trim()) || REASON_TEXT[result?.reason] || '操作没有完成';
 const freshUi = () => ({ tab: 'task', page: '', openRow: '', menuOpen: false, dropdown: '', taskFilter: 'all', gachaFilter: 'all', busy: '', status: '', lastDraw: null, sheet: null });
@@ -25,6 +29,7 @@ export function installOriginApp(state, deps) {
     let unsubscribe = null;
     let deferred = false;
     let badge = false;
+    let chatDraft = null;
 
     const getPage = () => deps.getPhoneWindow?.()?.querySelector?.('[data-phone-page="origin"]') || null;
     const isVisible = () => { const page = getPage(); return Boolean(page && !page.hidden && state.phoneActive && !state.isMinimized); };
@@ -41,6 +46,11 @@ export function installOriginApp(state, deps) {
         if (!s.enabled || !chatAvailable()) return null;
         return engine.isBlocked() ? null : engine.getState();
     }
+    const sysChatRetractable = () => {
+        const c = deps.getCtx?.();
+        const raw = (c?.chatMetadata || c?.chat_metadata)?.[ORIGIN_META_KEY];
+        return Boolean(raw && typeof raw === 'object' && findRetractableSysChat(raw));
+    };
 
     function render({ keepScroll = true } = {}) {
         const page = getPage();
@@ -58,6 +68,7 @@ export function installOriginApp(state, deps) {
             legacy: st && ui.page !== 'settings' ? engine.legacyDetected() : false,
             lastFloor: st && ui.page === 'log' ? engine.lastFloorStatus() : null,
             blocked: s.enabled && chatAvailable() ? engine.isBlocked() : null,
+            chatRetract: Boolean(st) && ui.tab === 'chat' && !ui.page && !originBoundRole(s) && sysChatRetractable(),
             settingsHtml: ui.page === 'settings' ? renderOriginSettings(s, chatInfo(s)) : '',
             sheetHtml: ui.sheet ? renderOriginSheet(ui.sheet.kind, ui.sheet.values, ui.sheet.target) : '',
         };
@@ -69,6 +80,10 @@ export function installOriginApp(state, deps) {
             if (target) { if (focusValue !== null) target.value = focusValue; target.focus?.(); }
         }
         if (ui.sheet) page.querySelector('.pm-origin-sheet .pm-origin-input, .pm-origin-sheet input')?.focus?.();
+        if (chatDraft !== null) {
+            const input = page.querySelector('#pm-origin-chat-input');
+            if (input) { input.value = chatDraft; input.focus?.(); chatDraft = null; }
+        }
         deferred = false;
         return true;
     }
@@ -181,6 +196,19 @@ export function installOriginApp(state, deps) {
         case 'gacha-add': openSheet('addGacha'); return true;
         case 'gacha-gen': await generate('gacha', () => engine.genGacha()); return true;
         case 'chat-gen': await generate('chat', () => engine.rpChatGen()); return true;
+        case 'chat-retract': {
+            if (ui.busy) return true;
+            const c = deps.getCtx?.();
+            const result = report(retractOriginSysChat({
+                getCtx: () => deps.getCtx?.(), engine,
+                saveMetadata: () => { const save = c && (c.saveMetadataDebounced || c.saveMetadata); if (typeof save === 'function') save.call(c); },
+            }));
+            if (result?.ok) {
+                chatDraft = result.text;
+                ui.status = '已撤回这一轮，可修改后重新发送';
+            }
+            return true;
+        }
         case 'stat-add': openSheet('addStat'); return true;
         case 'skill-add': openSheet('addSkill'); return true;
         case 'perk-add': openSheet('addPerk'); return true;
