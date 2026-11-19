@@ -114,7 +114,19 @@ button.pm-origin-row-head{cursor:pointer;}
 /* 最后一轮提问与重来键并排：键贴在我的气泡左下，不改变气泡配方。 */
 .pm-origin-bubble-row{display:flex;align-items:flex-end;align-self:flex-end;gap:var(--pm-space-1);max-width:90%;}
 .pm-origin-bubble-row .pm-origin-bubble{min-width:0;max-width:none;}
-.pm-origin-bubble-row .pm-origin-icon-button{color:var(--pm-color-label-3);}
+.pm-origin-bubble-row .pm-origin-icon-button{color:var(--pm-color-label-2);}
+.pm-origin-bubble-row .pm-origin-icon-button svg{width:var(--pm-size-icon-sm);height:var(--pm-size-icon-sm);opacity:var(--pm-opacity-muted);}
+.pm-origin-bubble-row .pm-origin-icon-button:focus-visible svg,.pm-origin-bubble-row .pm-origin-icon-button:active:not(:disabled) svg{opacity:1;}
+.pm-origin-bubble-row .pm-origin-icon-button:active:not(:disabled){background:var(--pm-color-fill-strong);}
+/* 勾选删除：复用主聊天的勾选圆点（.pm-message-select-check）与确认栏（.pm-confirm-bar），只补金手指布局。 */
+.pm-origin-chat.is-selecting .pm-select-wrap{max-width:90%;}
+.pm-origin-chat.is-selecting .pm-select-wrap .pm-origin-bubble{min-width:0;max-width:none;}
+.pm-origin-chat.is-selecting .pm-message-select-check{padding:var(--pm-space-0);}
+.pm-origin-select-bar{flex:0 0 auto;flex-wrap:wrap;}
+.pm-origin-select-bar button{min-height:var(--pm-size-control);font-size:var(--pm-font-size-body);white-space:nowrap;}
+.pm-origin-select-bar button:active:not(:disabled){opacity:var(--pm-opacity-muted);}
+.pm-origin-select-bar .pm-confirm-btn:disabled{opacity:var(--pm-opacity-disabled);cursor:default;}
+.pm-origin-select-bar button:focus-visible{outline:2px solid var(--pm-color-focus-ring);outline-offset:2px;}
 .pm-origin-call{align-self:center;max-width:86%;margin:var(--pm-space-1) var(--pm-space-0);color:var(--pm-color-label-3);font-size:var(--pm-font-size-label);line-height:var(--pm-line-height-body);text-align:center;}
 /* 输入区不要白底条：直接压在整页底色上，白色胶囊输入框 + 墨色圆形发送键。 */
 .pm-origin-composer{display:flex;align-items:center;gap:var(--pm-space-2);flex:0 0 auto;margin:var(--pm-space-0);padding:var(--pm-space-1) var(--pm-space-3) var(--pm-space-2);}
@@ -176,5 +188,6 @@ textarea.pm-origin-input{resize:vertical;line-height:var(--pm-line-height-body);
 .pm-origin-sheet-actions{display:flex;justify-content:flex-end;gap:var(--pm-space-2);}
 .pm-origin-sheet-actions .pm-origin-op{min-height:var(--pm-size-control);padding:var(--pm-space-0) var(--pm-space-4);font-size:var(--pm-font-size-body);}
 @media(hover:hover){.pm-origin-icon-button:hover,.pm-origin-dropdown:hover,.pm-origin-link:hover{background:var(--pm-color-fill);}.pm-control-menu.pm-origin-menu button:hover{background:var(--pm-color-fill);}.pm-origin-tab:hover:not([aria-selected="true"]){color:var(--pm-color-label-2);}}
+@media(hover:hover){.pm-origin-bubble-row .pm-origin-icon-button:hover:not(:disabled) svg{opacity:1;}.pm-origin-select-bar button:hover:not(:disabled){opacity:var(--pm-opacity-muted);}}
 @media(prefers-reduced-motion:reduce){.pm-origin-shell :is(.pm-origin-icon-button,.pm-origin-tab,.pm-origin-switch,.pm-origin-switch::after,.pm-origin-dropdown svg){transition:none;}}
 @media(max-width:320px){.pm-origin-scroll{padding-inline:var(--pm-space-2);}.pm-origin-tab{font-size:var(--pm-font-size-label);}.pm-origin-primary{min-width:100%;}}

@@ -248,11 +248,80 @@ await check('系统对话撤回：连接失败的一轮整组删除，存档与�
     assert.doesNotMatch(renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', busy: 'chat', chatRetract: true }), /chat-retract/, '生成中不显示重来键');
     engine.dispatch({ type: 'addTask', title: '别的操作', taskType: '支线' });
     assert.ok(findRetractableSysChat(ctx.chatMetadata.origin_v2), '非对话操作不挡住撤回');
-    ctx.chatMetadata.origin_v2.ops.at(-2).boundTo = 0;
-    assert.equal(findRetractableSysChat(ctx.chatMetadata.origin_v2), null, '已随正文发出的问答不撤回');
+    // 生成中断：只存下了提问，没有系统回复，也要能撤回。
+    const raw = ctx.chatMetadata.origin_v2;
+    ctx.chatMetadata.origin_v2 = { ...raw, ops: raw.ops.filter(rec => rec.op?.type !== 'chatSys'), checkpoints: [] };
+    engine.reload();
+    assert.equal(engine.getState().chat.at(-1).who, 'me');
+    const cutHtml = renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', busy: '', chatRetract: true });
+    assert.match(cutHtml, /data-origin-action="chat-retract"[^>]*>.*?<\/button><div class="pm-origin-bubble is-me"><span>雪烧开了就能喝/s, '中断后没有回复也显示重来键');
+    assert.deepEqual(retractOriginSysChat({ getCtx: () => ctx, engine }), { ok: true, text: '雪烧开了就能喝' });
+    assert.doesNotMatch(JSON.stringify(ctx.chatMetadata.origin_v2), /雪烧开了就能喝/, '中断的提问不留残留');
+    assert.equal(engine.getState().chat.length, 0);
     runtime.release();
     disable();
     freshEngine();
+});
+
+await check('系统对话勾选删除：菜单入口、勾选圆点与确认栏，删除所选不留残留', async () => {
+    const { listDeletableChats, deleteOriginChats } = await import('../src/origin-chat-retract.js');
+    freshEngine();
+    enable();
+    const ctx = fakeContext();
+    const runtime = startOriginHost({ getCtx: () => ctx });
+    const { engine } = runtime;
+    ctx.generateQuietPrompt = async () => '收到。';
+    assert.equal((await engine.sysChat('留下这句')).ok, true);
+    assert.equal((await engine.sysChat('手滑发错了')).ok, true);
+    ctx.generateQuietPrompt = async () => '第三次回复';
+    assert.equal((await engine.sysChat('最后一句')).ok, true);
+    const s = loadOriginSettings();
+    const menu = renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', menuOpen: true });
+    assert.match(menu, /data-origin-action="chat-select"/, '菜单里有勾选删除入口');
+    const items = listDeletableChats(ctx.chatMetadata.origin_v2);
+    assert.deepEqual(items.map(item => item.text), ['留下这句', '收到。', '手滑发错了', '收到。', '最后一句', '第三次回复']);
+    const wrong = items[2].id;
+    const view = renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', chatSelect: true, chatItems: items, chatPicked: [wrong] });
+    assert.equal((view.match(/class="pm-message-select-check"/g) || []).length, items.length, '每条记录一个勾选圆点');
+    assert.match(view, new RegExp(`aria-checked="true" data-checked="1" data-origin-action="chat-pick" data-id="${wrong}"`));
+    assert.match(view, /pm-confirm-bar is-active pm-origin-select-bar/, '复用主聊天的确认栏');
+    assert.doesNotMatch(view, /id="pm-origin-chat-input"/, '选择时收起输入框');
+    assert.match(renderOriginPage(engine.getState(), s, { tab: 'chat', page: '', chatSelect: true, chatItems: items, chatPicked: [] }), /data-origin-action="chat-delete" disabled/, '未选时删除键禁用');
+    ctx.chatMetadata.origin_v2.checkpoints = [{ sig: 'stale-chat-snapshot', turn: 0, state: engine.getState() }];
+    const result = deleteOriginChats({ getCtx: () => ctx, engine }, [wrong, items[3].id, 99999]);
+    assert.deepEqual(result, { ok: true, count: 2 }, '只删存在的记录');
+    assert.doesNotMatch(JSON.stringify(ctx.chatMetadata.origin_v2), /手滑发错了/, '存档里不留被删的记录');
+    assert.deepEqual(engine.getState().chat.map(entry => entry.text), ['留下这句', '收到。', '最后一句', '第三次回复']);
+    const savesBefore = ctx.saves;
+    assert.deepEqual(deleteOriginChats({ getCtx: () => ctx, engine, saveMetadata: () => ctx.saveMetadataDebounced() }, [items[4].id]), { ok: true, count: 1 });
+    assert.ok(ctx.saves > savesBefore, '删除后保存聊天元数据');
+    assert.doesNotMatch(JSON.stringify(ctx.chatMetadata.origin_v2), /最后一句/, '单删提问也清掉回复里的 ask 引用和检查点');
+    assert.deepEqual(engine.getState().chat.map(entry => entry.text), ['留下这句', '收到。', '第三次回复'], '单独删除提问保留未勾选的回复');
+    engine.reload();
+    assert.deepEqual(engine.getState().chat.map(entry => entry.text), ['留下这句', '收到。', '第三次回复'], '重新读档不恢复被删内容');
+    assert.equal(deleteOriginChats({ getCtx: () => ctx, engine }, []).ok, false, '空选择不改存档');
+    runtime.release();
+    disable();
+    freshEngine();
+});
+
+await check('对话删除保护：无法读取、数据库托管、重载失败时不改原记录', async () => {
+    const { deleteOriginChats, listDeletableChats } = await import('../src/origin-chat-retract.js');
+    const raw = { ops: [{ id: 1, op: { type: 'chatMe', text: '保留原话' } }], checkpoints: [] };
+    const ctx = { chatMetadata: { origin_v2: raw } };
+    assert.equal(deleteOriginChats({ getCtx: () => ctx, engine: { isBlocked: () => true } }, [1]).reason, 'origin-retract-blocked');
+    const globalObject = { [ENGINE_KEY]: { hosts: [{ settings: () => ({ enabled: true }), database: () => ({}) }] } };
+    assert.equal(deleteOriginChats({ getCtx: () => ctx, engine: {}, globalObject }, [1]).reason, 'origin-retract-unsupported');
+    let blocked = false;
+    let reloads = 0;
+    const engine = { isBlocked: () => blocked, reload: () => { reloads += 1; blocked = reloads === 1; } };
+    assert.equal(deleteOriginChats({ getCtx: () => ctx, engine }, [1]).reason, 'origin-retract-failed');
+    assert.equal(ctx.chatMetadata.origin_v2, raw, '重载失败回滚到原存档对象');
+    assert.equal(reloads, 2);
+    assert.deepEqual(listDeletableChats({ ops: [
+        ...raw.ops, { id: 2, op: { type: 'chatClear' } }, { id: 3, op: { type: 'chatCall', text: '喊话' } },
+        { id: 4, op: { type: 'chatRp', lines: [{ who: 'char', name: '林', text: '私聊' }] } },
+    ] }).map(row => row.id), [3, 4], '不列出清空以前的记录，支持喊话和私聊');
 });
 
 await check('页面渲染：冻结状态下各页不原地改；主线大卡、组头下拉、按钮右对齐主操作最右、底栏五页签', () => {

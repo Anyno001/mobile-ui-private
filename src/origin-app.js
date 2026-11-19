@@ -5,8 +5,7 @@ import { readOriginSheet, renderOriginSheet } from './origin-forms.js';
 import { loadOriginSettings, originBoundRole, saveOriginSettings } from './origin-settings.js';
 import { renderOriginSettings } from './origin-settings-view.js';
 import { renderOriginPage, visibleOriginSubpages, visibleOriginTabs } from './origin-views.js';
-import { findRetractableSysChat, retractOriginSysChat } from './origin-chat-retract.js';
-import { ORIGIN_META_KEY } from './origin/origin-state.js';
+import { deleteOriginChats, findRetractableSysChat, listDeletableChats, readOriginChatSave, retractOriginSysChat } from './origin-chat-retract.js';
 
 const REASON_TEXT = Object.freeze({
     'no-points': '积分不足', 'no-item': '该物品已不存在', 'no-goods': '该商品已不存在', 'no-target': '该项已不存在',
@@ -17,7 +16,7 @@ const REASON_TEXT = Object.freeze({
     'origin-retract-blocked': '本聊天的存档无法读取，不能撤回', 'origin-retract-failed': '撤回失败，记录未改动',
 });
 const reasonText = result => (typeof result?.text === 'string' && result.text.trim()) || REASON_TEXT[result?.reason] || '操作没有完成';
-const freshUi = () => ({ tab: 'task', page: '', openRow: '', menuOpen: false, dropdown: '', taskFilter: 'all', gachaFilter: 'all', busy: '', status: '', lastDraw: null, sheet: null });
+const freshUi = () => ({ tab: 'task', page: '', openRow: '', menuOpen: false, dropdown: '', taskFilter: 'all', gachaFilter: 'all', busy: '', status: '', lastDraw: null, sheet: null, chatSelect: false, chatPicked: [] });
 const DRAW_TEXT = /^抽中(?:\[([^\]]+)\])?(.+)$/;
 
 export function installOriginApp(state, deps) {
@@ -46,10 +45,14 @@ export function installOriginApp(state, deps) {
         if (!s.enabled || !chatAvailable()) return null;
         return engine.isBlocked() ? null : engine.getState();
     }
-    const sysChatRetractable = () => {
+    const chatSave = () => readOriginChatSave(deps.getCtx?.());
+    const sysChatRetractable = () => Boolean(chatSave() && findRetractableSysChat(chatSave()));
+    const chatEditOptions = () => {
         const c = deps.getCtx?.();
-        const raw = (c?.chatMetadata || c?.chat_metadata)?.[ORIGIN_META_KEY];
-        return Boolean(raw && typeof raw === 'object' && findRetractableSysChat(raw));
+        return {
+            getCtx: () => deps.getCtx?.(), engine,
+            saveMetadata: () => { const save = c && (c.saveMetadataDebounced || c.saveMetadata); if (typeof save === 'function') save.call(c); },
+        };
     };
 
     function render({ keepScroll = true } = {}) {
@@ -69,6 +72,7 @@ export function installOriginApp(state, deps) {
             lastFloor: st && ui.page === 'log' ? engine.lastFloorStatus() : null,
             blocked: s.enabled && chatAvailable() ? engine.isBlocked() : null,
             chatRetract: Boolean(st) && ui.tab === 'chat' && !ui.page && !originBoundRole(s) && sysChatRetractable(),
+            chatItems: ui.chatSelect && st ? listDeletableChats(chatSave()) : [],
             settingsHtml: ui.page === 'settings' ? renderOriginSettings(s, chatInfo(s)) : '',
             sheetHtml: ui.sheet ? renderOriginSheet(ui.sheet.kind, ui.sheet.values, ui.sheet.target) : '',
         };
@@ -148,6 +152,8 @@ export function installOriginApp(state, deps) {
         if (action !== 'row' && action !== 'filter' && action !== 'dropdown') ui.status = '';
         if (action !== 'menu') ui.menuOpen = false;
         if (action !== 'dropdown' && action !== 'filter') ui.dropdown = '';
+        // 离开对话页或换到二级页时退出勾选模式。
+        if (['tab', 'page', 'desktop'].includes(action)) ui = { ...ui, chatSelect: false, chatPicked: [] };
         switch (action) {
         case 'desktop': stopWatching(); await deps.showPhoneDesktopPage?.(); return false;
         case 'tab': ui = { ...ui, tab: data.tab || 'task', page: '', openRow: '', lastDraw: data.tab === 'gacha' ? ui.lastDraw : null }; return true;
@@ -164,6 +170,25 @@ export function installOriginApp(state, deps) {
         case 'disable': if (saveSetting('enabled', false)) { ui = { ...freshUi() }; ui.status = '金手指已关闭，数据保留'; } return true;
         case 'pause': dispatch({ type: st().paused ? 'resume' : 'pause' }); return true;
         case 'chat-clear': if (window.confirm('清空本聊天与系统的对话记录？')) dispatch({ type: 'chatClear' }); return true;
+        case 'chat-select':
+            if (ui.busy) { ui.status = REASON_TEXT.busy; return true; }
+            ui = { ...ui, tab: 'chat', page: '', chatSelect: true, chatPicked: [] };
+            return true;
+        case 'chat-select-cancel': ui = { ...ui, chatSelect: false, chatPicked: [] }; return true;
+        case 'chat-pick': {
+            const id = Number(data.id);
+            const picked = new Set(ui.chatPicked);
+            if (picked.has(id)) picked.delete(id); else picked.add(id);
+            ui = { ...ui, chatPicked: [...picked] };
+            return true;
+        }
+        case 'chat-delete': {
+            if (!ui.chatPicked.length || ui.busy) return true;
+            if (!window.confirm(`删除所选的 ${ui.chatPicked.length} 条记录？删除后无法恢复。`)) return true;
+            const result = report(deleteOriginChats(chatEditOptions(), ui.chatPicked));
+            if (result?.ok) ui = { ...ui, chatSelect: false, chatPicked: [], status: `已删除 ${result.count} 条记录` };
+            return true;
+        }
         case 'task-gen': await generate('task', () => engine.genTask()); return true;
         case 'task-add': openSheet('addTask'); return true;
         case 'task-edit': {
@@ -198,11 +223,7 @@ export function installOriginApp(state, deps) {
         case 'chat-gen': await generate('chat', () => engine.rpChatGen()); return true;
         case 'chat-retract': {
             if (ui.busy) return true;
-            const c = deps.getCtx?.();
-            const result = report(retractOriginSysChat({
-                getCtx: () => deps.getCtx?.(), engine,
-                saveMetadata: () => { const save = c && (c.saveMetadataDebounced || c.saveMetadata); if (typeof save === 'function') save.call(c); },
-            }));
+            const result = report(retractOriginSysChat(chatEditOptions()));
             if (result?.ok) {
                 chatDraft = result.text;
                 ui.status = '已撤回这一轮，可修改后重新发送';
@@ -263,7 +284,10 @@ export function installOriginApp(state, deps) {
             const role = originBoundRole(settings());
             ui.status = '';
             if (role) { report(engine.rpChatCall(text)); render(); return; }
-            generate('chat', () => engine.sysChat(text)).then(() => render());
+            generate('chat', () => engine.sysChat(text)).then(
+                () => render(),
+                error => { ui.status = error?.message || '生成中断，可撤回后重新发送'; render(); },
+            );
             return;
         }
         const { kind, target } = form.dataset;
@@ -304,7 +328,11 @@ export function installOriginApp(state, deps) {
             page.addEventListener('click', onClick);
             page.addEventListener('submit', onSubmit);
             page.addEventListener('change', onChange);
-            page.addEventListener('keydown', event => { if (event.key === 'Escape' && ui.sheet) { ui.sheet = null; render(); } });
+            page.addEventListener('keydown', event => {
+                if (event.key !== 'Escape') return;
+                if (ui.sheet) { ui.sheet = null; render(); }
+                else if (ui.chatSelect) { ui = { ...ui, chatSelect: false, chatPicked: [] }; render(); }
+            });
         }
         return page;
     }
@@ -313,7 +341,7 @@ export function installOriginApp(state, deps) {
     function show({ resume = false } = {}) {
         if (!ensurePage()) return false;
         if (!resume) ui = freshUi();
-        ui = { ...ui, status: '', sheet: null, menuOpen: false, dropdown: '' };
+        ui = { ...ui, status: '', sheet: null, menuOpen: false, dropdown: '', chatSelect: false, chatPicked: [] };
         const s = settings();
         if (!visibleOriginTabs(s).some(tab => tab.id === ui.tab)) ui.tab = 'task';
         if (ui.page && ui.page !== 'settings' && !visibleOriginSubpages(s).some(page => page.id === ui.page)) ui.page = '';

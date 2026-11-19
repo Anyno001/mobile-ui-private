@@ -5263,6 +5263,15 @@ const entries = await readdir(root, { recursive: true });
   ]) requireText(`${file} press origin`, await readFile(path.join(srcRoot, file), 'utf8'), expected);
   const originViews = await readFile(path.join(srcRoot, 'origin-views.js'), 'utf8');
   requireText('origin-views.js chat retract', originViews, "iconButton('chat-retract', '撤回这一轮重新发送', REFRESH_ICON_SVG)");
+  requireText('origin-views.js chat select menu', originViews, "item('chat-select', `删除${chatLabel(settings)}`)");
+  requireText('origin-views.js chat select check', originViews, 'class="pm-message-select-check" role="checkbox"');
+  requireText('origin-views.js chat select bar', originViews, 'class="pm-confirm-bar is-active pm-origin-select-bar"');
+  requireCssDeclarations(cssRules, '.pm-origin-select-bar button:focus-visible', { outline: '2px solid var(--pm-color-focus-ring)' });
+  requireCssDeclarations(cssRules, '.pm-origin-select-bar button', { 'min-height': 'var(--pm-size-control)' });
+  requireCssDeclarations(cssRules, '.pm-origin-icon-button', { width: 'var(--pm-size-control)', height: 'var(--pm-size-control)' });
+  requireCssDeclarations(cssRules, '.pm-origin-bubble-row .pm-origin-icon-button svg', {
+    width: 'var(--pm-size-icon-sm)', height: 'var(--pm-size-icon-sm)', opacity: 'var(--pm-opacity-muted)',
+  });
 }
 
 for (const entry of entries) {
