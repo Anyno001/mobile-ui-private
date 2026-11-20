@@ -1,6 +1,7 @@
 import { resolveThemeAuxiliary, THEME_PRESETS, THEME_UI_TOKENS } from './config.js';
 import { contrastText, escapeAttr, escapeHtml } from './ui.js';
 import { CLOSE_ICON_SVG } from './icons.js';
+import { isBackdropClick } from './press-origin.js';
 import {
     cloneEmojiLibrary, createEmojiRenderBudget, emojiFileError, emojiSourceError,
 } from './emoji-media.js';
@@ -41,7 +42,7 @@ function createSubOverlay(html) {
     }
     applySubOverlayTheme(overlay);
     overlay.innerHTML = html;
-    overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', event => { if (isBackdropClick(event, overlay)) overlay.remove(); });
     document.body.appendChild(overlay);
     if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}
     return overlay;

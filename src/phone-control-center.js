@@ -1,4 +1,5 @@
 import { escapeAttr, escapeHtml } from './ui.js';
+import { pressStartedInside } from './press-origin.js';
 import { resolveConversationTarget } from './conversation-state.js';
 import {
     BACK_ICON_SVG, CALENDAR_ICON_SVG, CHARACTER_ICON_SVG, CHAT_ICON_SVG, CLOSE_ICON_SVG,
@@ -211,7 +212,7 @@ export function installPhoneControlCenter(state, deps) {
             });
         });
         outsideClickHandler = event => {
-            if (menu.contains(event.target) || anchor.contains(event.target)) return;
+            if (menu.contains(event.target) || anchor.contains(event.target) || pressStartedInside(event, menu, anchor)) return;
             closeControlCenter();
         };
         escapeKeyHandler = event => {

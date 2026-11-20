@@ -1,4 +1,5 @@
 import { POPOVER_SUPPORTED } from './constants.js';
+import { isBackdropClick } from './press-origin.js';
 import { captureScroll, restoreScroll } from './scroll-keeper.js';
 
 const OVERLAY_SCROLLERS = ['.pm-modal-scroll'];
@@ -35,7 +36,7 @@ export function createPhoneOverlayController({ runtime, applyTheme }) {
         overlay.__pmOnClose = typeof options.onClose === 'function' ? options.onClose : null;
         overlay.__pmOpener = opener;
         overlay.innerHTML = html;
-        overlay.addEventListener('click', event => { if (event.target === overlay) closeOverlay('backdrop'); });
+        overlay.addEventListener('click', event => { if (isBackdropClick(event, overlay)) closeOverlay('backdrop'); });
         document.body.appendChild(overlay);
         applyTheme();
         if (overlay.showPopover) try { overlay.showPopover(); } catch (error) {}

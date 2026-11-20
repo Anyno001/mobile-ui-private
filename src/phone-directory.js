@@ -101,6 +101,7 @@ import { DEFAULT_RANDOM_NPC_PROMPT } from './chat-prompts.js';
 import { getAutoPokeConfig } from './auto-poke-config.js';
 import { defaultGroupColor, groupDotColor, groupDotSvg } from './groups.js';
 import { escapeAttr, escapeHtml, safeJS } from './ui.js';
+import { pressStartedInside } from './press-origin.js';
 import {
     BACK_ICON_SVG, CHECK_ICON_SVG, CLOSE_ICON_SVG, BOOKMARK_ICON_SVG,
     SPARKLES_ICON_SVG, UNLINK_ICON_SVG,
@@ -323,7 +324,7 @@ export function installPhoneDirectory(state, deps) {
             }
         });
         contactSwitcherOutsideHandler = event => {
-            if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+            if (switcher.contains(event.target) || trigger.contains(event.target) || pressStartedInside(event, switcher, trigger)) return;
             closeContactSwitcher('outside');
         };
         contactSwitcherEscapeHandler = event => {

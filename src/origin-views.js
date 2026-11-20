@@ -3,7 +3,7 @@
 // 任务页：主线置顶大卡 + 组头下拉筛选 + 每条两行、点开原位展开（按钮右对齐、主操作最右），同时只开一行。
 import { appNameOf, appSloganOf } from './app-names.js';
 import {
-    BACK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, ORIGIN_APP_ICON_SVG, SEND_ICON_SVG,
+    BACK_ICON_SVG, CHEVRON_DOWN_ICON_SVG, CLOSE_ICON_SVG, HOME_ICON_SVG, MORE_ICON_SVG, ORIGIN_APP_ICON_SVG, REFRESH_ICON_SVG, SEND_ICON_SVG,
 } from './icons.js';
 import { tRemain } from './origin/origin-apply.js';
 import { originBoundRole } from './origin-settings.js';
@@ -64,6 +64,7 @@ function renderMenu(state, settings) {
     const pages = visibleOriginSubpages(settings).map(page => item('page', page.label, `data-page="${page.id}"`)).join('');
     const tools = item('pause', state.paused ? '恢复系统' : '暂停系统')
         + (settings.mods.chat !== false ? item('chat-clear', `清空${chatLabel(settings)}`) : '')
+        + (settings.mods.chat !== false ? item('chat-select', `删除${chatLabel(settings)}`) : '')
         + item('disable', '关闭金手指');
     return `<div class="pm-control-menu pm-origin-menu" role="menu">${pages}<span class="pm-origin-menu-gap" aria-hidden="true"></span>${tools}</div>`;
 }
@@ -183,16 +184,46 @@ ${groupHead(filter === 'all' ? '奖池' : `${filter}奖品`, shown.length, tiers
 function chatPage(state, settings, ui) {
     const role = originBoundRole(settings);
     const list = state.chat.slice(-60);
-    const bubbles = list.map(entry => {
+    const bubbles = list.map((entry, i) => {
         if (entry.who === 'call') return `<p class="pm-origin-call">以系统身份喊话 · 下回合生效<br>${esc(entry.text)}</p>`;
         const side = entry.who === 'me' ? 'is-me' : 'is-sys';
         const name = entry.who === 'char' ? `<small>${esc(entry.name || role)}</small>` : '';
-        return `<div class="pm-origin-bubble ${side}">${name}<span>${esc(entry.text)}</span>${entry.note ? `<em>${esc(entry.note)}</em>` : ''}</div>`;
+        const bubble = `<div class="pm-origin-bubble ${side}">${name}<span>${esc(entry.text)}</span>${entry.note ? `<em>${esc(entry.note)}</em>` : ''}</div>`;
+        // 最后一条提问左侧的重来键：撤回这句（连同随后的系统回复，生成中断时只有这句），原话放回输入框。
+        const lastAsk = entry.who === 'me' && (i === list.length - 1 || (i === list.length - 2 && list[i + 1]?.who === 'sys'));
+        if (ui.chatRetract && !ui.busy && lastAsk) {
+            return `<div class="pm-origin-bubble-row">${iconButton('chat-retract', '撤回这一轮重新发送', REFRESH_ICON_SVG)}${bubble}</div>`;
+        }
+        return bubble;
     }).join('');
     const hint = role ? `暂无${role}与系统的私聊。${settings.rpChat === 'manual' ? '' : '私聊随正文生成。'}` : '可以向系统询问提示、讨价还价或闲聊。';
     const gen = role && settings.rpChat === 'manual' ? `<div class="pm-origin-tail">${link('chat-gen', ui.busy === 'chat' ? '正在生成…' : '生成一段私聊')}</div>` : '';
     const typing = ui.busy === 'chat' && !role ? '<div class="pm-origin-bubble is-sys is-typing"><span>正在回复…</span></div>' : '';
     return `<div class="pm-origin-chat">${bubbles || empty(hint)}${typing}</div>${gen}`;
+}
+
+// 勾选删除：直接列存档里的对话记录（与主聊天的选择模式同一套勾选圆点与确认栏），每条对应一条可删的记录。
+function chatSelectPage(settings, ui) {
+    const role = originBoundRole(settings);
+    const picked = new Set(ui.chatPicked || []);
+    const rows = (ui.chatItems || []).map(item => {
+        const checked = picked.has(item.id);
+        const check = `<button type="button" id="pm-origin-chat-pick-${item.id}" class="pm-message-select-check" role="checkbox" aria-checked="${checked}" data-checked="${checked ? 1 : 0}" ${act('chat-pick', `data-id="${item.id}"`)} aria-label="选择这条"></button>`;
+        if (item.who === 'call') return `<div class="pm-select-wrap" data-align="center">${check}<p class="pm-origin-call">以系统身份喊话<br>${esc(item.text)}</p></div>`;
+        if (item.who === 'char') {
+            const lines = item.lines.map(line => `<span>${esc(line.who === 'char' ? `${line.name || role}：` : '')}${esc(line.text)}</span>`).join('');
+            return `<div class="pm-select-wrap" data-align="left">${check}<div class="pm-origin-bubble is-sys"><small>私聊 · ${num(item.lines.length)}句</small>${lines}</div></div>`;
+        }
+        const right = item.who === 'me';
+        const bubble = `<div class="pm-origin-bubble ${right ? 'is-me' : 'is-sys'}"><span>${esc(item.text)}</span></div>`;
+        return `<div class="pm-select-wrap" data-align="${right ? 'right' : 'left'}">${right ? bubble + check : check + bubble}</div>`;
+    }).join('');
+    return `<div class="pm-origin-chat is-selecting">${rows || empty('没有可删除的记录')}</div>`;
+}
+
+function chatSelectBar(ui) {
+    const n = (ui.chatPicked || []).length;
+    return `<div class="pm-confirm-bar is-active pm-origin-select-bar"><span class="pm-confirm-tip">${n ? `已选 ${n} 条` : '选择要删除的记录'}</span><button type="button" class="pm-cancel-btn" ${act('chat-select-cancel')}>取消</button><button type="button" class="pm-confirm-btn" ${act('chat-delete')}${n ? '' : ' disabled'}>删除所选</button></div>`;
 }
 
 function composer(settings) {
@@ -247,7 +278,10 @@ export function renderOriginPage(state, settings, ui) {
     } else {
         const tabs = visibleOriginTabs(settings);
         const tab = tabs.some(item => item.id === ui.tab) ? ui.tab : 'task';
-        inner = `${homeHeader(state, settings, ui)}${status}<div class="pm-origin-scroll" data-origin-tab="${tab}">${banners(state, ui)}${TAB_RENDERERS[tab](state, ui, settings)}</div>${tab === 'chat' ? composer(settings) : ''}${tabbar(settings, tab)}`;
+        const selecting = tab === 'chat' && ui.chatSelect === true;
+        inner = selecting
+            ? `${homeHeader(state, settings, ui)}${status}<div class="pm-origin-scroll" data-origin-tab="chat">${chatSelectPage(settings, ui)}</div>${chatSelectBar(ui)}`
+            : `${homeHeader(state, settings, ui)}${status}<div class="pm-origin-scroll" data-origin-tab="${tab}">${banners(state, ui)}${TAB_RENDERERS[tab](state, ui, settings)}</div>${tab === 'chat' ? composer(settings) : ''}${tabbar(settings, tab)}`;
     }
     return `<div class="pm-origin-shell">${inner}${ui.sheetHtml || ''}</div>`;
 }
